@@ -14,7 +14,7 @@ module.exports = {
   once: true,
 
   async execute(client) {
-    logger.success("🚀 CIVRAT v0.9.1-main connecté !");
+    
     logger.success(`${client.user.tag} connecté !`);
 
     // Set bot status
