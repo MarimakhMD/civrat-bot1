@@ -1,0 +1,4 @@
+const { SlashCommandBuilder, PermissionsBitField } = require("discord.js");
+const { getGuildConfig } = require("../services/guildConfig");
+const captchaService = require("../services/captchaService");
+module.exports = { data: new SlashCommandBuilder().setName("captcha").setDescription("Gérer le panneau de vérification").setDefaultMemberPermissions(PermissionsBitField.Flags.ManageGuild).addSubcommand((sub) => sub.setName("panel").setDescription("Envoyer le panneau de vérification")), async execute(interaction) { const config = await getGuildConfig(interaction.guild.id); try { const channel = await captchaService.sendPanel(interaction.guild, config); return interaction.reply({ content: `✅ Panneau de vérification envoyé dans ${channel}.`, ephemeral: true }); } catch (error) { return interaction.reply({ content: `❌ ${error.message}`, ephemeral: true }); } } };

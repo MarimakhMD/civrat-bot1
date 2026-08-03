@@ -1,0 +1,3 @@
+const guildConfigService = require("../services/guildConfig");
+const { sendLog } = require("../services/logService");
+module.exports = { name: "roleUpdate", once: false, async execute(oldRole, newRole) { try { if (oldRole.name === newRole.name) return; const config = await guildConfigService.getGuildConfig(newRole.guild.id); if (config.logs_enabled) await sendLog(newRole.guild, config, "log_role_update_channel_id", { title: "🔧 Rôle modifié", color: "info", fields: [{ name: "Avant", value: oldRole.name || "—", inline: true }, { name: "Après", value: newRole.name || "—", inline: true }, { name: "ID", value: newRole.id, inline: true }] }); } catch {} } };
