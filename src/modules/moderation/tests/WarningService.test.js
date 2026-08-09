@@ -1,0 +1,3 @@
+"use strict";
+const test=require("node:test"),assert=require("node:assert/strict");const {WarningService}=require("../services/WarningService");
+test("warning handles target and transport outcomes",async()=>{const s=new WarningService();let r=await s.warn({guildId:"g",actor:{id:"a"},targetId:"x",transport:{getMember:async()=>null}});assert.equal(r.code,"WARN_INVALID_TARGET");r=await s.warn({guildId:"g",actor:{id:"a"},targetId:"x",transport:{getMember:async()=>({id:"x"}),canModerate:()=>false}});assert.equal(r.code,"WARN_TARGET_NOT_MODERATABLE");r=await s.warn({guildId:"g",actor:{id:"a"},targetId:"x",reason:"r",transport:{getMember:async()=>({id:"x"}),canModerate:()=>true,sendWarning:async()=>{}}});assert.equal(r.code,"WARN_SUCCESS");});
