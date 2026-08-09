@@ -1,0 +1,6 @@
+"use strict";
+const test=require("node:test"),assert=require("node:assert/strict");const {TicketService}=require("../services/TicketService");
+function f({ticket={guild_id:"g",user_id:"owner",status:"open",closed:false},support=true,updateError=false,channel={claimed:true}}={}){let update;const service=new TicketService({repository:{findByChannel:async()=>ticket,updateByChannel:async(_c,x)=>{update=x;if(updateError)throw new Error();return x;}},configService:{read:async()=>({ticket_support_role_id:"r"})},transport:{isMemberInRole:async()=>support,claimTicketChannel:async()=>channel}});return {service,get update(){return update;}};}
+const base={guildId:"g",channelId:"c",member:{id:"staff"}};
+test("claim persists claimed status",async()=>{const x=f();assert.equal((await x.service.claimTicket(base)).code,"TICKET_CLAIMED");assert.deepEqual(x.update,{status:"claimed"});});
+test("claim validates ticket and support",async()=>{assert.equal((await f({ticket:null}).service.claimTicket(base)).code,"TICKET_NOT_FOUND");assert.equal((await f({support:false}).service.claimTicket(base)).code,"TICKET_UNAUTHORIZED");assert.equal((await f({ticket:{guild_id:"g",status:"claimed",user_id:"owner"}}).service.claimTicket(base)).code,"TICKET_ALREADY_CLAIMED");assert.equal((await f({updateError:true}).service.claimTicket(base)).code,"TICKET_CLAIM_FAILED");});

@@ -66,6 +66,12 @@ class DiscordTicketTransport {
     return Boolean(member?.roles?.cache?.has(roleId));
   }
 
+  async claimTicketChannel(channelId, ownerId, claimantId) {
+    const channel = this.guild.channels.cache.get(channelId);
+    if (!channel?.isTextBased() || !channel.manageable) return { claimed: false, code: "TICKET_CLAIM_FAILED" };
+    try { await channel.setTopic(`civrat-ticket:${ownerId}:${claimantId}`); return { claimed: true, code: "TICKET_CHANNEL_CLAIMED" }; } catch (_error) { return { claimed: false, code: "TICKET_CLAIM_FAILED" }; }
+  }
+
   async fetchTranscriptMessages(channelId) {
     const channel = this.guild.channels.cache.get(channelId);
     if (!channel?.isTextBased()) throw new Error("ticket_channel_unavailable");

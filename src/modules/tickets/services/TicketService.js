@@ -350,6 +350,18 @@ class TicketService {
     try { access = action === "add" ? await this.transport.addTicketMemberAccess(channelId, target) : await this.transport.removeTicketMemberAccess(channelId, targetMemberId); } catch (_error) { return result(false, "TICKET_MEMBER_ACCESS_FAILED"); }
     if(access?.changed)this.ticketLog?.({action:action==="add"?"ticket_member_added":"ticket_member_removed",ticketChannelId:channelId,userId:member.id}); return result(Boolean(access?.changed), access?.code || "TICKET_MEMBER_ACCESS_FAILED");
   }
+
+  async claimTicket({ guildId, channelId, member }) {
+    const result=(claimed,code,details={})=>({claimed,code,guildId,channelId,memberId:member?.id||null,details});
+    if(!guildId||!channelId||!member?.id)return result(false,"TICKET_NOT_FOUND");
+    let ticket; try{ticket=await this.repository.findByChannel(channelId);}catch(_error){return result(false,"TICKET_CLAIM_FAILED");}
+    if(!ticket)return result(false,"TICKET_NOT_FOUND"); if(ticket.guild_id!==guildId)return result(false,"TICKET_GUILD_MISMATCH"); if(ticket.status==="deleted")return result(false,"TICKET_ALREADY_DELETED"); if(ticket.status==="closed"||ticket.closed)return result(false,"TICKET_ALREADY_CLOSED"); if(ticket.status==="claimed")return result(false,"TICKET_ALREADY_CLAIMED");
+    let roleId; try{roleId=(await this.configService.read(guildId))[Key.SUPPORT_ROLE_ID];}catch(_error){return result(false,"TICKET_CLAIM_FAILED");}
+    let isSupport; try{isSupport=Boolean(roleId&&await this.transport.isMemberInRole(member,roleId));}catch(_error){return result(false,"TICKET_CLAIM_FAILED");}
+    if(!isSupport)return result(false,"TICKET_UNAUTHORIZED");
+    let channel;try{channel=await this.transport.claimTicketChannel(channelId,ticket.user_id,member.id);}catch(_error){return result(false,"TICKET_CLAIM_FAILED");}if(!channel?.claimed)return result(false,"TICKET_CLAIM_FAILED");
+    try{const updatedTicket=await this.repository.updateByChannel(channelId,{status:"claimed"});this.ticketLog?.({action:"ticket_claimed",ticketChannelId:channelId,userId:member.id});return result(true,"TICKET_CLAIMED",{ticket:updatedTicket});}catch(_error){return result(false,"TICKET_CLAIM_FAILED");}
+  }
 }
 
 function isValidTicketChannelName(name) {

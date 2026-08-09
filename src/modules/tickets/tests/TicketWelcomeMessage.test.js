@@ -49,11 +49,12 @@ test("welcome view is localized and contains creator, support role, and stable c
   assert.deepEqual(english.components.map((component) => component.customId), ["civrat:v1:tickets:close", "civrat:v1:tickets:claim"]);
 });
 
-test("Claim control remains unregistered for action", () => {
+test("Claim control is registered separately from legacy interactions", () => {
   const registry = new InteractionRegistry();
   registerTickets({ registry, service: { read: async () => ({}) }, creationServiceFactory: () => ({ createTicket: async () => ({}) }), settingsHome: async () => {} });
   assert.ok(registry.find({ kind: "button", customId: Id.CLOSE }));
-  assert.equal(registry.find({ kind: "button", customId: Id.CLAIM }), null);
+  assert.ok(registry.find({ kind: "button", customId: Id.CLAIM }));
+  assert.equal(registry.find({ kind: "button", customId: "ticket_claim" }), null);
 });
 
 test("ticket service sends welcome only after channel creation and overwrites", async () => {

@@ -10,6 +10,7 @@ const { handleTicketReopen } = require("./interactions/ticketReopenRoute");
 const { handleTicketDelete } = require("./interactions/ticketDeleteRoute");
 const { openTicketRename, handleTicketRename } = require("./interactions/ticketRenameRoute");
 const { openMemberModal, handleMemberAccess } = require("./interactions/ticketMemberAccessRoute");
+const { handleTicketClaim } = require("./interactions/ticketClaimRoute");
 
 function registerTickets({ registry, service, creationServiceFactory = null, settingsHome = null }) {
   const permissions = { allOf: [PermissionName.MANAGE_GUILD] };
@@ -23,6 +24,7 @@ function registerTickets({ registry, service, creationServiceFactory = null, set
   registry.registerButton({ customId: Id.REOPEN, permissions: { allOf: [] }, execute: async (c) => handleTicketReopen(c, creationServiceFactory) });
   registry.registerButton({ customId: Id.DELETE, permissions: { allOf: [] }, execute: async (c) => handleTicketDelete(c, creationServiceFactory) });
   registry.registerButton({ customId: Id.RENAME, permissions: { allOf: [] }, execute: openTicketRename });
+  registry.registerButton({ customId: Id.CLAIM, permissions: { allOf: [] }, execute: async (c) => handleTicketClaim(c, creationServiceFactory) });
   registry.registerModal({ customId: Id.RENAME_SUBMIT, permissions: { allOf: [] }, execute: async (c) => handleTicketRename(c, creationServiceFactory) });
   registry.registerButton({ customId: Id.ADD_MEMBER, permissions: { allOf: [] }, execute: openMemberModal("add") });
   registry.registerButton({ customId: Id.REMOVE_MEMBER, permissions: { allOf: [] }, execute: openMemberModal("remove") });

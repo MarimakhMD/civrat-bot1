@@ -79,5 +79,5 @@ test("new delete route is distinct while legacy delete and Claim remain unconsum
   registerTickets({ registry, service: { read: async () => ({}) }, creationServiceFactory: () => ({ deleteTicket: async () => ({}) }), settingsHome: async () => {} });
   assert.ok(registry.find({ kind: "button", customId: Id.DELETE }));
   assert.equal(registry.find({ kind: "button", customId: "ticket_delete" }), null);
-  assert.equal(registry.find({ kind: "button", customId: Id.CLAIM }), null);
+  assert.ok(registry.find({ kind: "button", customId: Id.CLAIM }));
 });

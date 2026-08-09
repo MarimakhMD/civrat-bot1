@@ -77,5 +77,5 @@ test("new reopen route is distinct while legacy and Claim routes remain unconsum
   registerTickets({ registry, service: { read: async () => ({}) }, creationServiceFactory: () => ({ reopenTicket: async () => ({}) }), settingsHome: async () => {} });
   assert.ok(registry.find({ kind: "button", customId: Id.REOPEN }));
   assert.equal(registry.find({ kind: "button", customId: "ticket_reopen" }), null);
-  assert.equal(registry.find({ kind: "button", customId: Id.CLAIM }), null);
+  assert.ok(registry.find({ kind: "button", customId: Id.CLAIM }));
 });
