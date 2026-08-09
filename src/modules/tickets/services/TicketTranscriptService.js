@@ -1,0 +1,1 @@
+"use strict";class TicketTranscriptService{build(messages){return messages.map(message=>`${message.timestamp} ${message.author}: ${message.content}`).join("\n");}}module.exports={TicketTranscriptService};

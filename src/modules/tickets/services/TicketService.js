@@ -1,0 +1,1 @@
+"use strict";class TicketService{constructor({repository}){this.repository=repository;}findOpen(guildId,userId){return this.repository.findOpen(guildId,userId);}create(record){return this.repository.create(record);}}module.exports={TicketService};

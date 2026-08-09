@@ -1,0 +1,1 @@
+"use strict";class TicketRepository{async findOpen(_guildId,_userId){throw new Error("TicketRepository.findOpen must be implemented.");}async create(_record){throw new Error("TicketRepository.create must be implemented.");}}module.exports={TicketRepository};

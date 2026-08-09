@@ -1,0 +1,1 @@
+"use strict";const TicketConfigKey=Object.freeze({ENABLED:"tickets_enabled",CATEGORY_ID:"ticket_category_id",SUPPORT_ROLE_ID:"ticket_support_role_id"});const TicketComponentId=Object.freeze({PANEL:"civrat:v1:tickets:panel"});module.exports={TicketConfigKey,TicketComponentId};
