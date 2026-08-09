@@ -1,1 +1,1 @@
-{"tickets":{"title":"Tickets","enable":"Enable tickets","category":"Select ticket category","supportRole":"Select support role"}}
+{"tickets": {"title": "Tickets", "enable": "Enable tickets", "category": "Select ticket category", "supportRole": "Select support role", "disable": "Disable tickets", "enabled": "Tickets are enabled.", "disabled": "Tickets are disabled.", "preview": "Preview", "back": "Back", "categoryConfigured": "Configured", "categoryMissing": "Not configured", "supportRoleConfigured": "Configured", "supportRoleMissing": "Not configured"}}
