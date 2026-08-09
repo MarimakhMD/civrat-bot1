@@ -1,0 +1,3 @@
+"use strict";
+const test=require("node:test");const assert=require("node:assert/strict");const {handleMemberJoined}=require("../events/handleMemberJoined");const {handleMemberLeft}=require("../events/handleMemberLeft");
+test("member join and leave use one delivery when enabled",async()=>{for(const handler of [handleMemberJoined,handleMemberLeft]){let calls=0;await handler({member:{id:"m",user:{bot:false},guild:{id:"g"}},config:{logs_enabled:true,log_member_join_channel_id:"c",log_member_leave_channel_id:"c"},mapper:{map:x=>x},service:{resolveDestination:()=>"c"},delivery:{deliver:async()=>{calls+=1;return {delivered:true};}}});assert.equal(calls,1);}});

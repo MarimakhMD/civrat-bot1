@@ -19,7 +19,7 @@ module.exports = {
     if (!config) return;
 
     await require("../runtime/getWelcomeGoodbyeRuntime").getWelcomeGoodbyeRuntime().handleMemberRemoved(member);
-    await handleLeaveLog(member, config);
+    await require("../modules/logs/runtime/getLogsRuntime").getLogsRuntime().handleMemberLeft(member);
     await handleKickDetection(member, config);
     await handleInviteDecrement(member, config);
   },

@@ -29,7 +29,7 @@ module.exports = {
     const inviteResult = await handleInviteTracking(member, config);
     await handleInviteJoinLog(member, config, inviteResult);
     // 4. Join Log
-    await handleJoinLog(member, config, inviteResult);
+    await require("../modules/logs/runtime/getLogsRuntime").getLogsRuntime().handleMemberJoined(member);
     // 5. Security Center
     await securityService.recordRaidJoin(member, config);
     await securityService.handleBotJoin(member, config);
