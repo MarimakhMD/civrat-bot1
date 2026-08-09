@@ -5,7 +5,10 @@ const { dictionaries: coreDictionaries, I18nService, validateTranslationParity }
 const { InteractionContextFactory, InteractionRegistry, InteractionRouter } = require("../core/interactions");
 const { PermissionService } = require("../core/permissions");
 const { DiscordInteractionAdapter, toDiscordCommand } = require("../adapters/discord");
-const { TicketConfigService, registerTickets } = require("../modules/tickets");
+const { TicketConfigService, TicketService, registerTickets } = require("../modules/tickets");
+const { SupabaseTicketRepository } = require("../modules/tickets/persistence/SupabaseTicketRepository");
+const { DiscordTicketTransport } = require("../adapters/discord/DiscordTicketTransport");
+const { supabase } = require("../config/database");
 const ticketEn = require("../modules/tickets/translations/en.json");
 const ticketFr = require("../modules/tickets/translations/fr.json");
 const { CaptchaConfigService, registerCaptcha } = require("../modules/captcha");
@@ -49,7 +52,16 @@ function createGuildSettingsRuntime({ legacyConfigService, logger = null }) {
   registerLogs({ registry, service: new LogsConfigService({ guildConfigResolver }) });
   const captchaConfigService = new CaptchaConfigService({ guildConfigResolver });
   const ticketConfigService = new TicketConfigService({ guildConfigResolver });
-  registerTickets({ registry, service: ticketConfigService, settingsHome: async (context) => context.envelope.transport.update({ view: require("../modules/guild-settings/interactions/openSettingsPanel").settingsView(context.t, await settings.getLanguage(context.guildId), settingsSections) }) });
+  registerTickets({
+    registry,
+    service: ticketConfigService,
+    creationServiceFactory: (context) => new TicketService({
+      configService: ticketConfigService,
+      repository: new SupabaseTicketRepository({ supabase }),
+      transport: new DiscordTicketTransport({ guild: context.envelope.discordMember?.guild }),
+    }),
+    settingsHome: async (context) => context.envelope.transport.update({ view: require("../modules/guild-settings/interactions/openSettingsPanel").settingsView(context.t, await settings.getLanguage(context.guildId), settingsSections) }),
+  });
   registerCaptcha({
     registry,
     service: captchaConfigService,
