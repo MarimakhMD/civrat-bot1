@@ -56,9 +56,9 @@ La source de vérité est PostgreSQL / Supabase. Le module utilise notamment `gu
 
 ## Claim
 
-**Claim : NON FINALISÉ.**
+Claim utilise `civrat:v1:tickets:claim` et est réservé au rôle `ticket_support_role_id`. Il vérifie le ticket, la guild, le statut fermé ou supprimé et le statut déjà claimed. Le repository persiste `status: "claimed"` ; le topic Discord conserve le propriétaire et le claimant au format `civrat-ticket:<ownerId>:<claimantId>`.
 
-Le champ Supabase permettant de persister l’identifiant du membre ayant effectué le Claim n’est pas confirmé. Aucun champ ni schéma n’est inventé ou modifié par le module.
+Aucun champ Supabase dédié au claimant n’est inventé ou modifié. La validation réelle de la contrainte Supabase autorisant `status: "claimed"` reste **Production validation pending**.
 
 ## Legacy encore présent
 

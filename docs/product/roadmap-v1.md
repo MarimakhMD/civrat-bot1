@@ -1,69 +1,39 @@
-# CIVRAT v1.0 Roadmap
+# CIVRAT — Roadmap officielle vers V1.0
 
-CIVRAT v1.0 targets Free and Premium Discord communities. Enterprise is not a
-v1.0 prerequisite and is developed separately after the public v1.0 release is
-stable.
+## Règle de planification
 
-## Planning rule
+Le développement suit des petites missions ciblées : plan validé, développement, tests, vérifications, commit ciblé, puis mission suivante. Une phase peut être complète côté développement offline tout en restant en validation réelle Discord, Supabase ou MongoDB.
 
-A phase is detailed officially only when it becomes the active priority. At that
-point it receives an official name, Free scope, Premium scope, dependencies,
-Definition of Done, and a validated technical plan. Future phases remain
-planned without prematurely frozen scope or ordering.
+## Phases officielles
 
-## Official phases
-
-| Phase | Name | Status | Scope |
+| Phase | Nom | État réel | Objectif |
 | --- | --- | --- | --- |
-| 0 | Repository Foundations | Completed | Repository safety, documentation, environment template, static checks. |
-| 1 | Core Foundation | Completed | Transport-neutral contracts for i18n, errors, permissions, configuration and interactions. |
-| 2 | Guild Settings | Completed | Discord-native settings entry point, language selection and runtime composition. |
-| 3 | Welcome & Goodbye | Ready for Production Validation | Free Welcome and Goodbye capabilities plus Welcome Image Foundation. Real Discord/Supabase validation remains pending. |
-| 4 | AutoRole / Onboarding | Planned — Scope and order to be decided before implementation | The next candidate phase; detailed scope is not yet official. |
-| 15 | CIVRAT v1.0 Release | Planned — Scope and order to be decided before implementation | Release readiness, production validation and public delivery. |
+| 1 | Foundation | Développement complet | Contrats Core, i18n, erreurs, permissions, interactions et configuration. |
+| 2 | Guild Settings | Développement complet | Configuration Discord-native et composition runtime. |
+| 3 | Welcome & Goodbye | Développement complet / validation réelle en attente | Welcome, Goodbye et fondation image. |
+| 4 | Modération | Partielle | Moderniser les commandes et règles legacy. |
+| 5 | Tickets | Développement complet / validation réelle en attente | Cycle complet Tickets, Transcript, logs locaux et Claim. |
+| 6 | Logs & Audit serveur | Développement complet / validation réelle en attente | Logs guild-locales via Logs Foundation. |
+| 7 | AutoMod & Protection | Partielle | Moderniser AutoMod et Security legacy. |
+| 8 | Roles & Automatisation | Partielle | AutoRole achevé offline ; automatisations restantes. |
+| 9 | Analytics | Partielle | Définir et stabiliser les capacités XP et analytics réellement retenues. |
+| 10 | Premium | Non commencé | Entitlements et capacités Premium après un socle Free stable. |
+| 11 | API | Partielle | Stabiliser l’API existante et ses contrats. |
+| 12 | Stabilisation | Partielle | Tests transverses, sécurité, reprise et validation d’environnement. |
+| 13 | CIVRAT V1.0 | Non commencé | Release readiness et livraison publique. |
 
-## Planned phases
+## Priorités vers V1
 
-The remaining v1.0 phase numbers are intentionally not assigned to a module
-until they become the active priority:
+1. Terminer la modernisation de la Modération.
+2. Terminer AutoMod & Protection.
+3. Finaliser les automatisations de rôles utiles au socle Free, dont `/uploadsticker` Free.
+4. Décider le périmètre minimal Analytics et API de V1.
+5. Stabiliser, tester en environnement réel et préparer la release.
 
-```text
-Phase 5
-Phase 6
-Phase 7
-Phase 8
-Phase 9
-Phase 10
-Phase 11
-Phase 12
-Phase 14
-```
+## Limites V1
 
-Status for each:
+Les éléments Premium restent découplés du socle Free. Enterprise relève d’une feuille de route distincte et ne constitue pas une phase de CIVRAT V1.0.
 
-```text
-Planned — Scope and order to be decided before implementation
-```
+## /uploadsticker
 
-Potential modules mentioned historically, such as Logs, Tickets, Captcha, XP,
-Temp Voice, Suggestions, Giveaways, AutoMod, and Security, remain planning
-candidates rather than official numbered commitments.
-
-## Phase 3 design pending
-
-Phase 3 is Ready for Production Validation. The following Premium Image
-capabilities remain part of the v1.0 product direction but are suspended until
-their product and visual design is approved:
-
-- Official Templates
-- Premium Personalization
-- Random Template
-- Premium Entitlements
-
-Welcome Image Foundation is complete and can host those capabilities later
-without architecture changes.
-
-## Enterprise boundary
-
-Phase 13 is reserved for the separate Enterprise roadmap and is excluded from
-CIVRAT v1.0. See `docs/product/civrat-enterprise-v2-roadmap.md`.
+`/uploadsticker` appartient à la Phase 8 — Roles & Automatisation : upload Discord automatisé, limite Free et configuration depuis `/settings`. Les extensions Premium sont planifiées en Phase 10 et ne doivent pas bloquer le socle Free.
