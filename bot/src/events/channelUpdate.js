@@ -1,0 +1,4 @@
+const guildConfigService = require("../services/guildConfig");
+const { fetchAuditLog } = require("../utils/auditLogCache");
+const { sendLog } = require("../services/logService");
+module.exports = { name: "channelUpdate", once: false, async execute(oldChannel, newChannel) { try { if (!newChannel.guild || oldChannel.name === newChannel.name) return; const config = await guildConfigService.getGuildConfig(newChannel.guild.id); if (!config.logs_enabled) return; const entry = await fetchAuditLog(newChannel.guild, 11); await sendLog(newChannel.guild, config, "log_channel_update_channel_id", { title: "🔧 Salon modifié", color: "info", moderator: entry?.executor, fields: [{ name: "Avant", value: oldChannel.name || "—", inline: true }, { name: "Après", value: newChannel.name || "—", inline: true }, { name: "ID", value: newChannel.id, inline: true }] }); } catch {} } };
