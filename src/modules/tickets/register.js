@@ -7,6 +7,7 @@ const { toggleTickets, selectTicket, previewTickets } = require("./interactions/
 const { handleTicketCreate } = require("./interactions/ticketCreateRoute");
 const { handleTicketClose } = require("./interactions/ticketCloseRoute");
 const { handleTicketReopen } = require("./interactions/ticketReopenRoute");
+const { handleTicketDelete } = require("./interactions/ticketDeleteRoute");
 
 function registerTickets({ registry, service, creationServiceFactory = null, settingsHome = null }) {
   const permissions = { allOf: [PermissionName.MANAGE_GUILD] };
@@ -18,6 +19,7 @@ function registerTickets({ registry, service, creationServiceFactory = null, set
   registry.registerButton({ customId: Id.CREATE, permissions: { allOf: [] }, execute: async (c) => handleTicketCreate(c, creationServiceFactory) });
   registry.registerButton({ customId: Id.CLOSE, permissions: { allOf: [] }, execute: async (c) => handleTicketClose(c, creationServiceFactory) });
   registry.registerButton({ customId: Id.REOPEN, permissions: { allOf: [] }, execute: async (c) => handleTicketReopen(c, creationServiceFactory) });
+  registry.registerButton({ customId: Id.DELETE, permissions: { allOf: [] }, execute: async (c) => handleTicketDelete(c, creationServiceFactory) });
   registry.registerButton({ customId: Id.BACK, permissions, execute: settingsHome });
   return { id: Id.PANEL, permissions };
 }

@@ -225,6 +225,58 @@ class TicketService {
       return result(false, "TICKET_REOPEN_FAILED");
     }
   }
+
+  async deleteTicket({ guildId, channelId, member }) {
+    const result = (deleted, code, details = {}) => ({
+      deleted,
+      code,
+      guildId: guildId || null,
+      channelId: channelId || null,
+      memberId: member?.id || null,
+      details,
+    });
+    if (!guildId || !channelId || !member?.id) return result(false, "TICKET_NOT_FOUND");
+
+    let ticket;
+    try {
+      ticket = await this.repository.findByChannel(channelId);
+    } catch (_error) {
+      return result(false, "TICKET_DELETE_FAILED");
+    }
+    if (!ticket) return result(false, "TICKET_NOT_FOUND");
+    if (ticket.guild_id !== guildId) return result(false, "TICKET_GUILD_MISMATCH");
+    if (ticket.status === "deleted") return result(false, "TICKET_ALREADY_DELETED");
+
+    let supportRoleId;
+    try {
+      supportRoleId = (await this.configService.read(guildId))[Key.SUPPORT_ROLE_ID];
+    } catch (_error) {
+      return result(false, "TICKET_DELETE_FAILED");
+    }
+    let isSupport;
+    try {
+      isSupport = Boolean(supportRoleId && await this.transport.isMemberInRole(member, supportRoleId));
+    } catch (_error) {
+      return result(false, "TICKET_DELETE_FAILED");
+    }
+    if (!this.permissions.canManage({ isOwner: ticket.user_id === member.id, isSupport })) return result(false, "TICKET_UNAUTHORIZED");
+
+    let channelResult;
+    try {
+      channelResult = await this.transport.deleteTicketChannel(channelId);
+    } catch (_error) {
+      return result(false, "TICKET_DELETE_FAILED");
+    }
+    if (!channelResult?.deleted) return result(false, channelResult?.code || "TICKET_DELETE_FAILED");
+
+    const deletedAt = new Date().toISOString();
+    try {
+      const updatedTicket = await this.repository.updateByChannel(channelId, { status: "deleted", closed: true, closed_at: deletedAt });
+      return result(true, "TICKET_DELETED", { ticket: updatedTicket, deletedAt });
+    } catch (_error) {
+      return result(false, "TICKET_DELETE_FAILED");
+    }
+  }
 }
 
 module.exports = { TicketService };
