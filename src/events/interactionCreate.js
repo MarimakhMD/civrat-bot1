@@ -27,7 +27,6 @@ module.exports = {
       if (interaction.customId === "ticket_options") return handleTicketOption(interaction);
     }
     if (interaction.isButton()) {
-    if (interaction.customId === "captcha_verify") return captchaService.verify(interaction);
     if (interaction.customId.startsWith("giveaway_join:")) return giveawayService.joinGiveaway(interaction, Number(interaction.customId.split(":")[1]));
     if (interaction.customId.startsWith("suggestion_")) { const [, action, id] = interaction.customId.split(":")[0].split("_").concat(interaction.customId.split(":")[1]); if (action === "up") return suggestionService.vote(interaction, Number(id), 1); if (action === "down") return suggestionService.vote(interaction, Number(id), -1); return suggestionService.staffAction(interaction, Number(id), action); }
     return handleTicketButton(interaction);
