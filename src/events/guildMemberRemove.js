@@ -3,12 +3,11 @@
 // ═══════════════════════════════════════════════════
 // FIX: Original had 2 separate listeners. Now merged.
 
-const { EmbedBuilder } = require("discord.js");
 const guildConfigService = require("../services/guildConfig");
 const inviteService = require("../services/inviteService");
-const welcomeService = require("../services/welcomeService");
 const { fetchAuditLog } = require("../utils/auditLogCache");
 const logger = require("../utils/logger");
+const { getLogsRuntime } = require("../modules/logs/runtime/getLogsRuntime");
 
 module.exports = {
   name: "guildMemberRemove",
@@ -25,55 +24,23 @@ module.exports = {
   },
 };
 
-async function handleGoodbye(member, config) {
-  await welcomeService.sendGoodbye(member, config);
-}
-
-async function handleLeaveLog(member, config) {
-  if (!config.logs_enabled) return;
-  const channelId = config.log_member_leave_channel_id;
-  if (!channelId) return;
-
-  const channel = member.client.channels.cache.get(channelId);
-  if (!channel) return;
-
-  const embed = new EmbedBuilder()
-    .setColor("#ED4245")
-    .setTitle("📤 MEMBER LEFT")
-    .setThumbnail(member.user.displayAvatarURL())
-    .setDescription(
-      `━━━━━━━━━━━━━━━━━━━━━━\n👤 **Membre** • ${member.user.tag}\n🆔 **ID** • ${member.id}\n📆 **Compte créé** • <t:${Math.floor(member.user.createdTimestamp / 1000)}:R>\n👥 **Membres restants** • ${member.guild.memberCount}\n━━━━━━━━━━━━━━━━━━━━━━`
-    )
-    .setFooter({ text: member.guild.name })
-    .setTimestamp();
-
-  channel.send({ embeds: [embed] });
-}
-
 async function handleKickDetection(member, config) {
   if (!config.logs_enabled) return;
-  const channelId = config.log_moderation_channel_id;
-  if (!channelId) return;
-
-  const channel = member.client.channels.cache.get(channelId);
-  if (!channel) return;
 
   setTimeout(async () => {
     try {
-      const entry = await fetchAuditLog(member.guild, 20); // MEMBER_KICK
+      const entry = await fetchAuditLog(member.guild, 20);
       if (!entry || entry.target.id !== member.id) return;
 
-      const embed = new EmbedBuilder()
-        .setColor("#FAA61A")
-        .setTitle("👢 MEMBER KICKED")
-        .setThumbnail(member.user.displayAvatarURL())
-        .setDescription(
-          `━━━━━━━━━━━━━━━━━━━━━━\n👤 **Membre** • ${member.user.tag}\n🆔 **ID** • ${member.id}\n🛡 **Modérateur** • ${entry.executor}\n📋 **Raison** • ${entry.reason || "Aucune"}\n━━━━━━━━━━━━━━━━━━━━━━`
-        )
-        .setTimestamp();
-
-      channel.send({ embeds: [embed] });
-    } catch {}
+      await getLogsRuntime().handleModerationEvent({
+        guild: member.guild,
+        config,
+        action: "member_kicked",
+        targetId: member.id,
+      });
+    } catch (error) {
+      logger.warn(`Kick log detection failed: ${error.message}`);
+    }
   }, 1500);
 }
 
