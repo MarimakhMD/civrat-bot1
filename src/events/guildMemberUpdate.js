@@ -23,31 +23,30 @@ module.exports = {
 };
 
 async function handleRoleChanges(oldMember, newMember, config) {
-  const channelId = config.log_role_update_channel_id;
-  if (!channelId) return;
-  const channel = newMember.client.channels.cache.get(channelId);
-  if (!channel) return;
-
-  const addedRoles = newMember.roles.cache.filter((r) => !oldMember.roles.cache.has(r.id));
+  const addedRoles = newMember.roles.cache.filter((role) => !oldMember.roles.cache.has(role.id));
   for (const role of addedRoles.values()) {
-    const entry = await fetchAuditLog(newMember.guild, 25);
-    const embed = new EmbedBuilder()
-      .setColor("#57F287").setTitle("🎖 ROLE ADDED")
-      .setThumbnail(newMember.user.displayAvatarURL())
-      .setDescription(`👤 **Membre** • ${newMember}\n🏷 **Rôle** • ${role}\n🛡 **Par** • ${entry?.executor || "Inconnu"}`)
-      .setTimestamp();
-    channel.send({ embeds: [embed] });
+    await require("../modules/logs/runtime/getLogsRuntime")
+      .getLogsRuntime()
+      .handleRoleEvent({
+        guild: newMember.guild,
+        config,
+        action: "member_role_added",
+        roleId: role.id,
+        memberId: newMember.id,
+      });
   }
 
-  const removedRoles = oldMember.roles.cache.filter((r) => !newMember.roles.cache.has(r.id));
+  const removedRoles = oldMember.roles.cache.filter((role) => !newMember.roles.cache.has(role.id));
   for (const role of removedRoles.values()) {
-    const entry = await fetchAuditLog(newMember.guild, 25);
-    const embed = new EmbedBuilder()
-      .setColor("#ED4245").setTitle("❌ ROLE REMOVED")
-      .setThumbnail(newMember.user.displayAvatarURL())
-      .setDescription(`👤 **Membre** • ${newMember}\n🏷 **Rôle** • ${role}\n🛡 **Par** • ${entry?.executor || "Inconnu"}`)
-      .setTimestamp();
-    channel.send({ embeds: [embed] });
+    await require("../modules/logs/runtime/getLogsRuntime")
+      .getLogsRuntime()
+      .handleRoleEvent({
+        guild: newMember.guild,
+        config,
+        action: "member_role_removed",
+        roleId: role.id,
+        memberId: newMember.id,
+      });
   }
 }
 
