@@ -101,7 +101,7 @@ test("close route is registered while Claim remains untouched", () => {
   const registry = new InteractionRegistry();
   registerTickets({ registry, service: { read: async () => ({}) }, creationServiceFactory: () => ({ closeTicket: async () => ({}) }), settingsHome: async () => {} });
   assert.ok(registry.find({ kind: "button", customId: Id.CLOSE }));
-  assert.equal(registry.find({ kind: "button", customId: Id.CLAIM }), null);
+  assert.ok(registry.find({ kind: "button", customId: Id.CLAIM }));
 });
 
 test("Supabase repository finds and updates a ticket by channel", async () => {
