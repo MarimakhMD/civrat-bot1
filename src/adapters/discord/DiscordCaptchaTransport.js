@@ -17,6 +17,10 @@ class DiscordCaptchaTransport {
     });
   }
 
+  async sendReminder(member, payload) {
+    await member.user.send(payload);
+  }
+
   async getRole(roleId) {
     return this.guild.roles.cache.get(roleId) || null;
   }
