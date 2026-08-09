@@ -62,11 +62,9 @@ async function handleInviteTracking(member, config) {
 
 
 async function handleInviteJoinLog(member, config, inviteResult) {
-  if (!config.invitations_enabled || !inviteResult?.inviter) return;
-  const stats = await inviteService.getInviteStats(inviteResult.inviter.id, member.guild.id);
-  await sendLog(member.guild, config, "invitations_log_channel_id", {
-    title: "🔗 Invitation utilisée", color: "success", target: `${member.user} (${member.id})`, moderator: inviteResult.inviter,
-    fields: [{ name: "Code", value: inviteResult.code || "Inconnu", inline: true }, { name: "Invitations nettes", value: String(stats.net), inline: true }],
+  if (!inviteResult?.inviter) return;
+  await require("../modules/logs/runtime/getLogsRuntime").getLogsRuntime().handleInviteEvent({
+    guild: member.guild, config, action: "invite_used", inviteCode: inviteResult.code,
   });
 }
 
