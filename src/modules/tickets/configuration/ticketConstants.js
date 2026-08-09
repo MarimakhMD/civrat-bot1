@@ -14,6 +14,7 @@ const TicketComponentId = Object.freeze({
   BACK: "civrat:v1:tickets:back",
   CREATE: "civrat:v1:tickets:create",
   CLOSE: "civrat:v1:tickets:close",
+  REOPEN: "civrat:v1:tickets:reopen",
   CLAIM: "civrat:v1:tickets:claim",
 });
 

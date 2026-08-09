@@ -173,6 +173,58 @@ class TicketService {
       return result(false, "TICKET_CLOSE_FAILED");
     }
   }
+
+  async reopenTicket({ guildId, channelId, member }) {
+    const result = (reopened, code, details = {}) => ({
+      reopened,
+      code,
+      guildId: guildId || null,
+      channelId: channelId || null,
+      memberId: member?.id || null,
+      details,
+    });
+    if (!guildId || !channelId || !member?.id) return result(false, "TICKET_NOT_FOUND");
+
+    let ticket;
+    try {
+      ticket = await this.repository.findByChannel(channelId);
+    } catch (_error) {
+      return result(false, "TICKET_REOPEN_FAILED");
+    }
+    if (!ticket) return result(false, "TICKET_NOT_FOUND");
+    if (ticket.guild_id !== guildId) return result(false, "TICKET_GUILD_MISMATCH");
+    if (ticket.status === "deleted") return result(false, "TICKET_ALREADY_DELETED");
+    if (ticket.status !== "closed" && !ticket.closed) return result(false, "TICKET_ALREADY_OPEN");
+
+    let supportRoleId;
+    try {
+      supportRoleId = (await this.configService.read(guildId))[Key.SUPPORT_ROLE_ID];
+    } catch (_error) {
+      return result(false, "TICKET_REOPEN_FAILED");
+    }
+    let isSupport;
+    try {
+      isSupport = Boolean(supportRoleId && await this.transport.isMemberInRole(member, supportRoleId));
+    } catch (_error) {
+      return result(false, "TICKET_REOPEN_FAILED");
+    }
+    if (!this.permissions.canManage({ isOwner: ticket.user_id === member.id, isSupport })) return result(false, "TICKET_UNAUTHORIZED");
+
+    let channelResult;
+    try {
+      channelResult = await this.transport.reopenTicketChannel(channelId, ticket.user_id);
+    } catch (_error) {
+      return result(false, "TICKET_REOPEN_FAILED");
+    }
+    if (!channelResult?.reopened) return result(false, channelResult?.code || "TICKET_REOPEN_FAILED");
+
+    try {
+      const updatedTicket = await this.repository.updateByChannel(channelId, { status: "open", closed: false, closed_at: null });
+      return result(true, "TICKET_REOPENED", { ticket: updatedTicket });
+    } catch (_error) {
+      return result(false, "TICKET_REOPEN_FAILED");
+    }
+  }
 }
 
 module.exports = { TicketService };
