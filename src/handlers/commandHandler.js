@@ -14,7 +14,7 @@ function loadCommands() {
   const commandsPath = path.join(__dirname, "..", "commands");
   const commandFiles = fs
     .readdirSync(commandsPath)
-    .filter((file) => file.endsWith(".js") && file !== "warn.js")
+    .filter((file) => file.endsWith(".js") && !["warn.js", "mute.js", "unmute.js"].includes(file))
     .sort();
 
   // Makes a repeated in-process load deterministic and exposes the exact
