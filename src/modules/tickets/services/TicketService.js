@@ -323,6 +323,28 @@ class TicketService {
     if (!channelResult?.renamed) return result(false, channelResult?.code || "TICKET_RENAME_FAILED");
     return result(true, "TICKET_RENAMED", { name });
   }
+
+  async updateMemberAccess({ guildId, channelId, member, targetMemberId, action }) {
+    const result = (changed, code) => ({ changed, code, guildId: guildId || null, channelId: channelId || null, memberId: member?.id || null, targetMemberId: targetMemberId || null, details: {} });
+    if (!guildId || !channelId || !member?.id || !targetMemberId) return result(false, "TICKET_MEMBER_NOT_FOUND");
+    let ticket;
+    try { ticket = await this.repository.findByChannel(channelId); } catch (_error) { return result(false, "TICKET_MEMBER_ACCESS_FAILED"); }
+    if (!ticket) return result(false, "TICKET_NOT_FOUND");
+    if (ticket.guild_id !== guildId) return result(false, "TICKET_GUILD_MISMATCH");
+    if (ticket.status === "deleted") return result(false, "TICKET_ALREADY_DELETED");
+    let supportRoleId;
+    try { supportRoleId = (await this.configService.read(guildId))[Key.SUPPORT_ROLE_ID]; } catch (_error) { return result(false, "TICKET_MEMBER_ACCESS_FAILED"); }
+    let isSupport;
+    try { isSupport = Boolean(supportRoleId && await this.transport.isMemberInRole(member, supportRoleId)); } catch (_error) { return result(false, "TICKET_MEMBER_ACCESS_FAILED"); }
+    if (!this.permissions.canManage({ isOwner: ticket.user_id === member.id, isSupport })) return result(false, "TICKET_UNAUTHORIZED");
+    if (action === "remove" && targetMemberId === ticket.user_id) return result(false, "TICKET_MEMBER_NOT_ADDED");
+    let target;
+    try { target = await this.transport.getGuildMember(targetMemberId); } catch (_error) { return result(false, "TICKET_MEMBER_ACCESS_FAILED"); }
+    if (!target) return result(false, "TICKET_MEMBER_NOT_FOUND");
+    let access;
+    try { access = action === "add" ? await this.transport.addTicketMemberAccess(channelId, target) : await this.transport.removeTicketMemberAccess(channelId, targetMemberId); } catch (_error) { return result(false, "TICKET_MEMBER_ACCESS_FAILED"); }
+    return result(Boolean(access?.changed), access?.code || "TICKET_MEMBER_ACCESS_FAILED");
+  }
 }
 
 function isValidTicketChannelName(name) {

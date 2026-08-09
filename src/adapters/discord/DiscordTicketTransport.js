@@ -110,6 +110,28 @@ class DiscordTicketTransport {
     }
   }
 
+  async getGuildMember(memberId) { return this.guild.members.cache.get(memberId) || null; }
+
+  async addTicketMemberAccess(channelId, member) {
+    const channel = this.guild.channels.cache.get(channelId);
+    if (!channel?.isTextBased() || !channel.manageable) return { changed: false, code: "TICKET_MEMBER_ACCESS_FAILED" };
+    if (channel.permissionOverwrites.cache.has(member.id)) return { changed: false, code: "TICKET_MEMBER_ALREADY_ADDED" };
+    try {
+      await channel.permissionOverwrites.edit(member.id, { ViewChannel: true, SendMessages: true, ReadMessageHistory: true }, "CIVRAT ticket member added");
+      return { changed: true, code: "TICKET_MEMBER_ADDED" };
+    } catch (_error) { return { changed: false, code: "TICKET_MEMBER_ACCESS_FAILED" }; }
+  }
+
+  async removeTicketMemberAccess(channelId, memberId) {
+    const channel = this.guild.channels.cache.get(channelId);
+    if (!channel?.isTextBased() || !channel.manageable) return { changed: false, code: "TICKET_MEMBER_ACCESS_FAILED" };
+    if (!channel.permissionOverwrites.cache.has(memberId)) return { changed: false, code: "TICKET_MEMBER_NOT_ADDED" };
+    try {
+      await channel.permissionOverwrites.delete(memberId, "CIVRAT ticket member removed");
+      return { changed: true, code: "TICKET_MEMBER_REMOVED" };
+    } catch (_error) { return { changed: false, code: "TICKET_MEMBER_ACCESS_FAILED" }; }
+  }
+
   async applyTicketOverwrites({ channel, member, supportRole, botMember }) {
     if (!channel) return { applied: false, code: "TICKET_CHANNEL_MISSING" };
     if (!member) return { applied: false, code: "TICKET_MEMBER_MISSING" };
