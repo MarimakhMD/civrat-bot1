@@ -9,7 +9,6 @@ const inviteService = require("../services/inviteService");
 const logger = require("../utils/logger");
 const securityService = require("../services/securityService");
 const { sendLog } = require("../services/logService");
-const captchaService = require("../services/captchaService");
 
 module.exports = {
   name: "guildMemberAdd",
@@ -24,7 +23,7 @@ module.exports = {
     // 2. Welcome Message
     await require("../runtime/getWelcomeGoodbyeRuntime").getWelcomeGoodbyeRuntime().handleMemberAdded(member);
     // 3. Captcha reminder (best effort; DMs can be closed)
-    await captchaService.sendReminder(member, config);
+    await require("../modules/captcha/runtime/getCaptchaRuntime").getCaptchaRuntime().handleMemberJoined(member);
     // 4. Invite Tracking
     const inviteResult = await handleInviteTracking(member, config);
     await handleInviteJoinLog(member, config, inviteResult);
