@@ -9,7 +9,6 @@ const { supabase } = require("../config/database");
 const logger = require("../utils/logger");
 const giveawayService = require("../services/giveawayService");
 const suggestionService = require("../services/suggestionService");
-const captchaService = require("../services/captchaService");
 
 const TICKET_TOPIC_PREFIX = "civrat-ticket:";
 
