@@ -18,7 +18,7 @@ module.exports = {
     const config = await guildConfigService.getGuildConfig(member.guild.id);
     if (!config) return;
 
-    await handleGoodbye(member, config);
+    await require("../runtime/getWelcomeGoodbyeRuntime").getWelcomeGoodbyeRuntime().handleMemberRemoved(member);
     await handleLeaveLog(member, config);
     await handleKickDetection(member, config);
     await handleInviteDecrement(member, config);

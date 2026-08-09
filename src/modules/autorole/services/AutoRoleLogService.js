@@ -1,0 +1,1 @@
+"use strict";const AutoRoleLogType=Object.freeze({ASSIGNED:"AUTOROLE_ASSIGNED",SKIPPED:"AUTOROLE_SKIPPED",ASSIGNMENT_FAILED:"AUTOROLE_ASSIGNMENT_FAILED"});class AutoRoleLogService{constructor({logger=null}){this.logger=logger;}delivery(event){this.logger?.info?.("AutoRole delivery",event);return event;}}module.exports={AutoRoleLogType,AutoRoleLogService};

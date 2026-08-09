@@ -24,9 +24,9 @@ module.exports = {
     if (!config) return;
 
     // 1. Auto Role
-    await handleAutoRole(member, config);
+    await require("../modules/autorole/runtime/getAutoRoleRuntime").getAutoRoleRuntime().handleMemberJoined(member);
     // 2. Welcome Message
-    await handleWelcome(member, config);
+    await require("../runtime/getWelcomeGoodbyeRuntime").getWelcomeGoodbyeRuntime().handleMemberAdded(member);
     // 3. Captcha reminder (best effort; DMs can be closed)
     await captchaService.sendReminder(member, config);
     // 4. Invite Tracking

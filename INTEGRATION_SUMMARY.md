@@ -1,3 +1,10 @@
+> **Historical document — not an active technical reference**
+>
+> This document describes a previous dashboard-oriented integration. CIVRAT is now
+> developed as an autonomous Discord bot. Do not use this document to design,
+> implement, or validate new functionality. Active engineering decisions are in
+> [`docs/architecture/decisions.md`](docs/architecture/decisions.md).
+
 # ✅ CIVRAT Bot v2.0 — Résumé de l'intégration
 
 ## 🏗️ Architecture finale

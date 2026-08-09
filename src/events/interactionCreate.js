@@ -17,6 +17,10 @@ module.exports = {
   name: "interactionCreate",
   once: false,
   async execute(interaction) {
+    // Only registered modular routes are consumed here. Every legacy interaction
+    // intentionally falls through to the historical handler below.
+    const { getGuildSettingsRuntime } = require("../runtime/getGuildSettingsRuntime");
+    if (await getGuildSettingsRuntime().tryHandle(interaction)) return;
     if (interaction.isChatInputCommand()) return commandHandler.handleCommand(interaction);
     if (interaction.isStringSelectMenu()) {
       if (interaction.customId === "ticket_create") return handleTicketCreate(interaction);

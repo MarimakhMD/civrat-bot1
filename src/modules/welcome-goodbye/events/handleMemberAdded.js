@@ -1,0 +1,1 @@
+"use strict";async function handleMemberAdded({member,service,delivery,transport}){const config=await service.get(member.guildId);await delivery.welcome(member,config,transport);await delivery.dm(member,config,transport);}module.exports={handleMemberAdded};

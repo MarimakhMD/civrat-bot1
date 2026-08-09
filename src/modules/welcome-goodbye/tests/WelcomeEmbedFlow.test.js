@@ -1,0 +1,3 @@
+"use strict";
+const test=require("node:test");const assert=require("node:assert/strict");const {setWelcomeEmbedColor,previewWelcomeEmbed}=require("../interactions/configureWelcomeEmbed");
+test("embed color persists and preview uses configured color",async()=>{let config={welcome_embed_enabled:true,welcome_embed_color:"#00e85c",welcome_message:"Hello"};const replies=[];const context={guildId:"g",t:k=>k,settings:{get:async()=>config,update:async(_g,patch)=>config={...config,...patch}},envelope:{transport:{update:async()=>{},reply:async value=>replies.push(value)}}};await setWelcomeEmbedColor(context,"#123456");await previewWelcomeEmbed(context);assert.equal(config.welcome_embed_color,"#123456");assert.equal(replies[0].view.embed.color,"#123456");});

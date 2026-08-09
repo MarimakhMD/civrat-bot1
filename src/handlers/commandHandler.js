@@ -36,7 +36,20 @@ function loadCommands() {
     }
   }
 
-  logger.success(`${commands.size} commands loaded (${commandFiles.length} files found)`);
+  // New modular commands are declared by the runtime composition layer. Legacy
+  // command files above remain unchanged during the progressive migration.
+  try {
+    const { getDiscordModuleCommands } = require("../runtime/registerModuleCommands");
+    for (const command of getDiscordModuleCommands()) {
+      if (commands.has(command.data.name)) throw new Error(`Duplicate module command: /${command.data.name}`);
+      commands.set(command.data.name, command);
+      logger.info(`Loaded module command: /${command.data.name}`);
+    }
+  } catch (err) {
+    logger.error("Failed to load modular commands:", err.message);
+  }
+
+  logger.success(`${commands.size} commands loaded (${commandFiles.length} legacy files found)`);
   return commands;
 }
 

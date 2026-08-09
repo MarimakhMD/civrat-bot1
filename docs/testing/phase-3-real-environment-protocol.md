@@ -1,0 +1,3 @@
+# Phase 3 Real Environment Protocol
+
+Run migrations 001, 002, and 003 against a disposable Supabase test project only. Configure the `welcome-backgrounds` Storage bucket and restrictive service-role-only access. Deploy the bot to a Discord test guild, deploy `/settings`, then verify free Welcome, Goodbye, embeds, DMs, French/English changes, channel permissions, and legacy interactions. Add an active `WELCOME_IMAGE` entitlement, upload a PNG background, and verify Templates 1-3, fixed/random selection, left/center/right avatar placement, preview, and test delivery. Verify that generated PNGs are not persisted and that replacing an asset invalidates cache. Record all results before production rollout.

@@ -1,0 +1,3 @@
+"use strict";
+const test=require("node:test");const assert=require("node:assert/strict");const {settingsView}=require("../interactions/welcomeGoodbyeViews");const {WelcomeGoodbyeComponentId:Id}=require("../configuration/welcomeGoodbyeConstants");
+test("settings view contains required Welcome and image preview controls",()=>{const view=settingsView({t:k=>k,config:{welcome_enabled:true,welcome_embed_enabled:false,welcome_dm_enabled:false,goodbye_enabled:false,goodbye_embed_enabled:false}});const ids=view.components.map(c=>c.customId);for(const id of [Id.TOGGLE_WELCOME,Id.WELCOME_CHANNEL,Id.TEST_WELCOME,Id.PREVIEW_WELCOME_IMAGE,Id.BACK])assert.ok(ids.includes(id));});

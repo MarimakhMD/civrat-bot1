@@ -1,0 +1,4 @@
+"use strict";
+const {createCanvas}=require("@napi-rs/canvas");const {WelcomeImagePayload}=require("../contracts/WelcomeImagePayload");
+class WelcomeImageRenderer { async render(request,theme){const canvas=createCanvas(request.dimensions.width,request.dimensions.height);const ctx=canvas.getContext("2d");ctx.fillStyle=theme.background;ctx.fillRect(0,0,request.dimensions.width,request.dimensions.height);ctx.fillStyle=theme.accent;ctx.fillRect(0,0,12,request.dimensions.height);let y=120;for(const text of request.textElements){ctx.fillStyle=text.color||"#ffffff";ctx.font=`${text.size||42}px ${theme.font}`;ctx.fillText(text.content,60,y);y+=text.size||42;}return new WelcomeImagePayload({buffer:canvas.toBuffer("image/png"),width:request.dimensions.width,height:request.dimensions.height});} }
+module.exports={WelcomeImageRenderer};

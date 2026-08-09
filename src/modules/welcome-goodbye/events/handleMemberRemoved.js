@@ -1,0 +1,1 @@
+"use strict";async function handleMemberRemoved({member,service,delivery,transport}){const config=await service.get(member.guildId);await delivery.goodbye(member,config,transport);}module.exports={handleMemberRemoved};
