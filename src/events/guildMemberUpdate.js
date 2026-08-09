@@ -68,31 +68,25 @@ async function handleNicknameChange(oldMember, newMember, config) {
 }
 
 async function handleTimeout(oldMember, newMember, config) {
-  const channelId = config.log_moderation_channel_id;
-  if (!channelId) return;
-  const channel = newMember.client.channels.cache.get(channelId);
-  if (!channel) return;
-
   const oldTimeout = oldMember.communicationDisabledUntilTimestamp;
   const newTimeout = newMember.communicationDisabledUntilTimestamp;
 
-  if (!oldTimeout && newTimeout) {
-    const entry = await fetchAuditLog(newMember.guild, 24);
-    const embed = new EmbedBuilder()
-      .setColor("#FEE75C").setTitle("⏳ MEMBER TIMED OUT")
-      .setThumbnail(newMember.user.displayAvatarURL())
-      .setDescription(`👤 **Membre** • ${newMember}\n🆔 **ID** • ${newMember.id}\n🛡 **Par** • ${entry?.executor || "Inconnu"}\n📋 **Raison** • ${entry?.reason || "Aucune"}\n⏰ **Fin** • <t:${Math.floor(newTimeout / 1000)}:F>`)
-      .setTimestamp();
-    channel.send({ embeds: [embed] });
-  }
+  if (oldTimeout === newTimeout) return;
 
-  if (oldTimeout && !newTimeout) {
-    const entry = await fetchAuditLog(newMember.guild, 24);
-    const embed = new EmbedBuilder()
-      .setColor("#57F287").setTitle("✅ MEMBER UNTIMEOUT")
-      .setThumbnail(newMember.user.displayAvatarURL())
-      .setDescription(`👤 **Membre** • ${newMember}\n🛡 **Par** • ${entry?.executor || "Inconnu"}`)
-      .setTimestamp();
-    channel.send({ embeds: [embed] });
-  }
+  const action = !oldTimeout && newTimeout
+    ? "member_timed_out"
+    : oldTimeout && !newTimeout
+      ? "member_untimeout"
+      : null;
+
+  if (!action) return;
+
+  await require("../modules/logs/runtime/getLogsRuntime")
+    .getLogsRuntime()
+    .handleModerationEvent({
+      guild: newMember.guild,
+      config,
+      action,
+      targetId: newMember.id,
+    });
 }

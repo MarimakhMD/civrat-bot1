@@ -1,6 +1,6 @@
 const { SlashCommandBuilder, PermissionsBitField } = require("discord.js");
 const { getGuildConfig } = require("../services/guildConfig");
-const { sendLog } = require("../services/logService");
+const { getLogsRuntime } = require("../modules/logs/runtime/getLogsRuntime");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -22,7 +22,11 @@ module.exports = {
     }
 
     await member.timeout(null, "Unmute");
-    await sendLog(interaction.guild, await getGuildConfig(interaction.guild.id), "log_moderation_channel_id", { title: "✅ Timeout retiré", color: "success", target: `${user} (${user.id})`, moderator: interaction.user });
+    await getLogsRuntime().handleModerationEvent({
+      guild: interaction.guild,
+      action: "member_untimeout",
+      targetId: user.id,
+    });
     return interaction.reply(`🔊 ${user.tag} a été unmute.`);
   },
 };

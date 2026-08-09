@@ -1,6 +1,6 @@
 const { SlashCommandBuilder, PermissionsBitField, EmbedBuilder } = require("discord.js");
 const { getGuildConfig } = require("../services/guildConfig");
-const { sendLog } = require("../services/logService");
+const { getLogsRuntime } = require("../modules/logs/runtime/getLogsRuntime");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -40,7 +40,11 @@ module.exports = {
       )
       .setTimestamp();
 
-    await sendLog(interaction.guild, await getGuildConfig(interaction.guild.id), "log_moderation_channel_id", { title: "⚠️ Avertissement", color: "warning", target: `${user} (${user.id})`, moderator: interaction.user, fields: [{ name: "Raison", value: raison }] });
+    await getLogsRuntime().handleModerationEvent({
+      guild: interaction.guild,
+      action: "member_warned",
+      targetId: user.id,
+    });
     return interaction.reply({ embeds: [embed] });
   },
 };
