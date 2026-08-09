@@ -49,10 +49,10 @@ test("welcome view is localized and contains creator, support role, and stable c
   assert.deepEqual(english.components.map((component) => component.customId), ["civrat:v1:tickets:close", "civrat:v1:tickets:claim"]);
 });
 
-test("Close and Claim controls are not registered for action yet", () => {
+test("Claim control remains unregistered for action", () => {
   const registry = new InteractionRegistry();
   registerTickets({ registry, service: { read: async () => ({}) }, creationServiceFactory: () => ({ createTicket: async () => ({}) }), settingsHome: async () => {} });
-  assert.equal(registry.find({ kind: "button", customId: Id.CLOSE }), null);
+  assert.ok(registry.find({ kind: "button", customId: Id.CLOSE }));
   assert.equal(registry.find({ kind: "button", customId: Id.CLAIM }), null);
 });
 

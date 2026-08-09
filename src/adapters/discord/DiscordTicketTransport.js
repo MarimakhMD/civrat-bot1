@@ -62,6 +62,21 @@ class DiscordTicketTransport {
     });
   }
 
+  async isMemberInRole(member, roleId) {
+    return Boolean(member?.roles?.cache?.has(roleId));
+  }
+
+  async closeTicketChannel(channelId, ownerId) {
+    const channel = this.guild.channels.cache.get(channelId);
+    if (!channel?.isTextBased() || !channel.manageable) return { closed: false, code: "TICKET_CLOSE_FAILED" };
+    try {
+      await channel.permissionOverwrites.edit(ownerId, { SendMessages: false }, "CIVRAT ticket closed");
+      return { closed: true, code: "TICKET_CHANNEL_CLOSED" };
+    } catch (_error) {
+      return { closed: false, code: "TICKET_CLOSE_FAILED" };
+    }
+  }
+
   async applyTicketOverwrites({ channel, member, supportRole, botMember }) {
     if (!channel) return { applied: false, code: "TICKET_CHANNEL_MISSING" };
     if (!member) return { applied: false, code: "TICKET_MEMBER_MISSING" };

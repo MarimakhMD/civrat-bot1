@@ -1,6 +1,7 @@
 "use strict";
 
 const { TicketConfigKey: Key } = require("../configuration/ticketConstants");
+const { TicketPermissionService } = require("./TicketPermissionService");
 
 class TicketService {
   constructor({ repository, configService = null, transport = null, welcomeService = null }) {
@@ -8,6 +9,7 @@ class TicketService {
     this.configService = configService;
     this.transport = transport;
     this.welcomeService = welcomeService;
+    this.permissions = new TicketPermissionService();
   }
 
   findOpen(guildId, userId) { return this.repository.findOpen(guildId, userId); }
@@ -116,6 +118,59 @@ class TicketService {
       return result(true, "TICKET_CREATED", { channelId: channel.id, ticket });
     } catch (_error) {
       return result(false, "PERSISTENCE_ERROR", { channelId: channel.id });
+    }
+  }
+
+  async closeTicket({ guildId, channelId, member }) {
+    const result = (closed, code, details = {}) => ({
+      closed,
+      code,
+      guildId: guildId || null,
+      channelId: channelId || null,
+      memberId: member?.id || null,
+      details,
+    });
+    if (!guildId || !channelId || !member?.id) return result(false, "TICKET_NOT_FOUND");
+
+    let ticket;
+    try {
+      ticket = await this.repository.findByChannel(channelId);
+    } catch (_error) {
+      return result(false, "TICKET_CLOSE_FAILED");
+    }
+    if (!ticket) return result(false, "TICKET_NOT_FOUND");
+    if (ticket.guild_id !== guildId) return result(false, "TICKET_GUILD_MISMATCH");
+    if (ticket.status === "deleted") return result(false, "TICKET_ALREADY_DELETED");
+    if (ticket.status === "closed" || ticket.closed) return result(false, "TICKET_ALREADY_CLOSED");
+
+    let supportRoleId;
+    try {
+      supportRoleId = (await this.configService.read(guildId))[Key.SUPPORT_ROLE_ID];
+    } catch (_error) {
+      return result(false, "TICKET_CLOSE_FAILED");
+    }
+    let isSupport;
+    try {
+      isSupport = Boolean(supportRoleId && await this.transport.isMemberInRole(member, supportRoleId));
+    } catch (_error) {
+      return result(false, "TICKET_CLOSE_FAILED");
+    }
+    if (!this.permissions.canManage({ isOwner: ticket.user_id === member.id, isSupport })) return result(false, "TICKET_UNAUTHORIZED");
+
+    let channelResult;
+    try {
+      channelResult = await this.transport.closeTicketChannel(channelId, ticket.user_id);
+    } catch (_error) {
+      return result(false, "TICKET_CLOSE_FAILED");
+    }
+    if (!channelResult?.closed) return result(false, channelResult?.code || "TICKET_CLOSE_FAILED");
+
+    const closedAt = new Date().toISOString();
+    try {
+      const updatedTicket = await this.repository.updateByChannel(channelId, { status: "closed", closed: true, closed_at: closedAt });
+      return result(true, "TICKET_CLOSED", { ticket: updatedTicket, closedAt });
+    } catch (_error) {
+      return result(false, "TICKET_CLOSE_FAILED");
     }
   }
 }
