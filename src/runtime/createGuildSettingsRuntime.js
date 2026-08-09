@@ -5,6 +5,9 @@ const { dictionaries: coreDictionaries, I18nService, validateTranslationParity }
 const { InteractionContextFactory, InteractionRegistry, InteractionRouter } = require("../core/interactions");
 const { PermissionService } = require("../core/permissions");
 const { DiscordInteractionAdapter, toDiscordCommand } = require("../adapters/discord");
+const { CaptchaConfigService, registerCaptcha } = require("../modules/captcha");
+const captchaEn = require("../modules/captcha/translations/en.json");
+const captchaFr = require("../modules/captcha/translations/fr.json");
 const { LogsConfigService, registerLogs } = require("../modules/logs");
 const logsEn = require("../modules/logs/translations/en.json");
 const logsFr = require("../modules/logs/translations/fr.json");
@@ -24,8 +27,8 @@ const welcomeEn = require("../modules/welcome-goodbye/translations/en.json");
 const welcomeFr = require("../modules/welcome-goodbye/translations/fr.json");
 function createGuildSettingsRuntime({ legacyConfigService, logger = null }) {
   const dictionaries = {
-    en: { ...coreDictionaries.en, ...en, ...welcomeEn, ...autoRoleEn, ...logsEn },
-    fr: { ...coreDictionaries.fr, ...fr, ...welcomeFr, ...autoRoleFr, ...logsFr },
+    en: { ...coreDictionaries.en, ...en, ...welcomeEn, ...autoRoleEn, ...logsEn, ...captchaEn },
+    fr: { ...coreDictionaries.fr, ...fr, ...welcomeFr, ...autoRoleFr, ...logsFr, ...captchaFr },
   }; validateTranslationParity(dictionaries);
   const i18n = new I18nService({ dictionaries, logger });
   const repository = new LegacyGuildConfigRepository({ getConfig: legacyConfigService.getGuildConfig, updateConfig: legacyConfigService.updateGuildConfig, invalidateConfig: legacyConfigService.invalidateCache });
@@ -39,6 +42,7 @@ function createGuildSettingsRuntime({ legacyConfigService, logger = null }) {
   const imagePipeline = new WelcomeImagePipeline({ renderer: new WelcomeImageRenderer(), theme: imageTheme });
   registerAutoRole({ registry, service: new AutoRoleService({ guildConfigResolver }) });
   registerLogs({ registry, service: new LogsConfigService({ guildConfigResolver }) });
+  registerCaptcha({ registry, service: new CaptchaConfigService({ guildConfigResolver }) });
   registerWelcomeGoodbye({
     imagePipeline,
     settingsHome: async (context) => context.envelope.transport.update({ view: require("../modules/guild-settings/interactions/openSettingsPanel").settingsView(context.t, await settings.getLanguage(context.guildId), settingsSections) }),
