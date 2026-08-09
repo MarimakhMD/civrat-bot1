@@ -6,14 +6,10 @@
 const { EmbedBuilder } = require("discord.js");
 const guildConfigService = require("../services/guildConfig");
 const inviteService = require("../services/inviteService");
-const welcomeService = require("../services/welcomeService");
 const logger = require("../utils/logger");
 const securityService = require("../services/securityService");
 const { sendLog } = require("../services/logService");
 const captchaService = require("../services/captchaService");
-
-// Anti-raid tracking per guild
-const joinTracker = new Map();
 
 module.exports = {
   name: "guildMemberAdd",
@@ -39,27 +35,6 @@ module.exports = {
     await securityService.handleBotJoin(member, config);
   },
 };
-
-async function handleAutoRole(member, config) {
-  // Use hardcoded roles as fallback (from original bot)
-  const MEMBER_ROLE = "1320817768962064385";
-  const BOT_ROLE = "1320817768962064387";
-
-  try {
-    if (member.user.bot) {
-      await member.roles.add(BOT_ROLE).catch(() => {});
-    } else {
-      await member.roles.add(MEMBER_ROLE).catch(() => {});
-    }
-  } catch (err) {
-    logger.error(`AutoRole failed for ${member.user.tag}:`, err.message);
-  }
-}
-
-async function handleWelcome(member, config) {
-  await welcomeService.sendWelcome(member, config);
-  await welcomeService.sendWelcomeDm(member, config);
-}
 
 async function handleInviteTracking(member, config) {
   if (member.user.bot) return null;
