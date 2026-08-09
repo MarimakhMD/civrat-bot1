@@ -66,6 +66,21 @@ class DiscordTicketTransport {
     return Boolean(member?.roles?.cache?.has(roleId));
   }
 
+  async fetchTranscriptMessages(channelId) {
+    const channel = this.guild.channels.cache.get(channelId);
+    if (!channel?.isTextBased()) throw new Error("ticket_channel_unavailable");
+    const messages = await channel.messages.fetch({ limit: 100 });
+    return [...messages.values()].map((message) => ({ timestamp: message.createdAt.toISOString(), author: message.author.tag, content: message.content }));
+  }
+
+  async sendTranscript({ channelId, logChannelId, content }) {
+    const channel = this.guild.channels.cache.get(channelId);
+    const destination = this.guild.channels.cache.get(logChannelId);
+    if (!channel?.isTextBased() || !destination?.isTextBased()) throw new Error("transcript_destination_unavailable");
+    const attachment = new (require("discord.js").AttachmentBuilder)(Buffer.from(content, "utf8"), { name: `transcript-${channelId}.txt` });
+    await destination.send({ content: `📄 Transcript de ${channel} (100 derniers messages maximum).`, files: [attachment] });
+  }
+
   async closeTicketChannel(channelId, ownerId) {
     const channel = this.guild.channels.cache.get(channelId);
     if (!channel?.isTextBased() || !channel.manageable) return { closed: false, code: "TICKET_CLOSE_FAILED" };

@@ -5,7 +5,7 @@ const { dictionaries: coreDictionaries, I18nService, validateTranslationParity }
 const { InteractionContextFactory, InteractionRegistry, InteractionRouter } = require("../core/interactions");
 const { PermissionService } = require("../core/permissions");
 const { DiscordInteractionAdapter, toDiscordCommand } = require("../adapters/discord");
-const { TicketConfigService, TicketService, TicketWelcomeService, registerTickets } = require("../modules/tickets");
+const { TicketConfigService, TicketService, TicketWelcomeService, TicketTranscriptService, registerTickets } = require("../modules/tickets");
 const { SupabaseTicketRepository } = require("../modules/tickets/persistence/SupabaseTicketRepository");
 const { DiscordTicketTransport } = require("../adapters/discord/DiscordTicketTransport");
 const { supabase } = require("../config/database");
@@ -59,6 +59,7 @@ function createGuildSettingsRuntime({ legacyConfigService, logger = null }) {
       configService: ticketConfigService,
       repository: new SupabaseTicketRepository({ supabase }),
       welcomeService: new TicketWelcomeService(),
+      transcriptService: new TicketTranscriptService(),
       transport: new DiscordTicketTransport({ guild: context.envelope.discordMember?.guild }),
     }),
     settingsHome: async (context) => context.envelope.transport.update({ view: require("../modules/guild-settings/interactions/openSettingsPanel").settingsView(context.t, await settings.getLanguage(context.guildId), settingsSections) }),

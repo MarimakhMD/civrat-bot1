@@ -4,11 +4,12 @@ const { TicketConfigKey: Key } = require("../configuration/ticketConstants");
 const { TicketPermissionService } = require("./TicketPermissionService");
 
 class TicketService {
-  constructor({ repository, configService = null, transport = null, welcomeService = null }) {
+  constructor({ repository, configService = null, transport = null, welcomeService = null, transcriptService = null }) {
     this.repository = repository;
     this.configService = configService;
     this.transport = transport;
     this.welcomeService = welcomeService;
+    this.transcriptService = transcriptService;
     this.permissions = new TicketPermissionService();
   }
 
@@ -143,9 +144,11 @@ class TicketService {
     if (ticket.status === "deleted") return result(false, "TICKET_ALREADY_DELETED");
     if (ticket.status === "closed" || ticket.closed) return result(false, "TICKET_ALREADY_CLOSED");
 
+    let config;
     let supportRoleId;
     try {
-      supportRoleId = (await this.configService.read(guildId))[Key.SUPPORT_ROLE_ID];
+      config = await this.configService.read(guildId);
+      supportRoleId = config[Key.SUPPORT_ROLE_ID];
     } catch (_error) {
       return result(false, "TICKET_CLOSE_FAILED");
     }
@@ -168,6 +171,7 @@ class TicketService {
     const closedAt = new Date().toISOString();
     try {
       const updatedTicket = await this.repository.updateByChannel(channelId, { status: "closed", closed: true, closed_at: closedAt });
+      if (this.transcriptService) await this.transcriptService.deliver({ channelId, logChannelId: config.ticket_log_channel_id, transport: this.transport });
       return result(true, "TICKET_CLOSED", { ticket: updatedTicket, closedAt });
     } catch (_error) {
       return result(false, "TICKET_CLOSE_FAILED");

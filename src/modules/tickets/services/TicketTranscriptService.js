@@ -1,1 +1,3 @@
-"use strict";class TicketTranscriptService{build(messages){return messages.map(message=>`${message.timestamp} ${message.author}: ${message.content}`).join("\n");}}module.exports={TicketTranscriptService};
+"use strict";
+class TicketTranscriptService { build(messages) { return [...messages].sort((a,b)=>Date.parse(a.timestamp)-Date.parse(b.timestamp)).map((message)=>`[${message.timestamp}] ${message.author}: ${message.content||"[pièce jointe / embed]"}`).join("\n")||"Aucun message dans ce ticket."; } async deliver({channelId,logChannelId,transport}) { if(!logChannelId)return {delivered:false,code:"TRANSCRIPT_DESTINATION_MISSING"}; try { const content=this.build(await transport.fetchTranscriptMessages(channelId)); await transport.sendTranscript({channelId,logChannelId,content}); return {delivered:true,code:"TRANSCRIPT_SENT"}; } catch(_error){return {delivered:false,code:"TRANSCRIPT_FAILED"};} } }
+module.exports={TicketTranscriptService};
