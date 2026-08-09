@@ -1,1 +1,1 @@
-"use strict";async function handleCaptchaVerify(context){return {verified:false,reason:"CAPTCHA_VERIFICATION_NOT_MIGRATED",guildId:context.guildId,userId:context.userId};}module.exports={handleCaptchaVerify};
+"use strict";async function handleCaptchaVerify(context,verificationService){const result=await verificationService.verify({guildId:context.guildId,member:context.member});await context.envelope.transport.reply({view:{content:context.t(`captcha.${result.code}`),components:[]},ephemeral:true});return result;}module.exports={handleCaptchaVerify};
