@@ -4,12 +4,13 @@ const { TicketConfigKey: Key } = require("../configuration/ticketConstants");
 const { TicketPermissionService } = require("./TicketPermissionService");
 
 class TicketService {
-  constructor({ repository, configService = null, transport = null, welcomeService = null, transcriptService = null }) {
+  constructor({ repository, configService = null, transport = null, welcomeService = null, transcriptService = null, ticketLog = null }) {
     this.repository = repository;
     this.configService = configService;
     this.transport = transport;
     this.welcomeService = welcomeService;
     this.transcriptService = transcriptService;
+    this.ticketLog = ticketLog;
     this.permissions = new TicketPermissionService();
   }
 
@@ -116,7 +117,7 @@ class TicketService {
     };
     try {
       const ticket = await this.create(record);
-      return result(true, "TICKET_CREATED", { channelId: channel.id, ticket });
+      this.ticketLog?.({action:"ticket_created",ticketChannelId:channel.id,userId:member.id}); return result(true, "TICKET_CREATED", { channelId: channel.id, ticket });
     } catch (_error) {
       return result(false, "PERSISTENCE_ERROR", { channelId: channel.id });
     }
@@ -172,7 +173,7 @@ class TicketService {
     try {
       const updatedTicket = await this.repository.updateByChannel(channelId, { status: "closed", closed: true, closed_at: closedAt });
       if (this.transcriptService) await this.transcriptService.deliver({ channelId, logChannelId: config.ticket_log_channel_id, transport: this.transport });
-      return result(true, "TICKET_CLOSED", { ticket: updatedTicket, closedAt });
+      this.ticketLog?.({action:"ticket_closed",ticketChannelId:channelId,userId:member.id}); return result(true, "TICKET_CLOSED", { ticket: updatedTicket, closedAt });
     } catch (_error) {
       return result(false, "TICKET_CLOSE_FAILED");
     }
@@ -224,7 +225,7 @@ class TicketService {
 
     try {
       const updatedTicket = await this.repository.updateByChannel(channelId, { status: "open", closed: false, closed_at: null });
-      return result(true, "TICKET_REOPENED", { ticket: updatedTicket });
+      this.ticketLog?.({action:"ticket_reopened",ticketChannelId:channelId,userId:member.id}); return result(true, "TICKET_REOPENED", { ticket: updatedTicket });
     } catch (_error) {
       return result(false, "TICKET_REOPEN_FAILED");
     }
@@ -276,7 +277,7 @@ class TicketService {
     const deletedAt = new Date().toISOString();
     try {
       const updatedTicket = await this.repository.updateByChannel(channelId, { status: "deleted", closed: true, closed_at: deletedAt });
-      return result(true, "TICKET_DELETED", { ticket: updatedTicket, deletedAt });
+      this.ticketLog?.({action:"ticket_deleted",ticketChannelId:channelId,userId:member.id}); return result(true, "TICKET_DELETED", { ticket: updatedTicket, deletedAt });
     } catch (_error) {
       return result(false, "TICKET_DELETE_FAILED");
     }
@@ -325,7 +326,7 @@ class TicketService {
       return result(false, "TICKET_RENAME_FAILED");
     }
     if (!channelResult?.renamed) return result(false, channelResult?.code || "TICKET_RENAME_FAILED");
-    return result(true, "TICKET_RENAMED", { name });
+    this.ticketLog?.({action:"ticket_renamed",ticketChannelId:channelId,userId:member.id}); return result(true, "TICKET_RENAMED", { name });
   }
 
   async updateMemberAccess({ guildId, channelId, member, targetMemberId, action }) {
@@ -347,7 +348,7 @@ class TicketService {
     if (!target) return result(false, "TICKET_MEMBER_NOT_FOUND");
     let access;
     try { access = action === "add" ? await this.transport.addTicketMemberAccess(channelId, target) : await this.transport.removeTicketMemberAccess(channelId, targetMemberId); } catch (_error) { return result(false, "TICKET_MEMBER_ACCESS_FAILED"); }
-    return result(Boolean(access?.changed), access?.code || "TICKET_MEMBER_ACCESS_FAILED");
+    if(access?.changed)this.ticketLog?.({action:action==="add"?"ticket_member_added":"ticket_member_removed",ticketChannelId:channelId,userId:member.id}); return result(Boolean(access?.changed), access?.code || "TICKET_MEMBER_ACCESS_FAILED");
   }
 }
 
