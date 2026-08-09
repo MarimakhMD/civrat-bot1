@@ -42,7 +42,7 @@ function createGuildSettingsRuntime({ legacyConfigService, logger = null }) {
   const imagePipeline = new WelcomeImagePipeline({ renderer: new WelcomeImageRenderer(), theme: imageTheme });
   registerAutoRole({ registry, service: new AutoRoleService({ guildConfigResolver }) });
   registerLogs({ registry, service: new LogsConfigService({ guildConfigResolver }) });
-  registerCaptcha({ registry, service: new CaptchaConfigService({ guildConfigResolver }) });
+  registerCaptcha({ registry, service: new CaptchaConfigService({ guildConfigResolver }), settingsHome: async (context) => context.envelope.transport.update({ view: require("../modules/guild-settings/interactions/openSettingsPanel").settingsView(context.t, await settings.getLanguage(context.guildId), settingsSections) }) });
   registerWelcomeGoodbye({
     imagePipeline,
     settingsHome: async (context) => context.envelope.transport.update({ view: require("../modules/guild-settings/interactions/openSettingsPanel").settingsView(context.t, await settings.getLanguage(context.guildId), settingsSections) }),
