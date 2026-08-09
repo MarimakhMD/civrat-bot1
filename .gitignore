@@ -51,3 +51,7 @@ postgres-dump/
 *.swo
 .DS_Store
 Thumbs.db
+
+# Source module named logs (not runtime log output)
+!src/modules/logs/
+!src/modules/logs/**
