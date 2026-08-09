@@ -1,0 +1,1 @@
+"use strict";async function handleCaptchaVerify(context){return {verified:false,reason:"CAPTCHA_VERIFICATION_NOT_MIGRATED",guildId:context.guildId,userId:context.userId};}module.exports={handleCaptchaVerify};
