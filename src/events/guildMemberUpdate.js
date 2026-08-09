@@ -51,19 +51,7 @@ async function handleRoleChanges(oldMember, newMember, config) {
 }
 
 async function handleNicknameChange(oldMember, newMember, config) {
-  if (oldMember.nickname === newMember.nickname) return;
-  const channelId = config.log_role_update_channel_id;
-  if (!channelId) return;
-  const channel = newMember.client.channels.cache.get(channelId);
-  if (!channel) return;
-
-  const entry = await fetchAuditLog(newMember.guild, 24);
-  const embed = new EmbedBuilder()
-    .setColor("#FEE75C").setTitle("📝 NICKNAME CHANGED")
-    .setThumbnail(newMember.user.displayAvatarURL())
-    .setDescription(`👤 **Membre** • ${newMember}\n📛 **Avant** • ${oldMember.nickname || "Aucun"}\n📛 **Après** • ${newMember.nickname || "Aucun"}\n🛡 **Par** • ${entry?.executor || "Inconnu"}`)
-    .setTimestamp();
-  channel.send({ embeds: [embed] });
+  await require("../modules/logs/runtime/getLogsRuntime").getLogsRuntime().handleMemberNicknameChanged({ oldMember, newMember, config });
 }
 
 async function handleTimeout(oldMember, newMember, config) {
