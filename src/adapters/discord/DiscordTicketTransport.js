@@ -1,6 +1,16 @@
 "use strict";
 
-const { ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelType, EmbedBuilder } = require("discord.js");
+const { ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelType, EmbedBuilder, PermissionsBitField } = require("discord.js");
+
+const TicketChannelPermissions = Object.freeze([
+  PermissionsBitField.Flags.ViewChannel,
+  PermissionsBitField.Flags.SendMessages,
+  PermissionsBitField.Flags.ReadMessageHistory,
+]);
+const BotTicketChannelPermissions = Object.freeze([
+  ...TicketChannelPermissions,
+  PermissionsBitField.Flags.ManageChannels,
+]);
 
 class DiscordTicketTransport {
   constructor({ guild }) { this.guild = guild; }
@@ -24,6 +34,14 @@ class DiscordTicketTransport {
     return this.guild.roles.cache.get(roleId) || null;
   }
 
+  async getMember(memberId) {
+    return this.guild.members.cache.get(memberId) || null;
+  }
+
+  async getBotMember() {
+    return this.guild.members.me || null;
+  }
+
   async createTicketChannel({ category, member }) {
     return this.guild.channels.create({
       name: `ticket-${member.id}`,
@@ -31,6 +49,25 @@ class DiscordTicketTransport {
       parent: category.id,
     });
   }
+
+  async applyTicketOverwrites({ channel, member, supportRole, botMember }) {
+    if (!channel) return { applied: false, code: "TICKET_CHANNEL_MISSING" };
+    if (!member) return { applied: false, code: "TICKET_MEMBER_MISSING" };
+    if (!supportRole) return { applied: false, code: "TICKET_CONFIG_INCOMPLETE" };
+    if (!botMember) return { applied: false, code: "TICKET_BOT_MISSING" };
+    if (!channel.manageable) return { applied: false, code: "TICKET_PERMISSION_INSUFFICIENT" };
+    try {
+      await channel.permissionOverwrites.set([
+        { id: this.guild.id, deny: [PermissionsBitField.Flags.ViewChannel] },
+        { id: member.id, allow: TicketChannelPermissions },
+        { id: supportRole.id, allow: TicketChannelPermissions },
+        { id: botMember.id, allow: BotTicketChannelPermissions },
+      ], "CIVRAT ticket channel permissions");
+      return { applied: true, code: "TICKET_OVERWRITES_APPLIED" };
+    } catch (_error) {
+      return { applied: false, code: "TICKET_OVERWRITE_FAILED" };
+    }
+  }
 }
 
-module.exports = { DiscordTicketTransport };
+module.exports = { DiscordTicketTransport, TicketChannelPermissions, BotTicketChannelPermissions };

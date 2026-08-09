@@ -25,7 +25,10 @@ function createService({ config, openTicket = null, createError = null, category
     transport: {
       getCategory: async (id) => id === "category" ? category : null,
       getSupportRole: async (id) => id === "support" ? supportRole : null,
+      getMember: async (id) => ({ id }),
+      getBotMember: async () => ({ id: "bot" }),
       createTicketChannel: async () => { channelCreates += 1; return { id: "channel-1" }; },
+      applyTicketOverwrites: async () => ({ applied: true }),
     },
   });
   return { service, get createdRecord() { return createdRecord; }, get channelCreates() { return channelCreates; } };

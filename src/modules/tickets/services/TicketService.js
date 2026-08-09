@@ -52,6 +52,19 @@ class TicketService {
       });
     }
 
+    let ticketMember;
+    let botMember;
+    try {
+      [ticketMember, botMember] = await Promise.all([
+        this.transport.getMember(member.id),
+        this.transport.getBotMember(),
+      ]);
+    } catch (_error) {
+      return result(false, "TICKET_DISCORD_ERROR");
+    }
+    if (!ticketMember) return result(false, "TICKET_MEMBER_MISSING");
+    if (!botMember) return result(false, "TICKET_BOT_MISSING");
+
     let openTicket;
     try {
       openTicket = await this.findOpen(guildId, member.id);
@@ -66,6 +79,19 @@ class TicketService {
     } catch (_error) {
       return result(false, "TICKET_CHANNEL_CREATION_FAILED");
     }
+
+    let overwrites;
+    try {
+      overwrites = await this.transport.applyTicketOverwrites({
+        channel,
+        member: ticketMember,
+        supportRole,
+        botMember,
+      });
+    } catch (_error) {
+      return result(false, "TICKET_DISCORD_ERROR", { channelId: channel.id });
+    }
+    if (!overwrites?.applied) return result(false, overwrites?.code || "TICKET_OVERWRITE_FAILED", { channelId: channel.id });
 
     const record = {
       guild_id: guildId,
