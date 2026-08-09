@@ -1,0 +1,1 @@
+"use strict";const {LogsComponentId:Id}=require("../configuration/logsConstants");function logsView({t,config}){return {title:t("logs.title"),content:t("logs.section"),components:[{type:"button",customId:Id.TOGGLE,label:t(config.logs_enabled?"logs.disable":"logs.enable"),style:config.logs_enabled?"success":"secondary"}]};}module.exports={logsView};
