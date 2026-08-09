@@ -12,6 +12,9 @@ const { getLogsRuntime } = require("../modules/logs/runtime/getLogsRuntime");
 const { supabase } = require("../config/database");
 const ticketEn = require("../modules/tickets/translations/en.json");
 const ticketFr = require("../modules/tickets/translations/fr.json");
+const moderationEn = require("../modules/moderation/translations/en.json");
+const moderationFr = require("../modules/moderation/translations/fr.json");
+const { registerModeration } = require("../modules/moderation/register");
 const { CaptchaConfigService, registerCaptcha } = require("../modules/captcha");
 const { CaptchaVerificationService } = require("../modules/captcha/services/CaptchaVerificationService");
 const { DiscordCaptchaTransport } = require("../adapters/discord/DiscordCaptchaTransport");
@@ -36,8 +39,8 @@ const welcomeEn = require("../modules/welcome-goodbye/translations/en.json");
 const welcomeFr = require("../modules/welcome-goodbye/translations/fr.json");
 function createGuildSettingsRuntime({ legacyConfigService, logger = null }) {
   const dictionaries = {
-    en: { ...coreDictionaries.en, ...en, ...welcomeEn, ...autoRoleEn, ...logsEn, ...captchaEn, ...ticketEn },
-    fr: { ...coreDictionaries.fr, ...fr, ...welcomeFr, ...autoRoleFr, ...logsFr, ...captchaFr, ...ticketFr },
+    en: { ...coreDictionaries.en, ...en, ...welcomeEn, ...autoRoleEn, ...logsEn, ...captchaEn, ...ticketEn, ...moderationEn },
+    fr: { ...coreDictionaries.fr, ...fr, ...welcomeFr, ...autoRoleFr, ...logsFr, ...captchaFr, ...ticketFr, ...moderationFr },
   }; validateTranslationParity(dictionaries);
   const i18n = new I18nService({ dictionaries, logger });
   const repository = new LegacyGuildConfigRepository({ getConfig: legacyConfigService.getGuildConfig, updateConfig: legacyConfigService.updateGuildConfig, invalidateConfig: legacyConfigService.invalidateCache });
@@ -48,6 +51,7 @@ function createGuildSettingsRuntime({ legacyConfigService, logger = null }) {
   const settings = new GuildSettingsService({ guildConfigResolver, logger });
   const settingsSections = [createWelcomeGoodbyeSettingsSection, (t) => ({type:"button",customId:"civrat:v1:autorole:section",label:t("autorole.section"),style:"secondary"})];
   const registration = registerGuildSettings({ registry, settings, i18n, settingsSections });
+  const moderationRegistration = registerModeration({ registry });
   const imagePipeline = new WelcomeImagePipeline({ renderer: new WelcomeImageRenderer(), theme: imageTheme });
   registerAutoRole({ registry, service: new AutoRoleService({ guildConfigResolver }) });
   registerLogs({ registry, service: new LogsConfigService({ guildConfigResolver }) });
@@ -87,6 +91,6 @@ function createGuildSettingsRuntime({ legacyConfigService, logger = null }) {
 
   });
   const discord = new DiscordInteractionAdapter({ router, registry });
-  return Object.freeze({ tryHandle: (interaction) => discord.tryHandle(interaction), getDiscordCommands: () => registration.commands.map((definition) => toDiscordCommand(definition, async (interaction) => discord.tryHandle(interaction))), registry });
+  return Object.freeze({ tryHandle: (interaction) => discord.tryHandle(interaction), getDiscordCommands: () => [...registration.commands, ...moderationRegistration.commands].map((definition) => toDiscordCommand(definition, async (interaction) => discord.tryHandle(interaction))), registry });
 }
 module.exports = { createGuildSettingsRuntime };
