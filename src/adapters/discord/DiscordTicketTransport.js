@@ -50,6 +50,18 @@ class DiscordTicketTransport {
     });
   }
 
+  async sendTicketWelcome(channel, view) {
+    if (!channel?.isTextBased()) throw new Error("ticket_channel_unavailable");
+    const components = view.components.map((component) => new ButtonBuilder()
+      .setCustomId(component.customId)
+      .setLabel(component.label)
+      .setStyle(component.style === "danger" ? ButtonStyle.Danger : ButtonStyle.Secondary));
+    return channel.send({
+      embeds: [new EmbedBuilder().setTitle(view.title).setDescription(view.description).addFields(view.fields)],
+      components: [new ActionRowBuilder().addComponents(components)],
+    });
+  }
+
   async applyTicketOverwrites({ channel, member, supportRole, botMember }) {
     if (!channel) return { applied: false, code: "TICKET_CHANNEL_MISSING" };
     if (!member) return { applied: false, code: "TICKET_MEMBER_MISSING" };

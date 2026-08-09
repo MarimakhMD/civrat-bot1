@@ -3,16 +3,17 @@
 const { TicketConfigKey: Key } = require("../configuration/ticketConstants");
 
 class TicketService {
-  constructor({ repository, configService = null, transport = null }) {
+  constructor({ repository, configService = null, transport = null, welcomeService = null }) {
     this.repository = repository;
     this.configService = configService;
     this.transport = transport;
+    this.welcomeService = welcomeService;
   }
 
   findOpen(guildId, userId) { return this.repository.findOpen(guildId, userId); }
   create(record) { return this.repository.create(record); }
 
-  async createTicket({ guildId, member }) {
+  async createTicket({ guildId, member, t = (key) => key }) {
     const result = (created, code, details = {}) => ({
       created,
       code,
@@ -92,6 +93,15 @@ class TicketService {
       return result(false, "TICKET_DISCORD_ERROR", { channelId: channel.id });
     }
     if (!overwrites?.applied) return result(false, overwrites?.code || "TICKET_OVERWRITE_FAILED", { channelId: channel.id });
+
+    if (this.welcomeService) {
+      const welcome = this.welcomeService.build({ t, member: ticketMember, supportRole });
+      try {
+        await this.transport.sendTicketWelcome(channel, welcome);
+      } catch (_error) {
+        return result(false, "TICKET_WELCOME_SEND_FAILED", { channelId: channel.id });
+      }
+    }
 
     const record = {
       guild_id: guildId,

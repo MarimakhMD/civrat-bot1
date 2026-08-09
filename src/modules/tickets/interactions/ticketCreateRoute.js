@@ -5,6 +5,7 @@ async function handleTicketCreate(context, creationServiceFactory) {
   const result = await service.createTicket({
     guildId: context.guildId,
     member: context.envelope.discordMember,
+    t: context.t,
   });
   await context.envelope.transport.reply({
     view: {
