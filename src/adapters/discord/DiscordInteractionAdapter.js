@@ -8,7 +8,7 @@ class DiscordInteractionAdapter {
   normalize(interaction) {
     const kind = interaction.isChatInputCommand?.() ? InteractionKind.COMMAND : interaction.isAutocomplete?.() ? InteractionKind.AUTOCOMPLETE : interaction.isButton?.() ? InteractionKind.BUTTON : (interaction.isStringSelectMenu?.() || interaction.isChannelSelectMenu?.() || interaction.isRoleSelectMenu?.()) ? InteractionKind.SELECT_MENU : interaction.isModalSubmit?.() ? InteractionKind.MODAL : null;
     if (!kind) return null;
-    return { kind, name: interaction.commandName || null, customId: interaction.customId || null, values: interaction.values || [], guildId: interaction.guildId || null, userId: interaction.user?.id || null, member: createDiscordMemberCapability(interaction.member, interaction.guild?.ownerId), discordMember: interaction.member, discordChannel: interaction.channel, transport: new DiscordResponseTransport(interaction) };
+    return { kind, name: interaction.commandName || null, customId: interaction.customId || null, values: interaction.values || [], modalValues: kind === InteractionKind.MODAL ? Object.fromEntries(interaction.fields?.fields?.map((field) => [field.customId, field.value]) || []) : {}, guildId: interaction.guildId || null, userId: interaction.user?.id || null, member: createDiscordMemberCapability(interaction.member, interaction.guild?.ownerId), discordMember: interaction.member, discordChannel: interaction.channel, transport: new DiscordResponseTransport(interaction) };
   }
 }
 module.exports = { DiscordInteractionAdapter };

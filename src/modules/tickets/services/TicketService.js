@@ -277,6 +277,56 @@ class TicketService {
       return result(false, "TICKET_DELETE_FAILED");
     }
   }
+
+  async renameTicket({ guildId, channelId, member, name }) {
+    const result = (renamed, code, details = {}) => ({
+      renamed,
+      code,
+      guildId: guildId || null,
+      channelId: channelId || null,
+      memberId: member?.id || null,
+      details,
+    });
+    if (!guildId || !channelId || !member?.id) return result(false, "TICKET_NOT_FOUND");
+    if (!isValidTicketChannelName(name)) return result(false, "TICKET_INVALID_NAME");
+
+    let ticket;
+    try {
+      ticket = await this.repository.findByChannel(channelId);
+    } catch (_error) {
+      return result(false, "TICKET_RENAME_FAILED");
+    }
+    if (!ticket) return result(false, "TICKET_NOT_FOUND");
+    if (ticket.guild_id !== guildId) return result(false, "TICKET_GUILD_MISMATCH");
+    if (ticket.status === "deleted") return result(false, "TICKET_ALREADY_DELETED");
+
+    let supportRoleId;
+    try {
+      supportRoleId = (await this.configService.read(guildId))[Key.SUPPORT_ROLE_ID];
+    } catch (_error) {
+      return result(false, "TICKET_RENAME_FAILED");
+    }
+    let isSupport;
+    try {
+      isSupport = Boolean(supportRoleId && await this.transport.isMemberInRole(member, supportRoleId));
+    } catch (_error) {
+      return result(false, "TICKET_RENAME_FAILED");
+    }
+    if (!this.permissions.canManage({ isOwner: ticket.user_id === member.id, isSupport })) return result(false, "TICKET_UNAUTHORIZED");
+
+    let channelResult;
+    try {
+      channelResult = await this.transport.renameTicketChannel(channelId, name);
+    } catch (_error) {
+      return result(false, "TICKET_RENAME_FAILED");
+    }
+    if (!channelResult?.renamed) return result(false, channelResult?.code || "TICKET_RENAME_FAILED");
+    return result(true, "TICKET_RENAMED", { name });
+  }
 }
 
-module.exports = { TicketService };
+function isValidTicketChannelName(name) {
+  return typeof name === "string" && /^[a-z0-9][a-z0-9-_]{0,88}$/.test(name);
+}
+
+module.exports = { TicketService, isValidTicketChannelName };

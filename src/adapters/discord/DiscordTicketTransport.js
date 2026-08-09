@@ -99,6 +99,17 @@ class DiscordTicketTransport {
     }
   }
 
+  async renameTicketChannel(channelId, name) {
+    const channel = this.guild.channels.cache.get(channelId);
+    if (!channel?.isTextBased() || !channel.manageable) return { renamed: false, code: "TICKET_RENAME_FAILED" };
+    try {
+      await channel.setName(name, "CIVRAT ticket renamed");
+      return { renamed: true, code: "TICKET_CHANNEL_RENAMED" };
+    } catch (_error) {
+      return { renamed: false, code: "TICKET_RENAME_FAILED" };
+    }
+  }
+
   async applyTicketOverwrites({ channel, member, supportRole, botMember }) {
     if (!channel) return { applied: false, code: "TICKET_CHANNEL_MISSING" };
     if (!member) return { applied: false, code: "TICKET_MEMBER_MISSING" };
