@@ -1,0 +1,5 @@
+"use strict";
+const test=require("node:test");const assert=require("node:assert/strict");const {handleCaptchaVerify}=require("../interactions/captchaVerifyRoute");
+function context({guildId="g",member={id:"m",roles:{cache:new Map()}},reply=async()=>{}}={}){return {guildId,userId:"u",t:k=>k,envelope:{discordMember:member,transport:{reply}}};}
+test("captcha runtime propagates missing guild and member context safely",async()=>{let replyCount=0;let memberForGuildMissing;await handleCaptchaVerify(context({guildId:null,reply:async()=>replyCount++}),{verify:async input=>{memberForGuildMissing=input.member;return {code:"CAPTCHA_GUILD_OR_MEMBER_MISSING"};}});assert.ok(memberForGuildMissing);await handleCaptchaVerify(context({member:null,reply:async()=>replyCount++}),{verify:async input=>{assert.equal(input.member,null);return {code:"CAPTCHA_GUILD_OR_MEMBER_MISSING"};}});assert.equal(replyCount,2);});
+test("captcha handler delegates one response",async()=>{let replies=0;await handleCaptchaVerify(context({reply:async()=>replies++}),{verify:async()=>({code:"CAPTCHA_VERIFIED"})});assert.equal(replies,1);});
