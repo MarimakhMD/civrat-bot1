@@ -6,6 +6,8 @@ const { InteractionContextFactory, InteractionRegistry, InteractionRouter } = re
 const { PermissionService } = require("../core/permissions");
 const { DiscordInteractionAdapter, toDiscordCommand } = require("../adapters/discord");
 const { CaptchaConfigService, registerCaptcha } = require("../modules/captcha");
+const { CaptchaVerificationService } = require("../modules/captcha/services/CaptchaVerificationService");
+const { DiscordCaptchaTransport } = require("../adapters/discord/DiscordCaptchaTransport");
 const captchaEn = require("../modules/captcha/translations/en.json");
 const captchaFr = require("../modules/captcha/translations/fr.json");
 const { LogsConfigService, registerLogs } = require("../modules/logs");
@@ -42,7 +44,19 @@ function createGuildSettingsRuntime({ legacyConfigService, logger = null }) {
   const imagePipeline = new WelcomeImagePipeline({ renderer: new WelcomeImageRenderer(), theme: imageTheme });
   registerAutoRole({ registry, service: new AutoRoleService({ guildConfigResolver }) });
   registerLogs({ registry, service: new LogsConfigService({ guildConfigResolver }) });
-  registerCaptcha({ registry, service: new CaptchaConfigService({ guildConfigResolver }), settingsHome: async (context) => context.envelope.transport.update({ view: require("../modules/guild-settings/interactions/openSettingsPanel").settingsView(context.t, await settings.getLanguage(context.guildId), settingsSections) }) });
+  const captchaConfigService = new CaptchaConfigService({ guildConfigResolver });
+  registerCaptcha({
+    registry,
+    service: captchaConfigService,
+    verificationServiceFactory: (context) => new CaptchaVerificationService({
+      configService: captchaConfigService,
+      transport: new DiscordCaptchaTransport({
+        guild: context.envelope.discordMember.guild,
+        member: context.envelope.discordMember,
+      }),
+    }),
+    settingsHome: async (context) => context.envelope.transport.update({ view: require("../modules/guild-settings/interactions/openSettingsPanel").settingsView(context.t, await settings.getLanguage(context.guildId), settingsSections) }),
+  });
   registerWelcomeGoodbye({
     imagePipeline,
     settingsHome: async (context) => context.envelope.transport.update({ view: require("../modules/guild-settings/interactions/openSettingsPanel").settingsView(context.t, await settings.getLanguage(context.guildId), settingsSections) }),
