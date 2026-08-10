@@ -1,0 +1,12 @@
+"use strict";
+const { LogsComponentId: Id } = require("../configuration/logsConstants");
+const { LogsCategory } = require("../configuration/logsCategories");
+function logsView({ t, config }) {
+  return { title:t("logs.title"), content:t("logs.section"), components:[
+    {type:"button",customId:Id.TOGGLE,label:t(config.logs_enabled?"logs.disable":"logs.enable"),style:config.logs_enabled?"success":"secondary"},
+    {type:"select",customId:Id.CATEGORY,placeholder:t("logs.selectCategory"),options:Object.values(LogsCategory).map(value=>({value,label:t(`logs.${value}`)}))},
+    {type:"button",customId:Id.PREVIEW,label:t("logs.preview"),style:"primary"},
+  ]};
+}
+function channelView({ t, category }) { return {content:t("logs.selectChannel"),components:[{type:"channel-select",customId:`${Id.CHANNEL_PREFIX}:${category}`,placeholder:t("logs.selectChannel"),channelTypes:[0]},{type:"button",customId:Id.BACK,label:t("logs.back"),style:"secondary"}]}; }
+module.exports={logsView,channelView};

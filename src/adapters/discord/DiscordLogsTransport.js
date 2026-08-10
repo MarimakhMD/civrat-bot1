@@ -1,0 +1,2 @@
+"use strict";
+const {EmbedBuilder}=require("discord.js");class DiscordLogsTransport{constructor({guild}){this.guild=guild;}async deliver(entry){const channel=this.guild.channels.cache.get(entry.channelId);if(!channel?.isTextBased())throw new Error("log_channel_unavailable");const embed=new EmbedBuilder().setTitle(entry.title).setColor(entry.color||"#5865f2").setDescription(entry.description||"").setTimestamp();await channel.send({embeds:[embed]});}}module.exports={DiscordLogsTransport};

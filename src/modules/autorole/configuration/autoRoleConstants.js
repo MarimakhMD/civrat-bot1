@@ -1,0 +1,2 @@
+"use strict";
+const AutoRoleConfigKey=Object.freeze({ENABLED:"autorole_enabled",MEMBER_ROLE_ID:"autorole_member_role_id",BOT_ROLE_ID:"autorole_bot_role_id"});const AutoRoleComponentId=Object.freeze({SECTION:"civrat:v1:autorole:section",TOGGLE:"civrat:v1:autorole:toggle",MEMBER_ROLE:"civrat:v1:autorole:member-role",BOT_ROLE:"civrat:v1:autorole:bot-role"});module.exports={AutoRoleConfigKey,AutoRoleComponentId};

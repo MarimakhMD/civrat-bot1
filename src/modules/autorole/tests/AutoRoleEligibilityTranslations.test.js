@@ -1,0 +1,1 @@
+"use strict";const test=require("node:test"),assert=require("node:assert/strict");const {validateTranslationParity}=require("../../../core/i18n");const en=require("../translations/en.json"),fr=require("../translations/fr.json");test("AutoRole translations retain FR EN parity",()=>assert.equal(validateTranslationParity({en,fr}),true));

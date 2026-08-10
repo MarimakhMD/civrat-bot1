@@ -1,0 +1,46 @@
+{
+  "name": "civrat-discord-bot",
+  "version": "2.0.0",
+  "description": "CIVRAT Discord Bot - server-native Discord administration",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js",
+    "deploy": "node deploy.js",
+    "check:syntax": "node scripts/verify-static.js",
+    "check:commands": "node scripts/verify-commands.js",
+    "check:repository": "node scripts/verify-repository.js",
+    "check": "npm run check:syntax && npm run check:commands && npm run check:repository",
+    "test:core": "node --test test/core/*.test.js",
+    "test:adapters": "node --test test/adapters/discord/*.test.js",
+    "test:guild-settings": "node --test src/modules/guild-settings/tests/*.test.js test/runtime/*.test.js",
+    "test:phase-2": "npm run test:core && npm run test:adapters && npm run test:guild-settings",
+    "test:welcome-goodbye": "node --test src/modules/welcome-goodbye/tests/*.test.js",
+    "test:phase-3": "npm run test:phase-2 && npm run test:welcome-goodbye"
+  },
+  "keywords": [
+    "discord",
+    "bot",
+    "moderation",
+    "automation"
+  ],
+  "author": "CIVRAT",
+  "license": "ISC",
+  "dependencies": {
+    "@napi-rs/canvas": "^1.0.3",
+    "@supabase/supabase-js": "^2.108.1",
+    "cors": "^2.8.5",
+    "discord.js": "^14.25.1",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "express-rate-limit": "^7.4.0",
+    "helmet": "^8.0.0",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^8.8.0",
+    "node-fetch": "^2.7.0",
+    "socket.io": "^4.8.0"
+  },
+  "engines": {
+    "node": ">=18.17.0"
+  }
+}

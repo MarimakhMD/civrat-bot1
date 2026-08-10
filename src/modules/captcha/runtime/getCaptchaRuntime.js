@@ -1,0 +1,1 @@
+"use strict";const config=require("../../../services/guildConfig");const {createCaptchaRuntime}=require("./createCaptchaRuntime");let runtime;function getCaptchaRuntime(){runtime||=createCaptchaRuntime({guildConfigResolver:{get:config.getGuildConfig,update:config.updateGuildConfig}});return runtime;}module.exports={getCaptchaRuntime};

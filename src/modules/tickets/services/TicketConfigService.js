@@ -1,0 +1,1 @@
+"use strict";class TicketConfigService{constructor({guildConfigResolver}){this.config=guildConfigResolver;}read(guildId){return this.config.get(guildId);}update(guildId,updates){return this.config.update(guildId,updates);}}module.exports={TicketConfigService};

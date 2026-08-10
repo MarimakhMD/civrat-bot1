@@ -1,0 +1,1 @@
+"use strict";async function handleTicketClaim(c,f){const r=await f(c).claimTicket({guildId:c.guildId,channelId:c.envelope.discordChannel?.id,member:c.envelope.discordMember});await c.envelope.transport.reply({view:{title:c.t("tickets.title"),content:c.t(`tickets.${r.code}`),components:[]},ephemeral:true});return r;}module.exports={handleTicketClaim};

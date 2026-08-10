@@ -1,0 +1,12 @@
+{
+  "errors": {
+    "authorizationDenied": "You do not have permission to perform this action.",
+    "configurationInvalid": "The server configuration is invalid.",
+    "configurationUnavailable": "The server configuration is temporarily unavailable.",
+    "internal": "An unexpected error occurred. Please try again later.",
+    "interactionUnsupported": "This interaction is not supported.",
+    "resourceNotFound": "The requested resource could not be found.",
+    "routeNotFound": "This action is no longer available.",
+    "validationFailed": "Some information is invalid. Please review it and try again."
+  }
+}

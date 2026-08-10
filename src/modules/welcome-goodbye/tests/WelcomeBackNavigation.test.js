@@ -1,0 +1,1 @@
+"use strict";const test=require("node:test"),assert=require("node:assert/strict");const {WelcomeGoodbyeComponentId:Id}=require("../configuration/welcomeGoodbyeConstants");test("Welcome Back component has a centralized identifier",()=>assert.match(Id.BACK,/welcome-goodbye:back$/));

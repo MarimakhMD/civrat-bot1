@@ -1,0 +1,1 @@
+"use strict";module.exports={...require("./register"),...require("./services/TicketConfigService"),...require("./services/TicketService"),...require("./services/TicketWelcomeService"),...require("./services/TicketPermissionService"),...require("./services/TicketTranscriptService")};

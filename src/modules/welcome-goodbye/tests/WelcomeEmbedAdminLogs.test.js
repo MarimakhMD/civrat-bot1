@@ -1,0 +1,3 @@
+"use strict";
+const test=require("node:test");const assert=require("node:assert/strict");const {WelcomeAdminAction,WelcomeAdminLogService}=require("../services/WelcomeAdminLogService");
+test("Embed administrative log actions are stable",()=>{const events=[];const service=new WelcomeAdminLogService({logger:{info:(_m,event)=>events.push(event)}});for(const action of [WelcomeAdminAction.EMBED_ENABLED,WelcomeAdminAction.EMBED_DISABLED,WelcomeAdminAction.EMBED_COLOR_CHANGED])service.record({action,guildId:"g",actorId:"u"});assert.deepEqual(events.map(e=>e.action),["embed_enabled","embed_disabled","embed_color_changed"]);});

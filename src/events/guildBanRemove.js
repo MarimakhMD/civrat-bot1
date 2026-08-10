@@ -1,0 +1,1 @@
+const { getLogsRuntime }=require("../modules/logs/runtime/getLogsRuntime");module.exports={name:"guildBanRemove",once:false,async execute(ban){await getLogsRuntime().handleModerationEvent({guild:ban.guild,action:"member_unbanned",targetId:ban.user.id});}};

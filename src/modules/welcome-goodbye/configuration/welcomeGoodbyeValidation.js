@@ -1,0 +1,5 @@
+"use strict";
+const { WelcomeGoodbyeConfigSchema } = require("./welcomeGoodbyeConfigSchema");
+const { ValidationError } = require("../../../core/errors");
+function validateWelcomeGoodbyeUpdates(updates) { for (const [key, value] of Object.entries(updates)) { const rule = WelcomeGoodbyeConfigSchema[key]; if (!rule) throw new ValidationError({ field: key, reason: "unsupported_welcome_setting" }); if (value === null && rule.nullable) continue; if (rule.type === "boolean" && typeof value !== "boolean") throw new ValidationError({ field: key }); if (rule.type === "string" && (typeof value !== "string" || value.length > rule.maxLength)) throw new ValidationError({ field: key }); if (rule.type === "hex-color" && (typeof value !== "string" || !/^#[0-9a-f]{6}$/i.test(value))) throw new ValidationError({ field: key }); if (rule.type === "discord-channel" && value !== null && !/^\d{15,22}$/.test(value)) throw new ValidationError({ field: key }); } return true; }
+module.exports = { validateWelcomeGoodbyeUpdates };

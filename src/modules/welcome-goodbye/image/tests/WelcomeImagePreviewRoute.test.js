@@ -1,0 +1,3 @@
+"use strict";
+const test=require("node:test");const assert=require("node:assert/strict");const {previewWelcomeImage}=require("../pipeline/previewWelcomeImage");
+test("image preview route uses injected pipeline and returns ephemeral payload",async()=>{const replies=[];const calls=[];const context={guildId:"g",userId:"u",locale:"en",t:key=>key,envelope:{transport:{replyImagePreview:async value=>replies.push(value)}}};const pipeline={generate:async request=>{calls.push(request);return {buffer:Buffer.from("x"),contentType:"image/png"};}};await previewWelcomeImage(context,pipeline);assert.equal(calls.length,1);assert.equal(replies[0].ephemeral,true);});

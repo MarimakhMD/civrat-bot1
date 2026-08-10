@@ -1,0 +1,1 @@
+"use strict";const {LogsCategoryChannelKey}=require("../configuration/logsCategories");async function selectLogsChannel(context){const key=LogsCategoryChannelKey[context.envelope.category];if(!key)throw new Error("Unknown logs category");return context.service.update(context.guildId,{[key]:context.envelope.values?.[0]||null});}module.exports={selectLogsChannel};

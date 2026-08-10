@@ -1,0 +1,1 @@
+"use strict";const config=require("../../../services/guildConfig");const {createLogsRuntime}=require("./createLogsRuntime");let runtime;function getLogsRuntime(){runtime||=createLogsRuntime({guildConfigResolver:{get:config.getGuildConfig}});return runtime;}module.exports={getLogsRuntime};
