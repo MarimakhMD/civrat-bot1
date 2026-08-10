@@ -1,26 +1,35 @@
 "use strict";
 
+const { AutoModDecisionService } = require("./AutoModDecisionService");
+
 /**
  * Applies the configured punishment when a message violates an AutoMod rule.
- * It is transport-neutral: the actual Discord effects (deleting a message,
+ * Transport-neutral: the actual Discord effects (deleting a message,
  * timing out or warning a member) are delegated to an injected `enforcer`
  * object so the service stays unit-testable.
+ * Decision is now centralized in AutoModDecisionService.
  */
 class AutoModEnforcementService {
-  constructor() {}
+  constructor({ decisionService } = {}) {
+    this.decisionService = decisionService instanceof AutoModDecisionService ? decisionService : new AutoModDecisionService();
+  }
 
   decidePunishment(config) {
-    const punishment = config.automod_punishment;
-    if (punishment === "warn" || punishment === "timeout") {
-      return { type: punishment, durationMinutes: Number(config.automod_timeout_minutes) || 10 };
+    // Backward compatibility for existing tests / callers.
+    const decision = this.decisionService.decide({ detection: { matched: true, code: "UNKNOWN", rules: [] }, config });
+    if (decision.type === "warn" || decision.type === "timeout") {
+      return { type: decision.type, durationMinutes: decision.durationMinutes };
     }
     return { type: "none" };
   }
 
   async enforce({ message, detection, config, enforcer, logsRuntimeFactory }) {
-    const actions = { deleted: false, punishment: null };
+    const actions = { deleted: false, punishment: null, decision: null };
 
-    if (config.automod_delete_message && enforcer && typeof enforcer.deleteMessage === "function") {
+    const decision = this.decisionService.decide({ detection, config });
+    actions.decision = decision;
+
+    if (decision.deleteMessage && enforcer && typeof enforcer.deleteMessage === "function") {
       try {
         await enforcer.deleteMessage(message);
         actions.deleted = true;
@@ -29,22 +38,20 @@ class AutoModEnforcementService {
       }
     }
 
-    const decision = this.decidePunishment(config);
     if (decision.type !== "none" && message.author && message.author.id && enforcer) {
-      const reason = `AutoMod: ${detection.code}`;
       try {
         if (decision.type === "timeout") {
           actions.punishment = await enforcer.timeoutUser({
             guildId: message.guild && message.guild.id,
             targetId: message.author.id,
             durationMinutes: decision.durationMinutes,
-            reason,
+            reason: decision.reason,
           });
         } else if (decision.type === "warn") {
           actions.punishment = await enforcer.warnUser({
             guildId: message.guild && message.guild.id,
             targetId: message.author.id,
-            reason,
+            reason: decision.reason,
           });
         }
       } catch {
@@ -56,7 +63,7 @@ class AutoModEnforcementService {
       try {
         const logs = logsRuntimeFactory();
         if (logs && !logs.disabled) {
-          await logs.handleModerationEvent({ guild: message.guild, action: "automod", targetId: message.author && message.author.id });
+          await logs.handleModerationEvent({ guild: message.guild, action: "automod", targetId: message.author && message.author.id, reason: decision.reason, rule: decision.rule });
         }
       } catch {
         /* logging is best-effort */
