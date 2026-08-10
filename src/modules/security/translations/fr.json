@@ -1,0 +1,21 @@
+{
+  "security": {
+    "section": "Sécurité",
+    "title": "🛡 Sécurité",
+    "enabled": "Sécurité activée.",
+    "disabled": "Sécurité désactivée.",
+    "antiRaid": "Anti-raid (5 arrivées / 15s)",
+    "antiBot": "Anti-bot (whitelist)",
+    "antiNuke": "Anti-nuke (actions massives)",
+    "whitelist": "Whitelist bots",
+    "logChannel": "Salon logs sécurité",
+    "log": {
+      "raidTitle": "Sécurité : Raid détecté",
+      "raidDescription": "Raid détecté : {{count}} arrivées en {{window}}s (seuil {{threshold}})",
+      "botTitle": "Sécurité : Bot non autorisé",
+      "botDescription": "Bot non autorisé {{user}} absent de la whitelist",
+      "nukeTitle": "Sécurité : Nuke détecté",
+      "nukeDescription": "Nuke détecté : {{action}} {{count}}/{{threshold}} en {{window}}s"
+    }
+  }
+}

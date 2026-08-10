@@ -1,0 +1,21 @@
+{
+  "security": {
+    "section": "Security",
+    "title": "🛡 Security",
+    "enabled": "Security is enabled.",
+    "disabled": "Security is disabled.",
+    "antiRaid": "Anti-raid (5 joins / 15s)",
+    "antiBot": "Anti-bot (whitelist)",
+    "antiNuke": "Anti-nuke (mass actions)",
+    "whitelist": "Bot whitelist",
+    "logChannel": "Security log channel",
+    "log": {
+      "raidTitle": "Security: Raid detected",
+      "raidDescription": "Raid detected: {{count}} joins in {{window}}s (threshold {{threshold}})",
+      "botTitle": "Security: Unauthorized bot",
+      "botDescription": "Unauthorized bot {{user}} not in whitelist",
+      "nukeTitle": "Security: Nuke detected",
+      "nukeDescription": "Nuke detected: {{action}} {{count}}/{{threshold}} in {{window}}s"
+    }
+  }
+}

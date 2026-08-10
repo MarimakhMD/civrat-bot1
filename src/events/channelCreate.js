@@ -1,4 +1,2 @@
-const { guildConfigService } = require("../services/guildConfig");
-const securityService = require("../services/securityService");
 const { getLogsRuntime } = require("../modules/logs/runtime/getLogsRuntime");
-module.exports={name:"channelCreate",once:false,async execute(channel){try{if(!channel.guild)return;const config=await guildConfigService.getGuildConfig(channel.guild.id);if(config.logs_enabled)await securityService.recordNukeAction(channel.guild,config,10,"channels");await getLogsRuntime().handleChannelEvent({channel,config,action:"channel_created"});}catch{}}};
+module.exports={name:"channelCreate",once:false,async execute(channel){try{if(!channel.guild)return;await getLogsRuntime().handleChannelEvent({channel,config:await require("../services/guildConfig").getGuildConfig(channel.guild.id),action:"channel_created"});try{await require("../modules/security/runtime/getSecurityRuntime").getSecurityRuntime().handleChannelCreate(channel);}catch{}}catch{}}};

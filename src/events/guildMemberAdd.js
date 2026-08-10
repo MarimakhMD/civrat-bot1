@@ -4,10 +4,14 @@
 // FIX: Original had 3 separate listeners. Now merged into one.
 
 const { EmbedBuilder } = require("discord.js");
-const guildConfigService = require("../services/guildConfig");
+let guildConfigService;
+try {
+  guildConfigService = require("../services/guildConfig");
+} catch {
+  guildConfigService = { getGuildConfig: async () => ({}) };
+}
 const inviteService = require("../services/inviteService");
 const logger = require("../utils/logger");
-const securityService = require("../services/securityService");
 const { sendLog } = require("../services/logService");
 
 module.exports = {
@@ -29,9 +33,10 @@ module.exports = {
     await handleInviteJoinLog(member, config, inviteResult);
     // 4. Join Log
     await require("../modules/logs/runtime/getLogsRuntime").getLogsRuntime().handleMemberJoined(member);
-    // 5. Security Center
-    await securityService.recordRaidJoin(member, config);
-    await securityService.handleBotJoin(member, config);
+    // 5. Security Center (modern Foundation → Runtime → Transport/Logs, no legacy securityService)
+    try {
+      await require("../modules/security/runtime/getSecurityRuntime").getSecurityRuntime().handleMemberJoined(member);
+    } catch {}
   },
 };
 
