@@ -1,0 +1,38 @@
+{
+  "automod": {
+    "section": "AutoMod",
+    "title": "🛡 AutoMod",
+    "enable": "Activer AutoMod",
+    "disable": "Désactiver AutoMod",
+    "enabled": "AutoMod est activé.",
+    "disabled": "AutoMod est désactivé.",
+    "back": "Retour",
+    "deleteMessage": "Supprimer le message incriminant",
+    "rule": {
+      "antiSpam": "Anti-spam (messages répétés)",
+      "antiLinks": "Bloquer les liens",
+      "antiInvites": "Bloquer les invitations Discord",
+      "antiMentionSpam": "Bloquer le flood de mentions",
+      "antiEmojiSpam": "Bloquer le flood d'emojis",
+      "antiCaps": "Bloquer les MAJUSCULES excessives"
+    },
+    "configureThresholds": "Configurer les seuils",
+    "configureBadWords": "Configurer les mots interdits",
+    "enforcement": "Sanction",
+    "enforcementNone": "Aucune",
+    "enforcementWarn": "Avertir le membre",
+    "enforcementTimeout": "Mettre en sourdine le membre",
+    "thresholdsModalTitle": "Seuils AutoMod",
+    "badWordsModalTitle": "Mots interdits",
+    "fieldMentionThreshold": "Seuil de mentions",
+    "fieldEmojiThreshold": "Seuil d'emojis",
+    "fieldCapsThreshold": "Seuil de MAJUSCULES (%)",
+    "fieldTimeoutMinutes": "Minutes de sourdine",
+    "fieldBadWords": "Mots interdits séparés par des virgules",
+    "thresholdsSaved": "Seuils enregistrés.",
+    "badWordsSaved": "Mots interdits enregistrés.",
+    "punishmentSaved": "Sanction mise à jour.",
+    "stateEnabled": "Activé",
+    "stateDisabled": "Désactivé"
+  }
+}
