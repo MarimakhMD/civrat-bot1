@@ -1,0 +1,38 @@
+{
+  "automod": {
+    "section": "AutoMod",
+    "title": "🛡 AutoMod",
+    "enable": "Enable AutoMod",
+    "disable": "Disable AutoMod",
+    "enabled": "AutoMod is enabled.",
+    "disabled": "AutoMod is disabled.",
+    "back": "Back",
+    "deleteMessage": "Delete offending message",
+    "rule": {
+      "antiSpam": "Anti-spam (repeated messages)",
+      "antiLinks": "Block links",
+      "antiInvites": "Block Discord invites",
+      "antiMentionSpam": "Block mention spam",
+      "antiEmojiSpam": "Block emoji spam",
+      "antiCaps": "Block excessive caps"
+    },
+    "configureThresholds": "Configure thresholds",
+    "configureBadWords": "Configure bad words",
+    "enforcement": "Punishment",
+    "enforcementNone": "None",
+    "enforcementWarn": "Warn user",
+    "enforcementTimeout": "Timeout user",
+    "thresholdsModalTitle": "AutoMod thresholds",
+    "badWordsModalTitle": "Bad words",
+    "fieldMentionThreshold": "Mention threshold",
+    "fieldEmojiThreshold": "Emoji threshold",
+    "fieldCapsThreshold": "Caps threshold (%)",
+    "fieldTimeoutMinutes": "Timeout minutes",
+    "fieldBadWords": "Comma-separated bad words",
+    "thresholdsSaved": "Thresholds saved.",
+    "badWordsSaved": "Bad words saved.",
+    "punishmentSaved": "Punishment updated.",
+    "stateEnabled": "Enabled",
+    "stateDisabled": "Disabled"
+  }
+}

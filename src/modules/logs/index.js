@@ -1,1 +1,1 @@
-"use strict";module.exports={...require("./services/LogsConfigService"),...require("./services/LogsService"),...require("./services/LogsEventMapper"),...require("./services/LogsDeliveryService")};
+"use strict";module.exports={...require("./register"),...require("./services/LogsConfigService"),...require("./services/LogsService"),...require("./services/LogsEventMapper"),...require("./services/LogsDeliveryService")};
