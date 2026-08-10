@@ -41,10 +41,13 @@ const welcomeFr = require("../modules/welcome-goodbye/translations/fr.json");
 const { AutoModConfigService, registerAutoMod } = require("../modules/automod");
 const autoModEn = require("../modules/automod/translations/en.json");
 const autoModFr = require("../modules/automod/translations/fr.json");
+const { SecurityConfigService, registerSecurity } = require("../modules/security");
+const securityEn = require("../modules/security/translations/en.json");
+const securityFr = require("../modules/security/translations/fr.json");
 function createGuildSettingsRuntime({ legacyConfigService, logger = null }) {
   const dictionaries = {
-    en: { ...coreDictionaries.en, ...en, ...welcomeEn, ...autoRoleEn, ...logsEn, ...captchaEn, ...ticketEn, ...moderationEn, ...autoModEn },
-    fr: { ...coreDictionaries.fr, ...fr, ...welcomeFr, ...autoRoleFr, ...logsFr, ...captchaFr, ...ticketFr, ...moderationFr, ...autoModFr },
+    en: { ...coreDictionaries.en, ...en, ...welcomeEn, ...autoRoleEn, ...logsEn, ...captchaEn, ...ticketEn, ...moderationEn, ...autoModEn, ...securityEn },
+    fr: { ...coreDictionaries.fr, ...fr, ...welcomeFr, ...autoRoleFr, ...logsFr, ...captchaFr, ...ticketFr, ...moderationFr, ...autoModFr, ...securityFr },
   }; validateTranslationParity(dictionaries);
   const i18n = new I18nService({ dictionaries, logger });
   const repository = new LegacyGuildConfigRepository({ getConfig: legacyConfigService.getGuildConfig, updateConfig: legacyConfigService.updateGuildConfig, invalidateConfig: legacyConfigService.invalidateCache });
@@ -53,7 +56,7 @@ function createGuildSettingsRuntime({ legacyConfigService, logger = null }) {
   const contextFactory = new InteractionContextFactory({ guildConfigResolver, i18n, permissions, errorResponder, logger });
   const registry = new InteractionRegistry(); const router = new InteractionRouter({ registry, contextFactory, logger });
   const settings = new GuildSettingsService({ guildConfigResolver, logger });
-  const settingsSections = [createWelcomeGoodbyeSettingsSection, (t) => ({type:"button",customId:"civrat:v1:autorole:section",label:t("autorole.section"),style:"secondary"}), (t) => ({type:"button",customId:"civrat:v1:automod:section",label:t("automod.section"),style:"secondary"})];
+  const settingsSections = [createWelcomeGoodbyeSettingsSection, (t) => ({type:"button",customId:"civrat:v1:autorole:section",label:t("autorole.section"),style:"secondary"}), (t) => ({type:"button",customId:"civrat:v1:automod:section",label:t("automod.section"),style:"secondary"}), (t) => ({type:"button",customId:"civrat:v1:security:section",label:t("security.section"),style:"secondary"})];
   const registration = registerGuildSettings({ registry, settings, i18n, settingsSections });
   const moderationRegistration = registerModeration({ registry });
   const channelModerationRegistration = registerChannelModeration({ registry });
@@ -97,6 +100,8 @@ function createGuildSettingsRuntime({ legacyConfigService, logger = null }) {
   });
   const autoModConfigService = new AutoModConfigService({ guildConfigResolver });
   const autoModRegistration = registerAutoMod({ registry, service: autoModConfigService, settingsHome: async (context) => context.envelope.transport.update({ view: require("../modules/guild-settings/interactions/openSettingsPanel").settingsView(context.t, await settings.getLanguage(context.guildId), settingsSections) }) });
+  const securityConfigService = new SecurityConfigService({ guildConfigResolver });
+  registerSecurity({ registry, service: securityConfigService, settingsHome: async (context) => context.envelope.transport.update({ view: require("../modules/guild-settings/interactions/openSettingsPanel").settingsView(context.t, await settings.getLanguage(context.guildId), settingsSections) }) });
   const discord = new DiscordInteractionAdapter({ router, registry });
   return Object.freeze({ tryHandle: (interaction) => discord.tryHandle(interaction), getDiscordCommands: () => [...registration.commands, ...moderationRegistration.commands, ...channelModerationRegistration.commands, ...autoModRegistration.commands].map((definition) => toDiscordCommand(definition, async (interaction) => discord.tryHandle(interaction))), registry });
 }

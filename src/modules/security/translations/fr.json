@@ -2,12 +2,17 @@
   "security": {
     "section": "Sécurité",
     "title": "🛡 Sécurité",
+    "enable": "Activer la sécurité",
+    "disable": "Désactiver la sécurité",
     "enabled": "Sécurité activée.",
     "disabled": "Sécurité désactivée.",
+    "back": "Retour",
     "antiRaid": "Anti-raid (5 arrivées / 15s)",
     "antiBot": "Anti-bot (whitelist)",
     "antiNuke": "Anti-nuke (actions massives)",
     "whitelist": "Whitelist bots",
+    "whitelistModalTitle": "Whitelist bots",
+    "fieldWhitelist": "IDs de bots séparés par des virgules",
     "logChannel": "Salon logs sécurité",
     "log": {
       "raidTitle": "Sécurité : Raid détecté",
