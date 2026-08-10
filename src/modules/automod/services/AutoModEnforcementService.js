@@ -63,7 +63,14 @@ class AutoModEnforcementService {
       try {
         const logs = logsRuntimeFactory();
         if (logs && !logs.disabled) {
-          await logs.handleModerationEvent({ guild: message.guild, action: "automod", targetId: message.author && message.author.id, reason: decision.reason, rule: decision.rule });
+          await logs.handleModerationEvent({
+            guild: message.guild,
+            action: "automod",
+            targetId: message.author && message.author.id,
+            reason: decision.reason,
+            rule: decision.rule,
+            rules: decision.rules,
+          });
         }
       } catch {
         /* logging is best-effort */

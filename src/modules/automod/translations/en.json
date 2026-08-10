@@ -33,6 +33,10 @@
     "badWordsSaved": "Bad words saved.",
     "punishmentSaved": "Punishment updated.",
     "stateEnabled": "Enabled",
-    "stateDisabled": "Disabled"
+    "stateDisabled": "Disabled",
+    "log": {
+      "title": "AutoMod",
+      "description": "User {{user}} triggered {{rule}} ({{reason}})"
+    }
   }
 }

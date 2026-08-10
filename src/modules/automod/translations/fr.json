@@ -33,6 +33,10 @@
     "badWordsSaved": "Mots interdits enregistrés.",
     "punishmentSaved": "Sanction mise à jour.",
     "stateEnabled": "Activé",
-    "stateDisabled": "Désactivé"
+    "stateDisabled": "Désactivé",
+    "log": {
+      "title": "AutoMod",
+      "description": "L'utilisateur {{user}} a déclenché {{rule}} ({{reason}})"
+    }
   }
 }
