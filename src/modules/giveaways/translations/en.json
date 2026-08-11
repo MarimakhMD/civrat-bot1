@@ -1,0 +1,20 @@
+{
+  "giveaway": {
+    "section": "Giveaway",
+    "title": "🎉 Giveaway",
+    "enable": "Enable giveaways",
+    "disable": "Disable giveaways",
+    "enabled": "Giveaways are enabled.",
+    "disabled": "Giveaways are disabled.",
+    "channel": "Select giveaway channel",
+    "createSuccess": "Giveaway created: {{prize}}",
+    "alreadyJoined": "You already joined this giveaway.",
+    "joined": "You joined the giveaway!",
+    "drawSuccess": "Giveaway drawn! Winners: {{winners}}",
+    "notFound": "Giveaway not found.",
+    "closed": "Giveaway is closed.",
+    "invalidPrize": "Prize must be at least 2 characters.",
+    "createFailed": "Could not create giveaway.",
+    "drawFailed": "Could not draw giveaway."
+  }
+}
