@@ -1,0 +1,20 @@
+{
+  "suggestion": {
+    "section": "Suggestion",
+    "title": "💡 Suggestions",
+    "enable": "Enable suggestions",
+    "disable": "Disable suggestions",
+    "enabled": "Suggestions are enabled.",
+    "disabled": "Suggestions are disabled.",
+    "channel": "Select suggestion channel",
+    "created": "Suggestion created!",
+    "voted": "Vote recorded!",
+    "alreadyVoted": "You already voted!",
+    "approved": "Suggestion approved!",
+    "rejected": "Suggestion rejected!",
+    "deleted": "Suggestion deleted!",
+    "notFound": "Suggestion not found.",
+    "invalidContent": "Content must be at least 2 characters.",
+    "noChannel": "No suggestion channel configured."
+  }
+}

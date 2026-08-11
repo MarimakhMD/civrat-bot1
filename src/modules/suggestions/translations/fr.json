@@ -1,0 +1,20 @@
+{
+  "suggestion": {
+    "section": "Suggestion",
+    "title": "💡 Suggestions",
+    "enable": "Activer les suggestions",
+    "disable": "Désactiver les suggestions",
+    "enabled": "Suggestions activées.",
+    "disabled": "Suggestions désactivées.",
+    "channel": "Choisir le salon suggestions",
+    "created": "Suggestion créée !",
+    "voted": "Vote enregistré !",
+    "alreadyVoted": "Vous avez déjà voté !",
+    "approved": "Suggestion approuvée !",
+    "rejected": "Suggestion rejetée !",
+    "deleted": "Suggestion supprimée !",
+    "notFound": "Suggestion introuvable.",
+    "invalidContent": "Le contenu doit contenir au moins 2 caractères.",
+    "noChannel": "Aucun salon suggestions configuré."
+  }
+}
