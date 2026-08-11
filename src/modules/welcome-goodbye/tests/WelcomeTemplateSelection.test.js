@@ -5,7 +5,7 @@ const { WelcomeGoodbyeService } = require("../services/WelcomeGoodbyeService");
 const { selectWelcomeTemplate } = require("../interactions/selectWelcomeTemplate");
 const { WelcomeGoodbyeConfigKey: Key, WelcomeGoodbyeComponentId: Id } = require("../configuration/welcomeGoodbyeConstants");
 const { WelcomeGoodbyeDefaults } = require("../configuration/welcomeGoodbyeDefaults");
-const { settingsView } = require("../interactions/welcomeGoodbyeViews");
+const { welcomeView } = require("../interactions/welcomeGoodbyeViews");
 const { ValidationError } = require("../../../core/errors");
 
 function createService(initial = {}) {
@@ -55,8 +55,8 @@ test("template select route persists the administrator choice and refreshes the 
   assert.ok(updatedView.components.some((component) => component.customId === Id.TEMPLATE_SELECT));
 });
 
-test("settings view exposes the three official template choices", () => {
-  const view = settingsView({ t: (key) => key, config: {} });
+test("welcome sub-view exposes the three official template choices", () => {
+  const view = welcomeView({ t: (key) => key, config: {} });
   const select = view.components.find((component) => component.customId === Id.TEMPLATE_SELECT);
   assert.ok(select, "template select missing from the Welcome section view");
   assert.deepEqual(select.options.map((option) => option.value), ["template-1", "template-2", "template-3"]);

@@ -12,7 +12,7 @@ function openGoodbyeEmbedColorModal(context) {
     fields: [{
       id: EmbedColorFieldId,
       label: context.t("welcomeGoodbye.embedColorLabel"),
-      value: context.config?.welcome_embed_color || "#00e85c",
+      value: context.config?.goodbye_embed_color || "#00e85c",
       required: true,
     }],
   });
