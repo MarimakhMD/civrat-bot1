@@ -1,0 +1,9 @@
+{
+  "xp": {
+    "levelUp": "Level up! {{user}} reached level {{level}}!",
+    "levelUpDescription": "{{user}} leveled up to {{level}} ({{xp}} XP)",
+    "gained": "{{user}} gained {{gain}} XP ({{xp}} total)",
+    "cooldown": "XP on cooldown",
+    "disabled": "XP is disabled"
+  }
+}

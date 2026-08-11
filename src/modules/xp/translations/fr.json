@@ -1,0 +1,9 @@
+{
+  "xp": {
+    "levelUp": "Niveau supérieur ! {{user}} a atteint le niveau {{level}} !",
+    "levelUpDescription": "{{user}} est passé au niveau {{level}} ({{xp}} XP)",
+    "gained": "{{user}} a gagné {{gain}} XP ({{xp}} total)",
+    "cooldown": "XP en cooldown",
+    "disabled": "XP désactivé"
+  }
+}
