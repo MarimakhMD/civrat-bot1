@@ -1,0 +1,17 @@
+{
+  "invites": {
+    "section": "Invites",
+    "title": "📨 Invites",
+    "enable": "Enable invites",
+    "disable": "Disable invites",
+    "enabled": "Invites are enabled.",
+    "disabled": "Invites are disabled.",
+    "channel": "Select invites channel",
+    "logChannel": "Select log channel",
+    "back": "Back",
+    "count": "You have {{count}} invites.",
+    "leaderboardTitle": "🏆 Invite Leaderboard",
+    "noInvites": "No invites yet.",
+    "userNotFound": "User not found."
+  }
+}

@@ -5,6 +5,7 @@ class InviteStatsRepository {
   async removeInvite(userId, guildId) { throw new Error("Not implemented"); }
   async setInvitedBy(memberId, guildId, inviterId) { throw new Error("Not implemented"); }
   async getInviteStats(userId, guildId) { throw new Error("Not implemented"); }
+  async getLeaderboard(guildId, limit) { throw new Error("Not implemented"); }
   async findOne(guildId, userId) { throw new Error("Not implemented"); }
 }
 
@@ -42,6 +43,15 @@ class InMemoryInviteStatsRepository extends InviteStatsRepository {
     const current = this.invites.get(key) || 0;
     const invitedBy = this.invitedBy.get(key) || null;
     return { userId, guildId, current, invitedBy };
+  }
+
+  async getLeaderboard(guildId, limit = 10) {
+    const entries = [];
+    for (const [key, count] of this.invites.entries()) {
+      const [g, userId] = key.split(":");
+      if (g === guildId) entries.push({ userId, current: count });
+    }
+    return entries.sort((a, b) => b.current - a.current).slice(0, limit);
   }
 
   async findOne(guildId, userId) {
@@ -99,6 +109,11 @@ class MongoInviteStatsRepository extends InviteStatsRepository {
     const doc = await this.model.findOne({ guildId, userId }).lean();
     if (!doc) return { userId, guildId, current: 0, invitedBy: null };
     return { userId, guildId, current: doc.invites || 0, invitedBy: doc.invitedBy || null };
+  }
+
+  async getLeaderboard(guildId, limit = 10) {
+    const docs = await this.model.find({ guildId }).sort({ invites: -1 }).limit(limit).lean();
+    return docs.map((d) => ({ userId: d.userId, current: d.invites }));
   }
 
   async findOne(guildId, userId) {

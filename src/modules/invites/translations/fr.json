@@ -1,0 +1,17 @@
+{
+  "invites": {
+    "section": "Invitations",
+    "title": "📨 Invitations",
+    "enable": "Activer les invitations",
+    "disable": "Désactiver les invitations",
+    "enabled": "Invitations activées.",
+    "disabled": "Invitations désactivées.",
+    "channel": "Choisir le salon d'invitations",
+    "logChannel": "Choisir le salon de logs",
+    "back": "Retour",
+    "count": "Vous avez {{count}} invitations.",
+    "leaderboardTitle": "🏆 Classement des invitations",
+    "noInvites": "Aucune invitation pour l'instant.",
+    "userNotFound": "Utilisateur introuvable."
+  }
+}
