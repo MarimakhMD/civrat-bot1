@@ -1,0 +1,11 @@
+{
+  "sticker": {
+    "section": "Sticker",
+    "uploadSuccess": "Sticker uploadé : {{name}}",
+    "missingFile": "Veuillez fournir un fichier sticker.",
+    "invalidName": "Le nom du sticker doit contenir 2-30 caractères.",
+    "limitReached": "Limite Free atteinte ({{count}}/{{limit}}).",
+    "uploadFailed": "Échec de l'upload du sticker.",
+    "fetchFailed": "Impossible de récupérer les stickers."
+  }
+}
