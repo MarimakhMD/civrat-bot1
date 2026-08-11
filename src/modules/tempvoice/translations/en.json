@@ -1,0 +1,13 @@
+{
+  "tempvoice": {
+    "section": "Temp Voice",
+    "title": "🔊 Temp Voice",
+    "enable": "Enable Temp Voice",
+    "disable": "Disable Temp Voice",
+    "enabled": "Temp Voice is enabled.",
+    "disabled": "Temp Voice is disabled.",
+    "back": "Back",
+    "lobbyChannel": "Select lobby channel",
+    "categoryChannel": "Select category"
+  }
+}

@@ -47,10 +47,13 @@ const securityFr = require("../modules/security/translations/fr.json");
 const { registerSticker } = require("../modules/sticker");
 const stickerEn = require("../modules/sticker/translations/en.json");
 const stickerFr = require("../modules/sticker/translations/fr.json");
+const { TempVoiceConfigService, registerTempVoice } = require("../modules/tempvoice");
+const tempVoiceEn = require("../modules/tempvoice/translations/en.json");
+const tempVoiceFr = require("../modules/tempvoice/translations/fr.json");
 function createGuildSettingsRuntime({ legacyConfigService, logger = null }) {
   const dictionaries = {
-    en: { ...coreDictionaries.en, ...en, ...welcomeEn, ...autoRoleEn, ...logsEn, ...captchaEn, ...ticketEn, ...moderationEn, ...autoModEn, ...securityEn, ...stickerEn },
-    fr: { ...coreDictionaries.fr, ...fr, ...welcomeFr, ...autoRoleFr, ...logsFr, ...captchaFr, ...ticketFr, ...moderationFr, ...autoModFr, ...securityFr, ...stickerFr },
+    en: { ...coreDictionaries.en, ...en, ...welcomeEn, ...autoRoleEn, ...logsEn, ...captchaEn, ...ticketEn, ...moderationEn, ...autoModEn, ...securityEn, ...stickerEn, ...tempVoiceEn },
+    fr: { ...coreDictionaries.fr, ...fr, ...welcomeFr, ...autoRoleFr, ...logsFr, ...captchaFr, ...ticketFr, ...moderationFr, ...autoModFr, ...securityFr, ...stickerFr, ...tempVoiceFr },
   }; validateTranslationParity(dictionaries);
   const i18n = new I18nService({ dictionaries, logger });
   const repository = new LegacyGuildConfigRepository({ getConfig: legacyConfigService.getGuildConfig, updateConfig: legacyConfigService.updateGuildConfig, invalidateConfig: legacyConfigService.invalidateCache });
@@ -59,7 +62,7 @@ function createGuildSettingsRuntime({ legacyConfigService, logger = null }) {
   const contextFactory = new InteractionContextFactory({ guildConfigResolver, i18n, permissions, errorResponder, logger });
   const registry = new InteractionRegistry(); const router = new InteractionRouter({ registry, contextFactory, logger });
   const settings = new GuildSettingsService({ guildConfigResolver, logger });
-  const settingsSections = [createWelcomeGoodbyeSettingsSection, (t) => ({type:"button",customId:"civrat:v1:autorole:section",label:t("autorole.section"),style:"secondary"}), (t) => ({type:"button",customId:"civrat:v1:automod:section",label:t("automod.section"),style:"secondary"}), (t) => ({type:"button",customId:"civrat:v1:security:section",label:t("security.section"),style:"secondary"})];
+  const settingsSections = [createWelcomeGoodbyeSettingsSection, (t) => ({type:"button",customId:"civrat:v1:autorole:section",label:t("autorole.section"),style:"secondary"}), (t) => ({type:"button",customId:"civrat:v1:automod:section",label:t("automod.section"),style:"secondary"}), (t) => ({type:"button",customId:"civrat:v1:security:section",label:t("security.section"),style:"secondary"}), (t) => ({type:"button",customId:"civrat:v1:tempvoice:section",label:t("tempvoice.section"),style:"secondary"})];
   const registration = registerGuildSettings({ registry, settings, i18n, settingsSections });
   const moderationRegistration = registerModeration({ registry });
   const channelModerationRegistration = registerChannelModeration({ registry });
@@ -106,6 +109,8 @@ function createGuildSettingsRuntime({ legacyConfigService, logger = null }) {
   const securityConfigService = new SecurityConfigService({ guildConfigResolver });
   registerSecurity({ registry, service: securityConfigService, settingsHome: async (context) => context.envelope.transport.update({ view: require("../modules/guild-settings/interactions/openSettingsPanel").settingsView(context.t, await settings.getLanguage(context.guildId), settingsSections) }) });
   const stickerRegistration = registerSticker({ registry });
+  const tempVoiceConfigService = new TempVoiceConfigService({ guildConfigResolver });
+  registerTempVoice({ registry, service: tempVoiceConfigService, settingsHome: async (context) => context.envelope.transport.update({ view: require("../modules/guild-settings/interactions/openSettingsPanel").settingsView(context.t, await settings.getLanguage(context.guildId), settingsSections) }) });
   const discord = new DiscordInteractionAdapter({ router, registry });
   return Object.freeze({ tryHandle: (interaction) => discord.tryHandle(interaction), getDiscordCommands: () => [...registration.commands, ...moderationRegistration.commands, ...channelModerationRegistration.commands, ...autoModRegistration.commands, ...stickerRegistration.commands].map((definition) => toDiscordCommand(definition, async (interaction) => discord.tryHandle(interaction))), registry });
 }

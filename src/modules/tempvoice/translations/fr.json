@@ -1,0 +1,13 @@
+{
+  "tempvoice": {
+    "section": "Salons temporaires",
+    "title": "🔊 Salons temporaires",
+    "enable": "Activer les salons temporaires",
+    "disable": "Désactiver les salons temporaires",
+    "enabled": "Salons temporaires activés.",
+    "disabled": "Salons temporaires désactivés.",
+    "back": "Retour",
+    "lobbyChannel": "Choisir le salon lobby",
+    "categoryChannel": "Choisir la catégorie"
+  }
+}
