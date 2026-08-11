@@ -12,7 +12,6 @@ try {
 }
 const inviteService = require("../services/inviteService");
 const logger = require("../utils/logger");
-const { sendLog } = require("../services/logService");
 
 module.exports = {
   name: "guildMemberAdd",
