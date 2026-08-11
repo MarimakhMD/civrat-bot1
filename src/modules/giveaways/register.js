@@ -1,6 +1,7 @@
 "use strict";
 
 const { PermissionName } = require("../../core/permissions");
+const { prefix } = require("../../core/interactions/routeMatchers");
 const { GiveawayComponentId: Id } = require("./configuration/giveawayConstants");
 const { giveawayView } = require("./interactions/giveawayViews");
 const { toggleGiveaway, selectGiveawayChannel } = require("./interactions/configureGiveaways");
@@ -64,8 +65,7 @@ function registerGiveaways({ registry, configService, supabase, logsRuntimeFacto
   registry.registerCommand(createCommand);
 
   registry.registerButton({
-    customId: `${Id.JOIN}:`,
-    matcher: (id) => id.startsWith(`${Id.JOIN}:`),
+    matcher: prefix(`${Id.JOIN}:`),
     permissions: null,
     execute: async (context) => {
       const giveawayId = context.envelope.customId.split(":")[1];

@@ -31,6 +31,8 @@ const { GuildSettingsService, registerGuildSettings } = require("../modules/guil
 const { WelcomeGoodbyeService, registerWelcomeGoodbye } = require("../modules/welcome-goodbye");
 const { WelcomeImagePipeline } = require("../modules/welcome-goodbye/image/pipeline/WelcomeImagePipeline");
 const { WelcomeImageRenderer } = require("../modules/welcome-goodbye/image/rendering/WelcomeImageRenderer");
+const { WelcomeTemplateRegistry } = require("../modules/welcome-goodbye/rendering/WelcomeTemplateRegistry");
+const { WelcomeResourceCache } = require("../modules/welcome-goodbye/rendering/WelcomeResourceCache");
 const imageTheme = require("../modules/welcome-goodbye/image/themes/civrat-default/theme");
 const { WelcomeAdminLogService } = require("../modules/welcome-goodbye/services/WelcomeAdminLogService");
 const { createWelcomeGoodbyeSettingsSection } = require("../modules/welcome-goodbye/interactions/welcomeGoodbyeSection");
@@ -73,13 +75,14 @@ function createGuildSettingsRuntime({ legacyConfigService, logger = null }) {
   const contextFactory = new InteractionContextFactory({ guildConfigResolver, i18n, permissions, errorResponder, logger });
   const registry = new InteractionRegistry(); const router = new InteractionRouter({ registry, contextFactory, logger });
   const settings = new GuildSettingsService({ guildConfigResolver, logger });
-  const settingsSections = [createWelcomeGoodbyeSettingsSection, (t) => ({type:"button",customId:"civrat:v1:autorole:section",label:t("autorole.section"),style:"secondary"}), (t) => ({type:"button",customId:"civrat:v1:automod:section",label:t("automod.section"),style:"secondary"}), (t) => ({type:"button",customId:"civrat:v1:security:section",label:t("security.section"),style:"secondary"}), (t) => ({type:"button",customId:"civrat:v1:tempvoice:section",label:t("tempvoice.section"),style:"secondary"}), (t) => ({type:"button",customId:"civrat:v1:giveaway:section",label:t("giveaway.section"),style:"secondary"}), (t) => ({type:"button",customId:"civrat:v1:suggestion:section",label:t("suggestion.section"),style:"secondary"})];
+  const settingsSections = [createWelcomeGoodbyeSettingsSection, (t) => ({type:"button",customId:"civrat:v1:autorole:section",label:t("autorole.section"),style:"secondary"}), (t) => ({type:"button",customId:"civrat:v1:automod:section",label:t("automod.section"),style:"secondary"}), (t) => ({type:"button",customId:"civrat:v1:security:section",label:t("security.section"),style:"secondary"}), (t) => ({type:"button",customId:"civrat:v1:tempvoice:section",label:t("tempvoice.section"),style:"secondary"}), (t) => ({type:"button",customId:"civrat:v1:giveaway:section",label:t("giveaway.section"),style:"secondary"}), (t) => ({type:"button",customId:"civrat:v1:suggestion:section",label:t("suggestion.section"),style:"secondary"}), (t) => ({type:"button",customId:"civrat:v1:tickets:panel",label:t("tickets.section"),style:"secondary"}), (t) => ({type:"button",customId:"civrat:v1:captcha:section",label:t("captcha.section"),style:"secondary"}), (t) => ({type:"button",customId:"civrat:v1:logs:section",label:t("logs.section"),style:"secondary"}), (t) => ({type:"button",customId:"civrat:v1:analytics:section",label:t("analytics.section"),style:"secondary"})];
   const registration = registerGuildSettings({ registry, settings, i18n, settingsSections });
   const moderationRegistration = registerModeration({ registry });
   const channelModerationRegistration = registerChannelModeration({ registry });
-  const imagePipeline = new WelcomeImagePipeline({ renderer: new WelcomeImageRenderer(), theme: imageTheme });
+  const welcomeTemplateRegistry = new WelcomeTemplateRegistry(); welcomeTemplateRegistry.discover();
+  const imagePipeline = new WelcomeImagePipeline({ renderer: new WelcomeImageRenderer({ resourceCache: new WelcomeResourceCache() }), theme: imageTheme });
   registerAutoRole({ registry, service: new AutoRoleService({ guildConfigResolver }) });
-  registerLogs({ registry, service: new LogsConfigService({ guildConfigResolver }) });
+  registerLogs({ registry, service: new LogsConfigService({ guildConfigResolver }), settingsHome: async (context) => context.envelope.transport.update({ view: require("../modules/guild-settings/interactions/openSettingsPanel").settingsView(context.t, await settings.getLanguage(context.guildId), settingsSections) }) });
   const captchaConfigService = new CaptchaConfigService({ guildConfigResolver });
   const ticketConfigService = new TicketConfigService({ guildConfigResolver });
   registerTickets({
@@ -109,6 +112,7 @@ function createGuildSettingsRuntime({ legacyConfigService, logger = null }) {
   });
   registerWelcomeGoodbye({
     imagePipeline,
+    templateRegistry: welcomeTemplateRegistry,
     settingsHome: async (context) => context.envelope.transport.update({ view: require("../modules/guild-settings/interactions/openSettingsPanel").settingsView(context.t, await settings.getLanguage(context.guildId), settingsSections) }),
     registry,
     service: new WelcomeGoodbyeService({ guildConfigResolver }),

@@ -7,6 +7,7 @@
     "enabled": "Giveaways activés.",
     "disabled": "Giveaways désactivés.",
     "channel": "Choisir le salon giveaway",
+    "back": "Retour",
     "createSuccess": "Giveaway créé : {{prize}}",
     "alreadyJoined": "Vous avez déjà participé à ce giveaway.",
     "joined": "Vous avez rejoint le giveaway !",
