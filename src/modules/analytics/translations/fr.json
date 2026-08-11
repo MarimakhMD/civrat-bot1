@@ -1,0 +1,19 @@
+{
+  "analytics": {
+    "section": "Analytiques",
+    "title": "📊 Analytiques",
+    "enable": "Activer les analytiques",
+    "disable": "Désactiver les analytiques",
+    "enabled": "Analytiques activées.",
+    "disabled": "Analytiques désactivées.",
+    "back": "Retour",
+    "overview": "Aperçu",
+    "messages": "Messages : {{count}}",
+    "members": "Membres : {{count}}",
+    "xpTop": "Top XP",
+    "invitesTop": "Top Invitations",
+    "topXP": "Top XP : {{list}}",
+    "topInvites": "Top Invitations : {{list}}",
+    "noData": "Aucune donnée."
+  }
+}

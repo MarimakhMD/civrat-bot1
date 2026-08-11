@@ -1,0 +1,19 @@
+{
+  "analytics": {
+    "section": "Analytics",
+    "title": "📊 Analytics",
+    "enable": "Enable analytics",
+    "disable": "Disable analytics",
+    "enabled": "Analytics are enabled.",
+    "disabled": "Analytics are disabled.",
+    "back": "Back",
+    "overview": "Overview",
+    "messages": "Messages: {{count}}",
+    "members": "Members: {{count}}",
+    "xpTop": "Top XP",
+    "invitesTop": "Top Invites",
+    "topXP": "Top XP: {{list}}",
+    "topInvites": "Top Invites: {{list}}",
+    "noData": "No data yet."
+  }
+}

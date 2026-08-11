@@ -20,5 +20,12 @@ module.exports = {
     } catch {
       /* XP failures must never break message processing */
     }
+    // Analytics (must never break, isolated try/catch)
+    try {
+      if (!message || !message.guild || (message.author && message.author.bot)) return;
+      await require("../modules/analytics/runtime/getAnalyticsRuntime").getAnalyticsRuntime().trackMessage(message);
+    } catch {
+      /* Analytics failures must never break message processing */
+    }
   },
 };

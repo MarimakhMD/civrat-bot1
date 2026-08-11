@@ -36,6 +36,10 @@ module.exports = {
     try {
       await require("../modules/security/runtime/getSecurityRuntime").getSecurityRuntime().handleMemberJoined(member);
     } catch {}
+    // 6. Analytics (track member, isolated, never break)
+    try {
+      await require("../modules/analytics/runtime/getAnalyticsRuntime").getAnalyticsRuntime().trackMember(member);
+    } catch {}
   },
 };
 

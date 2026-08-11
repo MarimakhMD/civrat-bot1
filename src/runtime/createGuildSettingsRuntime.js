@@ -56,10 +56,15 @@ const suggestionFr = require("../modules/suggestions/translations/fr.json");
 const { TempVoiceConfigService, registerTempVoice } = require("../modules/tempvoice");
 const tempVoiceEn = require("../modules/tempvoice/translations/en.json");
 const tempVoiceFr = require("../modules/tempvoice/translations/fr.json");
+const { AnalyticsConfigService, registerAnalytics } = require("../modules/analytics");
+const analyticsEn = require("../modules/analytics/translations/en.json");
+const analyticsFr = require("../modules/analytics/translations/fr.json");
+const { XPConfigService } = require("../modules/xp/services/XPConfigService");
+const { InviteConfigService } = require("../modules/invites/services/InviteConfigService");
 function createGuildSettingsRuntime({ legacyConfigService, logger = null }) {
   const dictionaries = {
-    en: { ...coreDictionaries.en, ...en, ...welcomeEn, ...autoRoleEn, ...logsEn, ...captchaEn, ...ticketEn, ...moderationEn, ...autoModEn, ...securityEn, ...stickerEn, ...tempVoiceEn, ...giveawayEn, ...suggestionEn },
-    fr: { ...coreDictionaries.fr, ...fr, ...welcomeFr, ...autoRoleFr, ...logsFr, ...captchaFr, ...ticketFr, ...moderationFr, ...autoModFr, ...securityFr, ...stickerFr, ...tempVoiceFr, ...giveawayFr, ...suggestionFr },
+    en: { ...coreDictionaries.en, ...en, ...welcomeEn, ...autoRoleEn, ...logsEn, ...captchaEn, ...ticketEn, ...moderationEn, ...autoModEn, ...securityEn, ...stickerEn, ...tempVoiceEn, ...giveawayEn, ...suggestionEn, ...analyticsEn },
+    fr: { ...coreDictionaries.fr, ...fr, ...welcomeFr, ...autoRoleFr, ...logsFr, ...captchaFr, ...ticketFr, ...moderationFr, ...autoModFr, ...securityFr, ...stickerFr, ...tempVoiceFr, ...giveawayFr, ...suggestionFr, ...analyticsFr },
   }; validateTranslationParity(dictionaries);
   const i18n = new I18nService({ dictionaries, logger });
   const repository = new LegacyGuildConfigRepository({ getConfig: legacyConfigService.getGuildConfig, updateConfig: legacyConfigService.updateGuildConfig, invalidateConfig: legacyConfigService.invalidateCache });
@@ -121,7 +126,10 @@ function createGuildSettingsRuntime({ legacyConfigService, logger = null }) {
   const suggestionRegistration = registerSuggestions({ registry, configService: suggestionConfigService, supabase, logsRuntimeFactory: () => getLogsRuntime(), settingsHome: async (context) => context.envelope.transport.update({ view: require("../modules/guild-settings/interactions/openSettingsPanel").settingsView(context.t, await settings.getLanguage(context.guildId), settingsSections) }) });
   const tempVoiceConfigService = new TempVoiceConfigService({ guildConfigResolver });
   registerTempVoice({ registry, service: tempVoiceConfigService, settingsHome: async (context) => context.envelope.transport.update({ view: require("../modules/guild-settings/interactions/openSettingsPanel").settingsView(context.t, await settings.getLanguage(context.guildId), settingsSections) }) });
+  const analyticsConfigService = new AnalyticsConfigService({ guildConfigResolver });
+  const analyticsService = new (require("../modules/analytics/services/AnalyticsService").AnalyticsService)({ configService: analyticsConfigService, analyticsRepository: new (require("../modules/analytics/persistence/InMemoryAnalyticsRepository").InMemoryAnalyticsRepository)(), xpRepository: new (require("../modules/xp/persistence/XPRepository").InMemoryXPRepository)(), inviteRepository: new (require("../modules/invites/persistence/InviteStatsRepository").InMemoryInviteStatsRepository)() });
+  const analyticsRegistration = registerAnalytics({ registry, configService: analyticsConfigService, analyticsService, settingsHome: async (context) => context.envelope.transport.update({ view: require("../modules/guild-settings/interactions/openSettingsPanel").settingsView(context.t, await settings.getLanguage(context.guildId), settingsSections) }) });
   const discord = new DiscordInteractionAdapter({ router, registry });
-  return Object.freeze({ tryHandle: (interaction) => discord.tryHandle(interaction), getDiscordCommands: () => [...registration.commands, ...moderationRegistration.commands, ...channelModerationRegistration.commands, ...autoModRegistration.commands, ...stickerRegistration.commands, ...giveawayRegistration.commands, ...suggestionRegistration.commands].map((definition) => toDiscordCommand(definition, async (interaction) => discord.tryHandle(interaction))), registry });
+  return Object.freeze({ tryHandle: (interaction) => discord.tryHandle(interaction), getDiscordCommands: () => [...registration.commands, ...moderationRegistration.commands, ...channelModerationRegistration.commands, ...autoModRegistration.commands, ...stickerRegistration.commands, ...giveawayRegistration.commands, ...suggestionRegistration.commands, ...analyticsRegistration.commands].map((definition) => toDiscordCommand(definition, async (interaction) => discord.tryHandle(interaction))), registry });
 }
 module.exports = { createGuildSettingsRuntime };
