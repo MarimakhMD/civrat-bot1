@@ -1,7 +1,9 @@
 "use strict";
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { createCanvas } = require("@napi-rs/canvas");
+const fs = require("node:fs");
+const path = require("node:path");
+const { createCanvas, loadImage } = require("@napi-rs/canvas");
 const { WelcomeTemplateRegistry } = require("../../rendering/WelcomeTemplateRegistry");
 const { WelcomeImageRenderer } = require("../rendering/WelcomeImageRenderer");
 const { WelcomeImageRequest } = require("../contracts/WelcomeImageRequest");
@@ -32,6 +34,25 @@ test("the three official templates are discovered with a renderable design", () 
     assert.ok(template, `${id} missing`);
     assert.ok(template.design, `${id} has no design`);
     assert.ok(template.assetsPath, `${id} has no assetsPath`);
+  }
+});
+
+test("the three official templates ship their official background art at the declared dimensions", async () => {
+  for (const id of ["template-1", "template-2", "template-3"]) {
+    const template = registry.get(id);
+    const { design } = template;
+    assert.equal(typeof design.background.image, "string", `${id} must declare a background image asset`);
+    const file = path.join(template.assetsPath, design.background.image);
+    assert.ok(fs.existsSync(file), `${id} official artwork missing: ${file}`);
+    // The canvas must match the artwork exactly: the renderer draws the image
+    // 1:1, and any mismatch would distort the official design.
+    const artwork = await loadImage(file);
+    assert.equal(design.width, artwork.width, `${id} design width must equal artwork width`);
+    assert.equal(design.height, artwork.height, `${id} design height must equal artwork height`);
+    // The dynamic avatar disc must stay inside the baked circle of the artwork.
+    assert.ok(design.avatar.cx - design.avatar.radius > 0, `${id} avatar overflows on the left`);
+    assert.ok(design.avatar.cy - design.avatar.radius > 0, `${id} avatar overflows on the top`);
+    assert.ok(design.avatar.cy + design.avatar.radius < design.height, `${id} avatar overflows on the bottom`);
   }
 });
 
