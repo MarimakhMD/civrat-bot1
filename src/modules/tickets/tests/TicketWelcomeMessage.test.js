@@ -15,13 +15,15 @@ function translate(dictionary) {
   return (key) => key.split(".").reduce((value, segment) => value[segment], dictionary);
 }
 
-function createTicketService({ createChannelError = null, welcomeError = null } = {}) {
+function createTicketService({ createChannelError = null, welcomeError = null, deleteError = null, ticketLog = null } = {}) {
   let welcomeCalls = 0;
   let persisted = 0;
+  const deleted = [];
   const service = new TicketService({
     configService: { read: async () => ({ tickets_enabled: true, ticket_category_id: "category", ticket_support_role_id: "support" }) },
     repository: { findOpen: async () => null, create: async (record) => { persisted += 1; return record; } },
     welcomeService: new TicketWelcomeService(),
+    ticketLog,
     transport: {
       getCategory: async () => ({ id: "category" }),
       getSupportRole: async () => ({ id: "support" }),
@@ -30,9 +32,10 @@ function createTicketService({ createChannelError = null, welcomeError = null } 
       createTicketChannel: async () => { if (createChannelError) throw createChannelError; return { id: "channel", isTextBased: () => true }; },
       applyTicketOverwrites: async () => ({ applied: true }),
       sendTicketWelcome: async () => { welcomeCalls += 1; if (welcomeError) throw welcomeError; },
+      deleteTicketChannel: async (id) => { deleted.push(id); if (deleteError) throw deleteError; },
     },
   });
-  return { service, get welcomeCalls() { return welcomeCalls; }, get persisted() { return persisted; } };
+  return { service, deleted, get welcomeCalls() { return welcomeCalls; }, get persisted() { return persisted; } };
 }
 
 test("welcome view is localized and contains creator, support role, and stable controls", () => {
@@ -75,6 +78,17 @@ test("welcome send failure returns a structured result without persistence", asy
   assert.equal(result.code, "TICKET_WELCOME_SEND_FAILED");
   assert.equal(fixture.welcomeCalls, 1);
   assert.equal(fixture.persisted, 0);
+  // P13 (B2) : le salon créé est supprimé — plus de ticket orphelin.
+  assert.deepEqual(fixture.deleted, ["channel"]);
+});
+
+test("welcome failure with a failing compensation still returns the original error and logs the orphan", async () => {
+  const events = [];
+  const fixture = createTicketService({ welcomeError: new Error("send failed"), deleteError: new Error("cannot delete"), ticketLog: (event) => events.push(event) });
+  const result = await fixture.service.createTicket({ guildId: "guild", member: { id: "creator" }, t: translate(en) });
+  assert.equal(result.code, "TICKET_WELCOME_SEND_FAILED");
+  assert.deepEqual(fixture.deleted, ["channel"], "compensation must be attempted");
+  assert.deepEqual(events, [{ action: "ticket_creation_orphan", ticketChannelId: "channel", reason: "welcome" }]);
 });
 
 test("Discord transport sends an embed with prepared controls only", async () => {

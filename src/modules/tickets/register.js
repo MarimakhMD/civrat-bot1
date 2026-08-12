@@ -19,6 +19,8 @@ function registerTickets({ registry, service, creationServiceFactory = null, set
   registry.registerButton({ customId: Id.TOGGLE, permissions, execute: async (c) => toggleTickets({ ...c, service }) });
   registry.registerSelectMenu({ customId: Id.CATEGORY, permissions, execute: async (c) => selectTicket({ ...c, service }) });
   registry.registerSelectMenu({ customId: Id.SUPPORT_ROLE, permissions, execute: async (c) => selectTicket({ ...c, service }) });
+  // P13 (B3) : sélecteur du salon de logs/transcripts Free.
+  registry.registerSelectMenu({ customId: Id.LOG_CHANNEL, permissions, execute: async (c) => selectTicket({ ...c, service }) });
   registry.registerButton({ customId: Id.PREVIEW, permissions, execute: async (c) => previewTickets({ ...c, service }) });
   registry.registerButton({ customId: Id.CREATE, permissions: { allOf: [] }, execute: async (c) => handleTicketCreate(c, creationServiceFactory) });
   registry.registerButton({ customId: Id.CLOSE, permissions: { allOf: [] }, execute: async (c) => handleTicketClose(c, creationServiceFactory) });

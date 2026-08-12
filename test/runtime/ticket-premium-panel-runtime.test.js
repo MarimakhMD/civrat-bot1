@@ -72,7 +72,7 @@ test("tickets settings view exposes the Premium entry and keeps every Free contr
   assert.equal(await runtime.tryHandle(button(Id.PANEL, captured)), true);
   const payload = rendered(captured);
   assertLimits(payload, "tickets section");
-  for (const id of [Id.TOGGLE, Id.CATEGORY, Id.SUPPORT_ROLE, Id.PREVIEW, Id.BACK]) {
+  for (const id of [Id.TOGGLE, Id.CATEGORY, Id.SUPPORT_ROLE, Id.LOG_CHANNEL, Id.PREVIEW, Id.BACK]) {
     assert.ok(contains(payload, id), `tickets section lost the Free control ${id}`);
   }
   assert.ok(contains(payload, Id.PREMIUM_SECTION), "tickets section misses the Premium entry");

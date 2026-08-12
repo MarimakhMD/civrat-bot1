@@ -136,9 +136,13 @@ class TicketService {
         botMember,
       });
     } catch (_error) {
+      await this.rollbackTicketChannel(channel.id, "overwrites");
       return result(false, "TICKET_DISCORD_ERROR", { channelId: channel.id });
     }
-    if (!overwrites?.applied) return result(false, overwrites?.code || "TICKET_OVERWRITE_FAILED", { channelId: channel.id });
+    if (!overwrites?.applied) {
+      await this.rollbackTicketChannel(channel.id, "overwrites_refused");
+      return result(false, overwrites?.code || "TICKET_OVERWRITE_FAILED", { channelId: channel.id });
+    }
 
     if (this.welcomeService) {
       const premium = await this.resolvePremium(guildId, config);
@@ -146,6 +150,8 @@ class TicketService {
       try {
         await this.transport.sendTicketWelcome(channel, welcome);
       } catch (_error) {
+        // P13 (B2) : compensation — plus de salon orphelin sans record.
+        await this.rollbackTicketChannel(channel.id, "welcome");
         return result(false, "TICKET_WELCOME_SEND_FAILED", { channelId: channel.id });
       }
     }
@@ -162,7 +168,22 @@ class TicketService {
       const ticket = await this.create(record);
       this.ticketLog?.({action:"ticket_created",ticketChannelId:channel.id,userId:member.id}); return result(true, "TICKET_CREATED", { channelId: channel.id, ticket });
     } catch (_error) {
+      await this.rollbackTicketChannel(channel.id, "persistence");
       return result(false, "PERSISTENCE_ERROR", { channelId: channel.id });
+    }
+  }
+
+  // P13 (B2) — compensation best-effort après échec partiel de createTicket :
+  // tout salon Discord déjà créé est supprimé (aucun record n'existe encore),
+  // puis l'événement est logué. Si la suppression échoue elle-même, l'orphelin
+  // est logué pour le staff au lieu d'être abandonné silencieusement. Ne lève
+  // jamais d'erreur : le code d'échec d'origine est toujours retourné ensuite.
+  async rollbackTicketChannel(channelId, cause) {
+    try {
+      await this.transport.deleteTicketChannel(channelId);
+      this.ticketLog?.({ action: "ticket_creation_rolled_back", ticketChannelId: channelId, reason: cause });
+    } catch (_error) {
+      this.ticketLog?.({ action: "ticket_creation_orphan", ticketChannelId: channelId, reason: cause });
     }
   }
 

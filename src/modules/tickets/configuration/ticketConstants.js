@@ -4,12 +4,18 @@ const TicketConfigKey = Object.freeze({
   ENABLED: "tickets_enabled",
   CATEGORY_ID: "ticket_category_id",
   SUPPORT_ROLE_ID: "ticket_support_role_id",
+  // P13 (B3) : destination Free des transcripts (et des logs tickets côté
+  // legacy, qui lit déjà cette même clé). Le fallback closeTicket la lisait
+  // déjà ; sans clé ni UI elle restait toujours nulle (zombie).
+  LOG_CHANNEL_ID: "ticket_log_channel_id",
 });
 const TicketComponentId = Object.freeze({
   PANEL: "civrat:v1:tickets:panel",
   TOGGLE: "civrat:v1:tickets:toggle",
   CATEGORY: "civrat:v1:tickets:category",
   SUPPORT_ROLE: "civrat:v1:tickets:support-role",
+  // P13 (B3) : sélecteur du salon Free de logs/transcripts.
+  LOG_CHANNEL: "civrat:v1:tickets:log-channel",
   PREVIEW: "civrat:v1:tickets:preview",
   BACK: "civrat:v1:tickets:back",
   CREATE: "civrat:v1:tickets:create",
