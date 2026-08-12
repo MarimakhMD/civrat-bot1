@@ -19,7 +19,10 @@ module.exports = {
       panelService: new TicketPanelService({ configService, premiumConfigResolver }),
       transport: new DiscordTicketTransport({ guild: interaction.guild }),
     });
-    const result = await delivery.deliver(interaction.guild.id, (key) => key);
+    // P12.2 (B1) : le panneau part dans le salon de l'interaction — le salon
+    // texte où l'admin lance /ticketpanel (comportement standard des bots de
+    // tickets). Jamais vers une catégorie.
+    const result = await delivery.deliver(interaction.guild.id, (key) => key, interaction.channel?.id ?? null);
     return interaction.reply({
       content: result.delivered
         ? `✅ ${result.channelId}`

@@ -80,7 +80,9 @@ const historicalFreeView = {
 test("Free panel without resolver stays exactly the historical panel", async () => {
   const panel = await buildPanel({ config: { ...freeConfig } });
   assert.equal(panel.ready, true);
-  assert.equal(panel.channelId, "cat");
+  // P12.2 (B1) : build ne désigne plus de destination ; la catégorie n'est
+  // jamais la cible du panneau (elle est celle des salons de tickets).
+  assert.equal(panel.channelId, undefined, "build must not designate the category as the panel destination");
   assert.deepEqual(panel.view, historicalFreeView);
   assert.equal("embed" in panel.view, false);
 });
@@ -104,7 +106,7 @@ test("active Premium applies title, description, button label, color and image",
   assert.deepEqual(panel.view.embed, { color: "#8061ef", image: "https://cdn.example.com/panel.png" });
   assert.equal(panel.view.components[0].label, "📩 Contacter");
   assert.equal(panel.view.components[0].customId, Id.CREATE);
-  assert.equal(panel.channelId, "cat");
+  assert.equal(panel.channelId, undefined, "P12.2 (B1): build must not designate the category as the panel destination");
 });
 
 test("active Premium without image falls back cleanly (Free texts, embed without image)", async () => {

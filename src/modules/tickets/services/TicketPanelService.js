@@ -31,7 +31,11 @@ class TicketPanelService {
     const color = override(PKey.PANEL_COLOR);
     const image = override(PKey.PANEL_IMAGE_URL);
     if (color || image) view.embed = { color, image };
-    return { ready: true, channelId: config[Key.CATEGORY_ID], view };
+    // P12.2 (B1) : le service ne décide PLUS de la destination. La catégorie
+    // (ticket_category_id) est la destination des SALONS de tickets, jamais du
+    // panneau — un envoi vers une catégorie échoue toujours (isTextBased=false).
+    // La cible est fournie par l'appelant (salon de l'interaction /ticketpanel).
+    return { ready: true, view };
   }
 }
 
