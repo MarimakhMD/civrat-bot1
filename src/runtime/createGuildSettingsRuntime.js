@@ -63,15 +63,26 @@ const suggestionFr = require("../modules/suggestions/translations/fr.json");
 const { TempVoiceConfigService, registerTempVoice } = require("../modules/tempvoice");
 const tempVoiceEn = require("../modules/tempvoice/translations/en.json");
 const tempVoiceFr = require("../modules/tempvoice/translations/fr.json");
-const { AnalyticsConfigService, registerAnalytics } = require("../modules/analytics");
+const { registerAnalytics } = require("../modules/analytics/register");
 const analyticsEn = require("../modules/analytics/translations/en.json");
 const analyticsFr = require("../modules/analytics/translations/fr.json");
-const { XPConfigService } = require("../modules/xp/services/XPConfigService");
+// Phase 11 — Analytics unifié : la composition utilise le MÊME runtime (et
+// donc les mêmes repositories) que le chemin d'écriture des événements.
+const { getAnalyticsRuntime } = require("../modules/analytics/runtime/getAnalyticsRuntime");
+const { XPConfigService, registerXPSettings } = require("../modules/xp");
+const xpEn = require("../modules/xp/translations/en.json");
+const xpFr = require("../modules/xp/translations/fr.json");
 const { InviteConfigService } = require("../modules/invites/services/InviteConfigService");
+const { registerInvites } = require("../modules/invites/register");
+const invitesEn = require("../modules/invites/translations/en.json");
+const invitesFr = require("../modules/invites/translations/fr.json");
+// Service legacy d'invitations : son statsRepository est le stockage réel du
+// tracking (guildMemberAdd/Remove) — on le partage avec /invites et Analytics.
+const legacyInviteService = require("../services/inviteService");
 function createGuildSettingsRuntime({ legacyConfigService, logger = null }) {
   const dictionaries = {
-    en: { ...coreDictionaries.en, ...en, ...welcomeEn, ...autoRoleEn, ...logsEn, ...captchaEn, ...ticketEn, ...moderationEn, ...autoModEn, ...securityEn, ...stickerEn, ...tempVoiceEn, ...giveawayEn, ...suggestionEn, ...analyticsEn },
-    fr: { ...coreDictionaries.fr, ...fr, ...welcomeFr, ...autoRoleFr, ...logsFr, ...captchaFr, ...ticketFr, ...moderationFr, ...autoModFr, ...securityFr, ...stickerFr, ...tempVoiceFr, ...giveawayFr, ...suggestionFr, ...analyticsFr },
+    en: { ...coreDictionaries.en, ...en, ...welcomeEn, ...autoRoleEn, ...logsEn, ...captchaEn, ...ticketEn, ...moderationEn, ...autoModEn, ...securityEn, ...stickerEn, ...tempVoiceEn, ...giveawayEn, ...suggestionEn, ...analyticsEn, ...xpEn, ...invitesEn },
+    fr: { ...coreDictionaries.fr, ...fr, ...welcomeFr, ...autoRoleFr, ...logsFr, ...captchaFr, ...ticketFr, ...moderationFr, ...autoModFr, ...securityFr, ...stickerFr, ...tempVoiceFr, ...giveawayFr, ...suggestionFr, ...analyticsFr, ...xpFr, ...invitesFr },
   }; validateTranslationParity(dictionaries);
   const i18n = new I18nService({ dictionaries, logger });
   const repository = new LegacyGuildConfigRepository({ getConfig: legacyConfigService.getGuildConfig, updateConfig: legacyConfigService.updateGuildConfig, invalidateConfig: legacyConfigService.invalidateCache });
@@ -80,7 +91,7 @@ function createGuildSettingsRuntime({ legacyConfigService, logger = null }) {
   const contextFactory = new InteractionContextFactory({ guildConfigResolver, i18n, permissions, errorResponder, logger });
   const registry = new InteractionRegistry(); const router = new InteractionRouter({ registry, contextFactory, logger });
   const settings = new GuildSettingsService({ guildConfigResolver, logger });
-  const settingsSections = [createWelcomeGoodbyeSettingsSection, (t) => ({type:"button",customId:"civrat:v1:autorole:section",label:t("autorole.section"),style:"secondary"}), (t) => ({type:"button",customId:"civrat:v1:automod:section",label:t("automod.section"),style:"secondary"}), (t) => ({type:"button",customId:"civrat:v1:security:section",label:t("security.section"),style:"secondary"}), (t) => ({type:"button",customId:"civrat:v1:tempvoice:section",label:t("tempvoice.section"),style:"secondary"}), (t) => ({type:"button",customId:"civrat:v1:giveaway:section",label:t("giveaway.section"),style:"secondary"}), (t) => ({type:"button",customId:"civrat:v1:suggestion:section",label:t("suggestion.section"),style:"secondary"}), (t) => ({type:"button",customId:"civrat:v1:tickets:panel",label:t("tickets.section"),style:"secondary"}), (t) => ({type:"button",customId:"civrat:v1:captcha:section",label:t("captcha.section"),style:"secondary"}), (t) => ({type:"button",customId:"civrat:v1:logs:section",label:t("logs.section"),style:"secondary"}), (t) => ({type:"button",customId:"civrat:v1:analytics:section",label:t("analytics.section"),style:"secondary"})];
+  const settingsSections = [createWelcomeGoodbyeSettingsSection, (t) => ({type:"button",customId:"civrat:v1:autorole:section",label:t("autorole.section"),style:"secondary"}), (t) => ({type:"button",customId:"civrat:v1:automod:section",label:t("automod.section"),style:"secondary"}), (t) => ({type:"button",customId:"civrat:v1:security:section",label:t("security.section"),style:"secondary"}), (t) => ({type:"button",customId:"civrat:v1:tempvoice:section",label:t("tempvoice.section"),style:"secondary"}), (t) => ({type:"button",customId:"civrat:v1:giveaway:section",label:t("giveaway.section"),style:"secondary"}), (t) => ({type:"button",customId:"civrat:v1:suggestion:section",label:t("suggestion.section"),style:"secondary"}), (t) => ({type:"button",customId:"civrat:v1:tickets:panel",label:t("tickets.section"),style:"secondary"}), (t) => ({type:"button",customId:"civrat:v1:captcha:section",label:t("captcha.section"),style:"secondary"}), (t) => ({type:"button",customId:"civrat:v1:logs:section",label:t("logs.section"),style:"secondary"}), (t) => ({type:"button",customId:"civrat:v1:analytics:section",label:t("analytics.section"),style:"secondary"}), (t) => ({type:"button",customId:"civrat:v1:xp:section",label:t("xp.section"),style:"secondary"}), (t) => ({type:"button",customId:"civrat:v1:invites:section",label:t("invites.section"),style:"secondary"})];
   const registration = registerGuildSettings({ registry, settings, i18n, settingsSections });
   const moderationRegistration = registerModeration({ registry });
   const channelModerationRegistration = registerChannelModeration({ registry });
@@ -147,10 +158,15 @@ function createGuildSettingsRuntime({ legacyConfigService, logger = null }) {
   const suggestionRegistration = registerSuggestions({ registry, configService: suggestionConfigService, supabase, logsRuntimeFactory: () => getLogsRuntime(), settingsHome: async (context) => context.envelope.transport.update({ view: require("../modules/guild-settings/interactions/openSettingsPanel").settingsView(context.t, await settings.getLanguage(context.guildId), settingsSections) }) });
   const tempVoiceConfigService = new TempVoiceConfigService({ guildConfigResolver });
   registerTempVoice({ registry, service: tempVoiceConfigService, settingsHome: async (context) => context.envelope.transport.update({ view: require("../modules/guild-settings/interactions/openSettingsPanel").settingsView(context.t, await settings.getLanguage(context.guildId), settingsSections) }) });
-  const analyticsConfigService = new AnalyticsConfigService({ guildConfigResolver });
-  const analyticsService = new (require("../modules/analytics/services/AnalyticsService").AnalyticsService)({ configService: analyticsConfigService, analyticsRepository: new (require("../modules/analytics/persistence/InMemoryAnalyticsRepository").InMemoryAnalyticsRepository)(), xpRepository: new (require("../modules/xp/persistence/XPRepository").InMemoryXPRepository)(), inviteRepository: new (require("../modules/invites/persistence/InviteStatsRepository").InMemoryInviteStatsRepository)() });
-  const analyticsRegistration = registerAnalytics({ registry, configService: analyticsConfigService, analyticsService, settingsHome: async (context) => context.envelope.transport.update({ view: require("../modules/guild-settings/interactions/openSettingsPanel").settingsView(context.t, await settings.getLanguage(context.guildId), settingsSections) }) });
+  // Phase 11 — fin des instances Analytics disjointes : la composition lit et
+  // écrit via le runtime Analytics partagé (mêmes repositories que les
+  // événements messageCreate/guildMemberAdd). Plus aucune instance privée.
+  const analyticsRuntime = getAnalyticsRuntime();
+  const analyticsRegistration = registerAnalytics({ registry, configService: analyticsRuntime._configService, analyticsService: analyticsRuntime._service, settingsHome: async (context) => context.envelope.transport.update({ view: require("../modules/guild-settings/interactions/openSettingsPanel").settingsView(context.t, await settings.getLanguage(context.guildId), settingsSections) }) });
+  // Phase 11 — XP et Invites rejoignent /settings et les commandes publiques.
+  registerXPSettings({ registry, configService: new XPConfigService({ guildConfigResolver }), settingsHome: async (context) => context.envelope.transport.update({ view: require("../modules/guild-settings/interactions/openSettingsPanel").settingsView(context.t, await settings.getLanguage(context.guildId), settingsSections) }) });
+  const invitesRegistration = registerInvites({ registry, configService: new InviteConfigService({ guildConfigResolver }), inviteService: legacyInviteService, settingsHome: async (context) => context.envelope.transport.update({ view: require("../modules/guild-settings/interactions/openSettingsPanel").settingsView(context.t, await settings.getLanguage(context.guildId), settingsSections) }) });
   const discord = new DiscordInteractionAdapter({ router, registry });
-  return Object.freeze({ tryHandle: (interaction) => discord.tryHandle(interaction), getDiscordCommands: () => [...registration.commands, ...moderationRegistration.commands, ...channelModerationRegistration.commands, ...autoModRegistration.commands, ...stickerRegistration.commands, ...giveawayRegistration.commands, ...suggestionRegistration.commands, ...analyticsRegistration.commands].map((definition) => toDiscordCommand(definition, async (interaction) => discord.tryHandle(interaction))), registry, ticketPremiumResolver: ticketPremiumConfigResolver });
+  return Object.freeze({ tryHandle: (interaction) => discord.tryHandle(interaction), getDiscordCommands: () => [...registration.commands, ...moderationRegistration.commands, ...channelModerationRegistration.commands, ...autoModRegistration.commands, ...stickerRegistration.commands, ...giveawayRegistration.commands, ...suggestionRegistration.commands, ...analyticsRegistration.commands, ...invitesRegistration.commands].map((definition) => toDiscordCommand(definition, async (interaction) => discord.tryHandle(interaction))), registry, ticketPremiumResolver: ticketPremiumConfigResolver });
 }
 module.exports = { createGuildSettingsRuntime };

@@ -4,6 +4,15 @@
     "levelUpDescription": "{{user}} est passé au niveau {{level}} ({{xp}} XP)",
     "gained": "{{user}} a gagné {{gain}} XP ({{xp}} total)",
     "cooldown": "XP en cooldown",
-    "disabled": "XP désactivé"
+    "section": "XP",
+    "settingsTitle": "⭐ XP",
+    "enable": "Activer l'XP",
+    "disable": "Désactiver l'XP",
+    "enabled": "L'XP est activé.",
+    "disabled": "L'XP est désactivé.",
+    "channel": "Restreindre l'XP à un salon",
+    "channelAll": "tous les salons",
+    "channelLine": "Salon XP : {{channel}}",
+    "back": "Retour"
   }
 }

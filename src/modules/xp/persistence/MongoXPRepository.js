@@ -35,6 +35,12 @@ class MongoXPRepository extends XPRepository {
     const doc = await this.model.findOneAndUpdate({ guildId, userId }, { xp, level }, { upsert: true, new: true, setDefaultsOnInsert: true }).lean();
     return { guildId: doc.guildId, userId: doc.userId, xp: doc.xp, level: doc.level };
   }
+
+  // Phase 11 : classement XP pour Analytics (même contrat que InMemory).
+  async getLeaderboard(guildId, limit = 10) {
+    const docs = await this.model.find({ guildId }).sort({ xp: -1, level: -1 }).limit(limit).lean();
+    return docs.map((d) => ({ userId: d.userId, xp: d.xp, level: d.level }));
+  }
 }
 
 module.exports = { MongoXPRepository, UserXPModel };

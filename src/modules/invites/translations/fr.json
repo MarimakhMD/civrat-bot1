@@ -11,6 +11,7 @@
     "back": "Retour",
     "count": "Vous avez {{count}} invitations.",
     "leaderboardTitle": "🏆 Classement des invitations",
+    "leaderboardEntry": "{{rank}}. <@{{userId}}> — {{count}} invitations",
     "noInvites": "Aucune invitation pour l'instant.",
     "userNotFound": "Utilisateur introuvable."
   }

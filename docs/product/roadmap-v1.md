@@ -16,7 +16,7 @@ Le développement suit des petites missions ciblées : plan validé, développem
 | 6 | Logs & Audit serveur | Développement complet / validation réelle en attente | Logs guild-locales via Logs Foundation. |
 | 7 | AutoMod & Protection | Partielle | Moderniser AutoMod et Security legacy. |
 | 8 | Roles & Automatisation | Partielle | AutoRole achevé offline ; automatisations restantes. |
-| 9 | Analytics | Partielle | Définir et stabiliser les capacités XP et analytics réellement retenues. |
+| 9 | Analytics | Développement complet / validation réelle en attente | Runtime unifié (une seule instance lue/écrite), classements XP/Invites sur les mêmes stockages que l'écriture, `/settings` XP + Invites, `/invites` câblée. Migration `analytics_events` documentée (cf. docs/architecture/phase-11-analytics-unification.md). |
 | 10 | Premium | Non commencé | Entitlements et capacités Premium après un socle Free stable. |
 | 11 | API | Partielle | Stabiliser l’API existante et ses contrats. |
 | 12 | Stabilisation | Partielle | Tests transverses, sécurité, reprise et validation d’environnement. |

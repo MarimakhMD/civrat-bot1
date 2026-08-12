@@ -35,39 +35,18 @@ class AnalyticsService {
     return { enabled: true, ...stats };
   }
 
+  // Phase 11 : les classements passent par le contrat getLeaderboard des
+  // repositories (implémenté par les implémentations InMemory ET Mongo), et
+  // lisent la MÊME instance que le chemin d'écriture (runtime unifié) — plus
+  // aucune lecture d'un store interne disjoint. Défensif : sans repository ou
+  // sans contrat, liste vide (comportement « non configuré » préservé).
   async getTopXP(guildId, limit = 10) {
-    if (!this.xpRepository || typeof this.xpRepository.getLeaderboard !== "function") {
-      // Fallback to InMemory XPRepository's internal store if available
-      if (this.xpRepository && this.xpRepository.store) {
-        const entries = [];
-        for (const [key, record] of this.xpRepository.store.entries()) {
-          const [g, userId] = key.split(":");
-          if (g === guildId) entries.push({ userId, xp: record.xp, level: record.level });
-        }
-        return entries.sort((a, b) => b.xp - a.xp).slice(0, limit);
-      }
-      return [];
-    }
-    // For XP, we need to get leaderboard via repository
-    if (typeof this.xpRepository.getLeaderboard === "function") {
-      return this.xpRepository.getLeaderboard(guildId, limit);
-    }
-    // Fallback for InMemoryXPRepository which stores Map
-    return [];
+    if (!this.xpRepository || typeof this.xpRepository.getLeaderboard !== "function") return [];
+    return this.xpRepository.getLeaderboard(guildId, limit);
   }
 
   async getTopInvites(guildId, limit = 10) {
-    if (!this.inviteRepository || typeof this.inviteRepository.getLeaderboard !== "function") {
-      if (this.inviteRepository && this.inviteRepository.invites) {
-        const entries = [];
-        for (const [key, count] of this.inviteRepository.invites.entries()) {
-          const [g, userId] = key.split(":");
-          if (g === guildId) entries.push({ userId, current: count });
-        }
-        return entries.sort((a, b) => b.current - a.current).slice(0, limit);
-      }
-      return [];
-    }
+    if (!this.inviteRepository || typeof this.inviteRepository.getLeaderboard !== "function") return [];
     return this.inviteRepository.getLeaderboard(guildId, limit);
   }
 }
