@@ -11,7 +11,7 @@ const { handleTicketDelete } = require("./interactions/ticketDeleteRoute");
 const { openTicketRename, handleTicketRename } = require("./interactions/ticketRenameRoute");
 const { openMemberModal, handleMemberAccess } = require("./interactions/ticketMemberAccessRoute");
 const { handleTicketClaim } = require("./interactions/ticketClaimRoute");
-const { openPremiumPanel, openPremiumPanelModal, submitPremiumPanel, resetPremiumPanel, previewPremiumPanel } = require("./interactions/premiumPanel");
+const { openPremiumPanel, openPremiumPanelModal, submitPremiumPanel, resetPremiumPanel, previewPremiumPanel, openPremiumWelcomeModal, submitPremiumWelcome, previewPremiumWelcome, selectPremiumTranscript } = require("./interactions/premiumPanel");
 
 function registerTickets({ registry, service, creationServiceFactory = null, settingsHome = null, premiumConfigResolver = null }) {
   const permissions = { allOf: [PermissionName.MANAGE_GUILD] };
@@ -40,6 +40,11 @@ function registerTickets({ registry, service, creationServiceFactory = null, set
   registry.registerModal({ customId: Id.PREMIUM_EDIT_SUBMIT, permissions, execute: async (c) => submitPremiumPanel({ ...c, service, premiumConfigResolver }) });
   registry.registerButton({ customId: Id.PREMIUM_RESET, permissions, execute: async (c) => resetPremiumPanel({ ...c, service, premiumConfigResolver }) });
   registry.registerButton({ customId: Id.PREMIUM_PREVIEW, permissions, execute: async (c) => previewPremiumPanel({ ...c, service, premiumConfigResolver }) });
+  // Phase 10.3 — contenu du ticket : mêmes garanties fail-closed que le panneau.
+  registry.registerButton({ customId: Id.PREMIUM_EDIT_WELCOME, permissions, execute: async (c) => openPremiumWelcomeModal({ ...c, service, premiumConfigResolver }) });
+  registry.registerModal({ customId: Id.PREMIUM_EDIT_WELCOME_SUBMIT, permissions, execute: async (c) => submitPremiumWelcome({ ...c, service, premiumConfigResolver }) });
+  registry.registerButton({ customId: Id.PREMIUM_PREVIEW_WELCOME, permissions, execute: async (c) => previewPremiumWelcome({ ...c, service, premiumConfigResolver }) });
+  registry.registerSelectMenu({ customId: Id.PREMIUM_TRANSCRIPT, permissions, execute: async (c) => selectPremiumTranscript({ ...c, service, premiumConfigResolver }) });
   registry.registerButton({ customId: Id.BACK, permissions, execute: settingsHome });
   // premiumConfigResolver : injection Phase 10.1 (fondations Ticket Premium).
   // Conservé ici pour les phases 10.2+ (panneau personnalisé, accueil,

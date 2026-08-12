@@ -1,17 +1,28 @@
 "use strict";
 
 const { TicketConfigKey: Key } = require("../configuration/ticketConstants");
+const { TicketPremiumConfigKey: PKey } = require("../configuration/ticketPremiumConstants");
 const { TicketPermissionService } = require("./TicketPermissionService");
 
 class TicketService {
-  constructor({ repository, configService = null, transport = null, welcomeService = null, transcriptService = null, ticketLog = null }) {
+  constructor({ repository, configService = null, transport = null, welcomeService = null, transcriptService = null, ticketLog = null, premiumConfigResolver = null }) {
     this.repository = repository;
     this.configService = configService;
     this.transport = transport;
     this.welcomeService = welcomeService;
     this.transcriptService = transcriptService;
     this.ticketLog = ticketLog;
+    this.premiumConfigResolver = premiumConfigResolver;
     this.permissions = new TicketPermissionService();
+  }
+
+  // Phase 10.3 : les contenus Premium (message d'accueil, salon transcript) ne
+  // sont résolus que si l'entitlement TICKET_PREMIUM est actif ; sans resolver
+  // ou sans entitlement, null => comportement Free historique, inchangé.
+  resolvePremium(guildId, config) {
+    return this.premiumConfigResolver
+      ? this.premiumConfigResolver.resolve({ guildId, config })
+      : Promise.resolve(null);
   }
 
   findOpen(guildId, userId) { return this.repository.findOpen(guildId, userId); }
@@ -99,7 +110,8 @@ class TicketService {
     if (!overwrites?.applied) return result(false, overwrites?.code || "TICKET_OVERWRITE_FAILED", { channelId: channel.id });
 
     if (this.welcomeService) {
-      const welcome = this.welcomeService.build({ t, member: ticketMember, supportRole });
+      const premium = await this.resolvePremium(guildId, config);
+      const welcome = this.welcomeService.build({ t, member: ticketMember, supportRole, welcomeMessage: premium ? premium[PKey.WELCOME_MESSAGE] : null });
       try {
         await this.transport.sendTicketWelcome(channel, welcome);
       } catch (_error) {
@@ -172,7 +184,9 @@ class TicketService {
     const closedAt = new Date().toISOString();
     try {
       const updatedTicket = await this.repository.updateByChannel(channelId, { status: "closed", closed: true, closed_at: closedAt });
-      if (this.transcriptService) await this.transcriptService.deliver({ channelId, logChannelId: config.ticket_log_channel_id, transport: this.transport });
+      const premium = await this.resolvePremium(guildId, config);
+      const transcriptChannelId = premium?.[PKey.TRANSCRIPT_CHANNEL_ID] || config.ticket_log_channel_id;
+      if (this.transcriptService) await this.transcriptService.deliver({ channelId, logChannelId: transcriptChannelId, transport: this.transport });
       this.ticketLog?.({action:"ticket_closed",ticketChannelId:channelId,userId:member.id}); return result(true, "TICKET_CLOSED", { ticket: updatedTicket, closedAt });
     } catch (_error) {
       return result(false, "TICKET_CLOSE_FAILED");

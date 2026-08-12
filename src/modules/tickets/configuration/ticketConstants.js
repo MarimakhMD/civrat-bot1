@@ -29,6 +29,11 @@ const TicketComponentId = Object.freeze({
   PREMIUM_EDIT_SUBMIT: "civrat:v1:tickets:premium:edit:submit",
   PREMIUM_PREVIEW: "civrat:v1:tickets:premium:preview",
   PREMIUM_RESET: "civrat:v1:tickets:premium:reset",
+  // Phase 10.3 — contenu du ticket : message d'accueil + salon transcript.
+  PREMIUM_EDIT_WELCOME: "civrat:v1:tickets:premium:edit-welcome",
+  PREMIUM_EDIT_WELCOME_SUBMIT: "civrat:v1:tickets:premium:edit-welcome:submit",
+  PREMIUM_PREVIEW_WELCOME: "civrat:v1:tickets:premium:preview-welcome",
+  PREMIUM_TRANSCRIPT: "civrat:v1:tickets:premium:transcript",
 });
 
 module.exports = { TicketConfigKey, TicketComponentId };

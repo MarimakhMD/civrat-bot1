@@ -103,6 +103,7 @@ function createGuildSettingsRuntime({ legacyConfigService, logger = null }) {
       repository: new SupabaseTicketRepository({ supabase }),
       welcomeService: new TicketWelcomeService(),
       transcriptService: new TicketTranscriptService(),
+      premiumConfigResolver: ticketPremiumConfigResolver,
       ticketLog: (event) => getLogsRuntime().handleTicketEvent({ guild: context.envelope.discordMember.guild, ...event }),
       transport: new DiscordTicketTransport({ guild: context.envelope.discordMember?.guild }),
     }),
