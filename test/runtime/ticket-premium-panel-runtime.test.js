@@ -85,7 +85,7 @@ test("offline (fail-closed resolver), the Premium sub-view is locked and offers 
   const payload = rendered(captured);
   assertLimits(payload, "locked premium view");
   assert.ok(contains(payload, Id.PANEL), "locked view must offer Back to the Tickets section");
-  for (const id of [Id.PREMIUM_EDIT, Id.PREMIUM_RESET, Id.PREMIUM_PREVIEW, Id.PREMIUM_EDIT_WELCOME, Id.PREMIUM_PREVIEW_WELCOME, Id.PREMIUM_TRANSCRIPT]) {
+  for (const id of [Id.PREMIUM_EDIT, Id.PREMIUM_RESET, Id.PREMIUM_PREVIEW, Id.PREMIUM_EDIT_WELCOME, Id.PREMIUM_PREVIEW_WELCOME, Id.PREMIUM_TRANSCRIPT, Id.PREMIUM_EDIT_FORMAT]) {
     assert.equal(contains(payload, id), false, `locked view must not expose ${id}`);
   }
   assert.ok((payload.content || "").includes("Premium"));
@@ -93,7 +93,7 @@ test("offline (fail-closed resolver), the Premium sub-view is locked and offers 
 
 test("premium edit, preview and reset routes are all fail-closed offline (no modal, no write)", async () => {
   const runtime = createGuildSettingsRuntime({ legacyConfigService: legacyConfig() });
-  for (const id of [Id.PREMIUM_EDIT, Id.PREMIUM_PREVIEW, Id.PREMIUM_RESET, Id.PREMIUM_EDIT_WELCOME, Id.PREMIUM_PREVIEW_WELCOME]) {
+  for (const id of [Id.PREMIUM_EDIT, Id.PREMIUM_PREVIEW, Id.PREMIUM_RESET, Id.PREMIUM_EDIT_WELCOME, Id.PREMIUM_PREVIEW_WELCOME, Id.PREMIUM_EDIT_FORMAT]) {
     const captured = {};
     assert.equal(await runtime.tryHandle(button(id, captured)), true, `${id} not routed`);
     assert.equal(captured.modal, undefined, `${id} must not open a modal when locked`);

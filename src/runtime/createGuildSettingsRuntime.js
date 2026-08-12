@@ -10,6 +10,8 @@ const { TicketPremiumConfigResolver } = require("../modules/tickets/services/Tic
 const { EntitlementService } = require("../core/entitlements");
 const { SupabaseEntitlementRepository } = require("../adapters/supabase");
 const { SupabaseTicketRepository } = require("../modules/tickets/persistence/SupabaseTicketRepository");
+const { SupabaseTicketCounterRepository } = require("../modules/tickets/persistence/SupabaseTicketCounterRepository");
+const { TicketChannelNamingService } = require("../modules/tickets/services/TicketChannelNamingService");
 const { DiscordTicketTransport } = require("../adapters/discord/DiscordTicketTransport");
 const { getLogsRuntime } = require("../modules/logs/runtime/getLogsRuntime");
 const { supabase } = require("../config/database");
@@ -104,6 +106,10 @@ function createGuildSettingsRuntime({ legacyConfigService, logger = null }) {
       welcomeService: new TicketWelcomeService(),
       transcriptService: new TicketTranscriptService(),
       premiumConfigResolver: ticketPremiumConfigResolver,
+      // Phase 10.4 : compteur atomique (RPC Supabase, fail-closed si absente)
+      // + nommage Premium des salons.
+      counterRepository: new SupabaseTicketCounterRepository({ supabase }),
+      channelNamingService: new TicketChannelNamingService(),
       ticketLog: (event) => getLogsRuntime().handleTicketEvent({ guild: context.envelope.discordMember.guild, ...event }),
       transport: new DiscordTicketTransport({ guild: context.envelope.discordMember?.guild }),
     }),

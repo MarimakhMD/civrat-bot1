@@ -5,7 +5,7 @@ const { TicketPremiumConfigKey: PKey } = require("../configuration/ticketPremium
 const { TicketPermissionService } = require("./TicketPermissionService");
 
 class TicketService {
-  constructor({ repository, configService = null, transport = null, welcomeService = null, transcriptService = null, ticketLog = null, premiumConfigResolver = null }) {
+  constructor({ repository, configService = null, transport = null, welcomeService = null, transcriptService = null, ticketLog = null, premiumConfigResolver = null, counterRepository = null, channelNamingService = null }) {
     this.repository = repository;
     this.configService = configService;
     this.transport = transport;
@@ -13,16 +13,40 @@ class TicketService {
     this.transcriptService = transcriptService;
     this.ticketLog = ticketLog;
     this.premiumConfigResolver = premiumConfigResolver;
+    this.counterRepository = counterRepository;
+    this.channelNamingService = channelNamingService;
     this.permissions = new TicketPermissionService();
   }
 
   // Phase 10.3 : les contenus Premium (message d'accueil, salon transcript) ne
   // sont résolus que si l'entitlement TICKET_PREMIUM est actif ; sans resolver
   // ou sans entitlement, null => comportement Free historique, inchangé.
-  resolvePremium(guildId, config) {
+  async resolvePremium(guildId, config) {
     return this.premiumConfigResolver
       ? this.premiumConfigResolver.resolve({ guildId, config })
       : Promise.resolve(null);
+  }
+
+  // Phase 10.4 : nom Premium du salon. Fail-closed à chaque étape : sans
+  // entitlement, sans format valide, sans compteur disponible ou avec un
+  // rendu invalide => null => le transport nomme ticket-<userId> (Free).
+  // Note concurrence : le numéro est réservé avant la création Discord ; si
+  // celle-ci échoue ensuite, le trou de séquence est assumé (documenté
+  // docs/architecture/phase-10-4-ticket-counter.md).
+  async resolvePremiumChannelName({ guildId, config, member = null, supportRole = null }) {
+    const premium = await this.resolvePremium(guildId, config);
+    const format = premium?.[PKey.NAME_FORMAT] || null;
+    if (!format || !this.channelNamingService || !member) return null;
+    let number = null;
+    if (format.includes("{number}")) {
+      if (!this.counterRepository) return null;
+      try {
+        number = await this.counterRepository.next(guildId);
+      } catch (_error) {
+        return null;
+      }
+    }
+    return this.channelNamingService.build({ format, member, supportRole, number });
   }
 
   findOpen(guildId, userId) { return this.repository.findOpen(guildId, userId); }
@@ -89,9 +113,16 @@ class TicketService {
     }
     if (openTicket) return result(false, "OPEN_TICKET_EXISTS", { channelId: openTicket.channel_id || null });
 
+    let premiumName = null;
+    try {
+      premiumName = await this.resolvePremiumChannelName({ guildId, config, member: ticketMember, supportRole });
+    } catch (_error) {
+      premiumName = null; // fail-closed : le nommage Free reste la référence
+    }
+
     let channel;
     try {
-      channel = await this.transport.createTicketChannel({ category, member, supportRole });
+      channel = await this.transport.createTicketChannel({ category, member, supportRole, name: premiumName || undefined });
     } catch (_error) {
       return result(false, "TICKET_CHANNEL_CREATION_FAILED");
     }

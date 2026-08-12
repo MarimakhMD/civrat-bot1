@@ -143,11 +143,11 @@ test("locked view exposes no usable Premium control, only Back", () => {
   assert.equal(json.includes(Id.PREMIUM_RESET), false);
 });
 
-test("active sub-view shows resolved state and its 7 controls within Discord limits", () => {
+test("active sub-view shows resolved state and its 8 controls within Discord limits", () => {
   const view = premiumPanelView({ t: (key) => key, premium: { ...premiumValues } });
   assert.deepEqual(
     view.components.map((c) => c.customId),
-    [Id.PREMIUM_EDIT, Id.PREMIUM_PREVIEW, Id.PREMIUM_EDIT_WELCOME, Id.PREMIUM_PREVIEW_WELCOME, Id.PREMIUM_RESET, Id.PREMIUM_TRANSCRIPT, Id.PANEL],
+    [Id.PREMIUM_EDIT, Id.PREMIUM_PREVIEW, Id.PREMIUM_EDIT_WELCOME, Id.PREMIUM_PREVIEW_WELCOME, Id.PREMIUM_EDIT_FORMAT, Id.PREMIUM_RESET, Id.PREMIUM_TRANSCRIPT, Id.PANEL],
   );
   const rows = toActionRows(view.components);
   assert.ok(rows.length <= 5, `premium sub-view renders ${rows.length} rows`);
@@ -173,7 +173,7 @@ test("premium section renders the locked view when the entitlement is inactive",
 test("premium section lists resolved values when the entitlement is active", async () => {
   const { context, state } = makeContext({ config: { ...freeConfig, [PKey.PANEL_TITLE]: "Mon titre" } });
   await openPremiumPanel(context);
-  assert.equal(state.views[0].components.length, 7); // 5 boutons + select transcript + retour (10.3)
+  assert.equal(state.views[0].components.length, 8); // 6 boutons + select transcript + retour (10.4)
   assert.ok(state.views[0].content.includes("Mon titre"));
 });
 
@@ -231,7 +231,7 @@ test("submit and reset are refused without an active entitlement, even with vali
   assert.ok(state.views.every((view) => view.components.length === 1));
 });
 
-test("reset writes null on the 7 premium keys (panel + content) and announces the Free fallback", async () => {
+test("reset writes null on the 8 premium keys (panel + content + naming) and announces the Free fallback", async () => {
   const { context, state } = makeContext({ config: { ...freeConfig, ...premiumValues } });
   await resetPremiumPanel(context);
   assert.deepEqual(state.writes[0], {
@@ -242,6 +242,7 @@ test("reset writes null on the 7 premium keys (panel + content) and announces th
     [PKey.CREATE_BUTTON_LABEL]: null,
     [PKey.WELCOME_MESSAGE]: null,
     [PKey.TRANSCRIPT_CHANNEL_ID]: null,
+    [PKey.NAME_FORMAT]: null,
   });
   assert.ok(state.views[0].content.includes("tickets.premiumResetDone"));
 });

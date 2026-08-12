@@ -48,9 +48,11 @@ class DiscordTicketTransport {
     return this.guild.members.me || null;
   }
 
-  async createTicketChannel({ category, member }) {
+  async createTicketChannel({ category, member, name = null }) {
     return this.guild.channels.create({
-      name: `ticket-${member.id}`,
+      // Phase 10.4 : name = nom Premium résolu par TicketService ; absent =>
+      // nommage Free historique ticket-<userId>, strictement inchangé.
+      name: name || `ticket-${member.id}`,
       type: ChannelType.GuildText,
       parent: category.id,
     });

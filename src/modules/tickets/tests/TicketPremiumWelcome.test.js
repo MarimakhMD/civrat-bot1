@@ -264,10 +264,10 @@ test("welcome preview is locked without an active entitlement", async () => {
   assert.equal(state.views[0].components.length, 1);
 });
 
-test("reset clears the 7 premium keys including welcome message and transcript channel", async () => {
+test("reset clears the 8 premium keys including welcome message and transcript channel", async () => {
   const { context, state } = makeContext({ config: { ...baseConfig, [PKey.WELCOME_MESSAGE]: "x", [PKey.TRANSCRIPT_CHANNEL_ID]: TRANSCRIPT_CHANNEL } });
   await resetPremiumPanel(context);
-  assert.equal(Object.keys(state.writes[0]).length, 7);
+  assert.equal(Object.keys(state.writes[0]).length, 8);
   assert.ok(Object.values(state.writes[0]).every((value) => value === null));
 });
 

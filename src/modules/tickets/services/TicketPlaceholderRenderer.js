@@ -14,7 +14,7 @@ class TicketPlaceholderRenderer {
   }
 }
 
-function ticketPlaceholderValues({ member = null, supportRole = null } = {}) {
+function ticketPlaceholderValues({ member = null, supportRole = null, number = null } = {}) {
   const memberId = member?.id || "";
   return {
     user: memberId ? `<@${memberId}>` : "",
@@ -24,6 +24,9 @@ function ticketPlaceholderValues({ member = null, supportRole = null } = {}) {
     userid: memberId,
     server: member?.guild?.name || "",
     supportrole: supportRole?.id ? `<@&${supportRole.id}>` : "",
+    // Phase 10.4 : {number} = compteur de la guilde, paddé sur 3 chiffres
+    // (001, 002, …) ; absent hors nommage Premium.
+    number: number === null || number === undefined ? "" : String(number).padStart(3, "0"),
   };
 }
 

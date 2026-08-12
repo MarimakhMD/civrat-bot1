@@ -34,6 +34,9 @@ const TicketComponentId = Object.freeze({
   PREMIUM_EDIT_WELCOME_SUBMIT: "civrat:v1:tickets:premium:edit-welcome:submit",
   PREMIUM_PREVIEW_WELCOME: "civrat:v1:tickets:premium:preview-welcome",
   PREMIUM_TRANSCRIPT: "civrat:v1:tickets:premium:transcript",
+  // Phase 10.4 — format de nommage Premium des salons.
+  PREMIUM_EDIT_FORMAT: "civrat:v1:tickets:premium:edit-format",
+  PREMIUM_EDIT_FORMAT_SUBMIT: "civrat:v1:tickets:premium:edit-format:submit",
 });
 
 module.exports = { TicketConfigKey, TicketComponentId };

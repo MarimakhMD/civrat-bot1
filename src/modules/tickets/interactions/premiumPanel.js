@@ -20,9 +20,12 @@ const MODAL_FIELDS = Object.freeze([
 // est déjà pleine (5/5 inputs Discord).
 const WELCOME_FIELD = Object.freeze({ id: "welcome_message", key: PKey.WELCOME_MESSAGE, labelKey: "tickets.premiumFieldWelcomeMessage", style: "paragraph" });
 
+// Champ de la modale de nommage (Phase 10.4) : format court, ex. ticket-{number}.
+const FORMAT_FIELD = Object.freeze({ id: "name_format", key: PKey.NAME_FORMAT, labelKey: "tickets.premiumFieldNameFormat", style: "short" });
+
 // Clés remises à null par « Réinitialiser (Free) » : panneau (10.2) + contenu
-// (10.3). null = retour au default Free pour chaque clé.
-const RESETTABLE_KEYS = Object.freeze([...MODAL_FIELDS.map((field) => field.key), PKey.WELCOME_MESSAGE, PKey.TRANSCRIPT_CHANNEL_ID]);
+// (10.3) + nommage (10.4). null = retour au default Free pour chaque clé.
+const RESETTABLE_KEYS = Object.freeze([...MODAL_FIELDS.map((field) => field.key), PKey.WELCOME_MESSAGE, PKey.TRANSCRIPT_CHANNEL_ID, PKey.NAME_FORMAT]);
 
 const ERROR_KEY_BY_FIELD = Object.freeze({
   [PKey.PANEL_TITLE]: "tickets.premiumErrorTitle",
@@ -32,6 +35,7 @@ const ERROR_KEY_BY_FIELD = Object.freeze({
   [PKey.CREATE_BUTTON_LABEL]: "tickets.premiumErrorButtonLabel",
   [PKey.WELCOME_MESSAGE]: "tickets.premiumErrorWelcomeMessage",
   [PKey.TRANSCRIPT_CHANNEL_ID]: "tickets.premiumErrorGeneric",
+  [PKey.NAME_FORMAT]: "tickets.premiumErrorNameFormat",
 });
 
 // Les valeurs affichées dans la vue sont tronquées : le content d'un message
@@ -69,8 +73,10 @@ function premiumPanelView({ t, premium, notice = null }) {
     line("tickets.premiumFieldImage", premium[PKey.PANEL_IMAGE_URL]),
     line("tickets.premiumFieldButtonLabel", premium[PKey.CREATE_BUTTON_LABEL]),
     line("tickets.premiumFieldWelcomeMessage", premium[PKey.WELCOME_MESSAGE]),
+    line("tickets.premiumFieldNameFormat", premium[PKey.NAME_FORMAT]),
     `${t("tickets.premiumFieldTranscriptChannel")} : ${premium[PKey.TRANSCRIPT_CHANNEL_ID] ? `<#${premium[PKey.TRANSCRIPT_CHANNEL_ID]}>` : t("tickets.premiumStateDefault")}`,
     t("tickets.premiumPlaceholdersHelp"),
+    t("tickets.premiumNameFormatHelp"),
   ].filter(Boolean).join("\n");
   return {
     title: t("tickets.premiumActiveTitle"),
@@ -80,6 +86,7 @@ function premiumPanelView({ t, premium, notice = null }) {
       { type: "button", customId: Id.PREMIUM_PREVIEW, label: t("tickets.premiumPreview"), style: "secondary" },
       { type: "button", customId: Id.PREMIUM_EDIT_WELCOME, label: t("tickets.premiumEditWelcome"), style: "primary" },
       { type: "button", customId: Id.PREMIUM_PREVIEW_WELCOME, label: t("tickets.premiumPreviewWelcome"), style: "secondary" },
+      { type: "button", customId: Id.PREMIUM_EDIT_FORMAT, label: t("tickets.premiumEditNameFormat"), style: "primary" },
       { type: "button", customId: Id.PREMIUM_RESET, label: t("tickets.premiumReset"), style: "danger" },
       { type: "channel-select", customId: Id.PREMIUM_TRANSCRIPT, placeholder: t("tickets.premiumFieldTranscriptChannel"), channelTypes: [0] },
       backButton(t),
@@ -179,6 +186,24 @@ async function submitPremiumWelcome(context) {
   return submitPremiumUpdates(context, { [WELCOME_FIELD.key]: normalizeModalValue(values[WELCOME_FIELD.id]) }, "tickets.premiumWelcomeSaved");
 }
 
+// Phase 10.4 — modale dédiée au format de nommage des salons (1 champ court,
+// pré-rempli de la valeur résolue ; placeholder d'unicité imposé par la
+// validation, rejet sans écriture sinon).
+async function openPremiumFormatModal(context) {
+  if (!(await isPremiumActive(context))) return renderLocked(context);
+  const premium = await resolvePremiumConfig(context);
+  return context.envelope.transport.showModal({
+    customId: Id.PREMIUM_EDIT_FORMAT_SUBMIT,
+    title: context.t("tickets.premiumNameFormatModalTitle"),
+    fields: [{ id: FORMAT_FIELD.id, label: context.t(FORMAT_FIELD.labelKey), value: premium[FORMAT_FIELD.key] || "", required: false, style: FORMAT_FIELD.style }],
+  });
+}
+
+async function submitPremiumFormat(context) {
+  const values = context.envelope.modalValues || {};
+  return submitPremiumUpdates(context, { [FORMAT_FIELD.key]: normalizeModalValue(values[FORMAT_FIELD.id]) }, "tickets.premiumNameFormatSaved");
+}
+
 // Phase 10.3 — salon de destination des transcripts (select salon texte ;
 // la remise à null passe par « Réinitialiser (Free) »).
 async function selectPremiumTranscript(context) {
@@ -253,4 +278,6 @@ module.exports = {
   submitPremiumWelcome,
   previewPremiumWelcome,
   selectPremiumTranscript,
+  openPremiumFormatModal,
+  submitPremiumFormat,
 };
