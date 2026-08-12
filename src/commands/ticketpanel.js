@@ -1,9 +1,8 @@
 const { SlashCommandBuilder, PermissionsBitField } = require("discord.js");
-const { TicketConfigService } = require("../modules/tickets/services/TicketConfigService");
 const { TicketPanelService } = require("../modules/tickets/services/TicketPanelService");
 const { TicketPanelDeliveryService } = require("../modules/tickets/services/TicketPanelDeliveryService");
 const { DiscordTicketTransport } = require("../adapters/discord/DiscordTicketTransport");
-const guildConfigService = require("../services/guildConfig");
+const { getTicketPanelRuntime } = require("../modules/tickets/runtime/getTicketPanelRuntime");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -12,14 +11,12 @@ module.exports = {
     .setDefaultMemberPermissions(PermissionsBitField.Flags.ManageGuild),
 
   async execute(interaction) {
-    const configService = new TicketConfigService({
-      guildConfigResolver: {
-        get: guildConfigService.getGuildConfig,
-        update: guildConfigService.updateGuildConfig,
-      },
-    });
+    // Phase 10.2 : injection du resolver Premium via le runtime partagé (même
+    // câblage que la composition /settings). Sans entitlement actif, le
+    // panneau envoyé reste le panneau Free historique.
+    const { configService, premiumConfigResolver } = getTicketPanelRuntime();
     const delivery = new TicketPanelDeliveryService({
-      panelService: new TicketPanelService({ configService }),
+      panelService: new TicketPanelService({ configService, premiumConfigResolver }),
       transport: new DiscordTicketTransport({ guild: interaction.guild }),
     });
     const result = await delivery.deliver(interaction.guild.id, (key) => key);

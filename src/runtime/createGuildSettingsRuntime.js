@@ -6,6 +6,9 @@ const { InteractionContextFactory, InteractionRegistry, InteractionRouter } = re
 const { PermissionService } = require("../core/permissions");
 const { DiscordInteractionAdapter, toDiscordCommand } = require("../adapters/discord");
 const { TicketConfigService, TicketService, TicketWelcomeService, TicketTranscriptService, registerTickets } = require("../modules/tickets");
+const { TicketPremiumConfigResolver } = require("../modules/tickets/services/TicketPremiumConfigResolver");
+const { EntitlementService } = require("../core/entitlements");
+const { SupabaseEntitlementRepository } = require("../adapters/supabase");
 const { SupabaseTicketRepository } = require("../modules/tickets/persistence/SupabaseTicketRepository");
 const { DiscordTicketTransport } = require("../adapters/discord/DiscordTicketTransport");
 const { getLogsRuntime } = require("../modules/logs/runtime/getLogsRuntime");
@@ -85,9 +88,16 @@ function createGuildSettingsRuntime({ legacyConfigService, logger = null }) {
   registerLogs({ registry, service: new LogsConfigService({ guildConfigResolver }), settingsHome: async (context) => context.envelope.transport.update({ view: require("../modules/guild-settings/interactions/openSettingsPanel").settingsView(context.t, await settings.getLanguage(context.guildId), settingsSections) }) });
   const captchaConfigService = new CaptchaConfigService({ guildConfigResolver });
   const ticketConfigService = new TicketConfigService({ guildConfigResolver });
+  // Phase 10.1 — fondations Ticket Premium : l'entitlement est lu via Supabase
+  // et injecté dans un resolver en couches (defaults Free, overrides Premium
+  // uniquement si TICKET_PREMIUM actif). Aucune route ni aucun cycle de vie
+  // Ticket Free n'est modifié ; la consommation arrive en 10.2+.
+  const entitlementService = new EntitlementService({ repository: new SupabaseEntitlementRepository({ supabase }) });
+  const ticketPremiumConfigResolver = new TicketPremiumConfigResolver({ entitlementService, logger });
   registerTickets({
     registry,
     service: ticketConfigService,
+    premiumConfigResolver: ticketPremiumConfigResolver,
     creationServiceFactory: (context) => new TicketService({
       configService: ticketConfigService,
       repository: new SupabaseTicketRepository({ supabase }),
@@ -134,6 +144,6 @@ function createGuildSettingsRuntime({ legacyConfigService, logger = null }) {
   const analyticsService = new (require("../modules/analytics/services/AnalyticsService").AnalyticsService)({ configService: analyticsConfigService, analyticsRepository: new (require("../modules/analytics/persistence/InMemoryAnalyticsRepository").InMemoryAnalyticsRepository)(), xpRepository: new (require("../modules/xp/persistence/XPRepository").InMemoryXPRepository)(), inviteRepository: new (require("../modules/invites/persistence/InviteStatsRepository").InMemoryInviteStatsRepository)() });
   const analyticsRegistration = registerAnalytics({ registry, configService: analyticsConfigService, analyticsService, settingsHome: async (context) => context.envelope.transport.update({ view: require("../modules/guild-settings/interactions/openSettingsPanel").settingsView(context.t, await settings.getLanguage(context.guildId), settingsSections) }) });
   const discord = new DiscordInteractionAdapter({ router, registry });
-  return Object.freeze({ tryHandle: (interaction) => discord.tryHandle(interaction), getDiscordCommands: () => [...registration.commands, ...moderationRegistration.commands, ...channelModerationRegistration.commands, ...autoModRegistration.commands, ...stickerRegistration.commands, ...giveawayRegistration.commands, ...suggestionRegistration.commands, ...analyticsRegistration.commands].map((definition) => toDiscordCommand(definition, async (interaction) => discord.tryHandle(interaction))), registry });
+  return Object.freeze({ tryHandle: (interaction) => discord.tryHandle(interaction), getDiscordCommands: () => [...registration.commands, ...moderationRegistration.commands, ...channelModerationRegistration.commands, ...autoModRegistration.commands, ...stickerRegistration.commands, ...giveawayRegistration.commands, ...suggestionRegistration.commands, ...analyticsRegistration.commands].map((definition) => toDiscordCommand(definition, async (interaction) => discord.tryHandle(interaction))), registry, ticketPremiumResolver: ticketPremiumConfigResolver });
 }
 module.exports = { createGuildSettingsRuntime };

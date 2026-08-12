@@ -19,8 +19,14 @@ class DiscordTicketTransport {
     const channel = this.guild.channels.cache.get(channelId);
     if (!channel?.isTextBased()) throw new Error("channel_unavailable");
     const button = view.components[0];
+    // Phase 10.2 : les personnalisations Premium couleur/image n'arrivent que
+    // si le resolver a autorisé Premium. Sans view.embed (Free), le payload
+    // envoyé est strictement identique à l'historique.
+    const embed = new EmbedBuilder().setTitle(view.title).setDescription(view.content);
+    if (view.embed?.color) embed.setColor(view.embed.color);
+    if (view.embed?.image) embed.setImage(view.embed.image);
     await channel.send({
-      embeds: [new EmbedBuilder().setTitle(view.title).setDescription(view.content)],
+      embeds: [embed],
       components: [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(button.customId).setLabel(button.label).setStyle(ButtonStyle.Primary))],
     });
   }

@@ -23,6 +23,12 @@ const TicketComponentId = Object.freeze({
   REMOVE_MEMBER: "civrat:v1:tickets:remove-member",
   REMOVE_MEMBER_SUBMIT: "civrat:v1:tickets:remove-member:submit",
   CLAIM: "civrat:v1:tickets:claim",
+  // Phase 10.2 — sous-vue /settings « Personnalisation Premium » du panneau.
+  PREMIUM_SECTION: "civrat:v1:tickets:premium",
+  PREMIUM_EDIT: "civrat:v1:tickets:premium:edit",
+  PREMIUM_EDIT_SUBMIT: "civrat:v1:tickets:premium:edit:submit",
+  PREMIUM_PREVIEW: "civrat:v1:tickets:premium:preview",
+  PREMIUM_RESET: "civrat:v1:tickets:premium:reset",
 });
 
 module.exports = { TicketConfigKey, TicketComponentId };
