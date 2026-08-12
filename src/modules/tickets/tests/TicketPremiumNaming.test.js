@@ -1,11 +1,16 @@
 "use strict";
 
 // Phase 10.4 — nommage Premium des salons + compteur atomique.
-// Couverture exigée : Free historique inchangé, séquence 001/002/003,
-// simultanéité sans collision, expiration/révocation => Free, rejet des
-// formats invalides, placeholder d'unicité obligatoire, longueur Discord,
-// compteurs indépendants par guilde, continuité au redémarrage, échec de
-// création (trou de séquence assumé et documenté), fail-closed sans compteur.
+// Évolution nommage Free : le Free est DÉSORMAIS atomique lui aussi
+// (ticket-001, paddé 3) via le MÊME compteur unique que le Premium — un seul
+// canal d'incrément, aucun COUNT(*)+1 ; seul repli sans compteur disponible :
+// ticket-<userId> au niveau du transport (fail-closed).
+// Couverture exigée : Free atomique 001/002/003, Premium inchangé, séquence
+// 001/002/003, simultanéité sans collision, expiration/révocation => Free
+// atomique, rejet des formats invalides, placeholder d'unicité obligatoire,
+// longueur Discord, compteurs indépendants par guilde, continuité au
+// redémarrage, échec de création (trou de séquence assumé et documenté),
+// fail-closed sans compteur.
 // Hors ligne : repository d'entitlement et compteur simulés (InMemory).
 
 const test = require("node:test");
@@ -52,13 +57,83 @@ function createService({ config, record, counter = new InMemoryTicketCounterRepo
   return { service, captured };
 }
 
-// --- 1. Free strictement inchangé ------------------------------------------
+// --- 1. Nommage Free atomique ------------------------------------------------
 
-test("Free without resolver passes no name: the transport keeps the historical ticket-<userId>", async () => {
-  const { service, captured } = createService({ config: { ...baseConfig, [PKey.NAME_FORMAT]: "ticket-{number}" } });
+test("Free naming is atomic: ticket-001/002/003 on the shared counter", async () => {
+  const counter = new InMemoryTicketCounterRepository();
+  const { service, captured } = createService({ config: { ...baseConfig, [PKey.NAME_FORMAT]: "ticket-{number}" }, counter });
+  await service.createTicket({ guildId: "g", member: richMember, t });
+  await service.createTicket({ guildId: "g", member: { ...richMember, id: "m2" }, t });
+  await service.createTicket({ guildId: "g", member: { ...richMember, id: "m3" }, t });
+  assert.deepEqual(captured.createChannel.map((c) => c.name), ["ticket-001", "ticket-002", "ticket-003"]);
+});
+
+test("Free without any counter passes no name: the transport keeps the historical ticket-<userId>", async () => {
+  const { service, captured } = createService({ config: { ...baseConfig, [PKey.NAME_FORMAT]: "ticket-{number}" }, counter: null });
   const result = await service.createTicket({ guildId: "g", member: richMember, t });
   assert.equal(result.code, "TICKET_CREATED");
   assert.equal(captured.createChannel[0].name, undefined);
+});
+
+// --- 1b. Non-régression nommage Free atomique (compteur unique partagé) ------
+
+test("a single shared counter: a Premium ticket after a Free one continues the sequence", async () => {
+  const counter = new InMemoryTicketCounterRepository();
+  const free = createService({ config: { ...baseConfig }, counter });
+  await free.service.createTicket({ guildId: "g", member: richMember, t });
+  const premium = createService({ config: { ...baseConfig, [PKey.NAME_FORMAT]: "vip-{number}" }, record: ACTIVE, counter });
+  await premium.service.createTicket({ guildId: "g", member: { ...richMember, id: "m2" }, t });
+  assert.deepEqual(free.captured.createChannel.map((c) => c.name), ["ticket-001"]);
+  assert.deepEqual(premium.captured.createChannel.map((c) => c.name), ["vip-002"]); // même compteur : pas de vip-001 orphelin
+});
+
+test("30 simultaneous Free creations produce 30 distinct atomic names", async () => {
+  const counter = new InMemoryTicketCounterRepository();
+  const { service, captured } = createService({ config: { ...baseConfig }, counter });
+  await Promise.all(Array.from({ length: 30 }, (_, i) => service.createTicket({ guildId: "g", member: { ...richMember, id: `m${i}` }, t })));
+  const names = captured.createChannel.map((c) => c.name);
+  assert.equal(new Set(names).size, 30);
+  assert.ok(names.includes("ticket-001") && names.includes("ticket-030"));
+});
+
+test("active Premium without a stored format uses the atomic Free naming", async () => {
+  const { service, captured } = createService({ config: { ...baseConfig }, record: ACTIVE });
+  const result = await service.createTicket({ guildId: "g", member: richMember, t });
+  assert.equal(result.code, "TICKET_CREATED");
+  assert.equal(captured.createChannel[0].name, "ticket-001");
+});
+
+test("a failing Free counter keeps the creation fail-closed (transport falls back)", async () => {
+  const throwing = { next: async () => { throw new Error("rpc missing"); } };
+  const { service, captured } = createService({ config: { ...baseConfig }, counter: throwing });
+  const result = await service.createTicket({ guildId: "g", member: richMember, t });
+  assert.equal(result.code, "TICKET_CREATED");
+  assert.equal(captured.createChannel[0].name, undefined); // repli transport ticket-<userId>
+});
+
+test("resolveFreeChannelName: direct resolution, guards and fail-closed branches", async () => {
+  const { FREE_CHANNEL_NAME_FORMAT } = require("../services/TicketService");
+  assert.equal(FREE_CHANNEL_NAME_FORMAT, "ticket-{number}");
+
+  const naming = new TicketChannelNamingService();
+  const service = new TicketService({
+    repository: { findOpen: async () => null },
+    counterRepository: new InMemoryTicketCounterRepository(),
+    channelNamingService: naming,
+  });
+  assert.equal(await service.resolveFreeChannelName("g"), "ticket-001");
+  assert.equal(await service.resolveFreeChannelName("g"), "ticket-002");
+  assert.equal(await service.resolveFreeChannelName(null), null); // guilde absente
+  const noCounter = new TicketService({ repository: {}, channelNamingService: naming });
+  assert.equal(await noCounter.resolveFreeChannelName("g"), null); // compteur absent
+  const noNaming = new TicketService({ repository: {}, counterRepository: new InMemoryTicketCounterRepository() });
+  assert.equal(await noNaming.resolveFreeChannelName("g"), null); // service de nommage absent
+  const failing = new TicketService({
+    repository: {},
+    counterRepository: { next: async () => { throw new Error("counter_storage_unavailable"); } },
+    channelNamingService: naming,
+  });
+  assert.equal(await failing.resolveFreeChannelName("g"), null); // compteur en échec
 });
 
 test("transport contract: without name it still creates ticket-<userId>, with name it uses it", async () => {
@@ -103,20 +178,22 @@ test("30 simultaneous creations produce 30 distinct numbers (atomic counter)", a
 
 // --- 5/6. Expiration et révocation => Free ----------------------------------
 
-test("expired or revoked entitlement falls back to the Free naming even with a stored format", async () => {
+test("expired or revoked entitlement falls back to the atomic Free naming (stored Premium format never leaks)", async () => {
   for (const record of [EXPIRED, INACTIVE]) {
-    const { service, captured } = createService({ config: { ...baseConfig, [PKey.NAME_FORMAT]: "ticket-{number}" }, record });
+    const { service, captured } = createService({ config: { ...baseConfig, [PKey.NAME_FORMAT]: "vip-{number}" }, record });
     await service.createTicket({ guildId: "g", member: richMember, t });
-    assert.equal(captured.createChannel[0].name, undefined);
+    const result = await service.createTicket({ guildId: "g", member: { ...richMember, id: "m2" }, t });
+    assert.equal(result.code, "TICKET_CREATED");
+    assert.deepEqual(captured.createChannel.map((c) => c.name), ["ticket-001", "ticket-002"]); // Free atomique, pas de fuite vip-*
   }
 });
 
 // --- 7/8. Valeurs invalides et placeholder d'unicité ------------------------
 
-test("an invalid stored format (no uniqueness placeholder) is ignored at consumption time", async () => {
+test("an invalid stored format (no uniqueness placeholder) is ignored: atomic Free naming takes over", async () => {
   const { service, captured } = createService({ config: { ...baseConfig, [PKey.NAME_FORMAT]: "ticket" }, record: ACTIVE });
   await service.createTicket({ guildId: "g", member: richMember, t });
-  assert.equal(captured.createChannel[0].name, undefined); // fallback Free
+  assert.equal(captured.createChannel[0].name, "ticket-001"); // fallback Free atomique
 });
 
 test("naming service: pure rendering, sanitization, Discord length cap", () => {

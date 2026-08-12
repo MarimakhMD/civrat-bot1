@@ -22,9 +22,16 @@ class TicketWelcomeService {
         { name: t("tickets.welcomeCreator"), value: `<@${member.id}>`, inline: true },
         { name: t("tickets.welcomeSupportRole"), value: `<@&${supportRole.id}>`, inline: true },
       ],
+      // P15 — convergence : l'accueil expose les 5 actions du cycle de vie
+      // (fermer, claim, renommer, ajouter, retirer), branchées sur les routes
+      // modulaires civrat:v1:tickets:* — exactement la capacité d'une
+      // ActionRow Discord (5 boutons).
       components: [
         { type: "button", customId: Id.CLOSE, label: t("tickets.close"), style: "danger" },
         { type: "button", customId: Id.CLAIM, label: t("tickets.claim"), style: "secondary" },
+        { type: "button", customId: Id.RENAME, label: t("tickets.rename"), style: "secondary" },
+        { type: "button", customId: Id.ADD_MEMBER, label: t("tickets.addMember"), style: "secondary" },
+        { type: "button", customId: Id.REMOVE_MEMBER, label: t("tickets.removeMember"), style: "secondary" },
       ],
     };
   }

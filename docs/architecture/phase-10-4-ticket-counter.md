@@ -69,6 +69,29 @@ $$;
    (`feature_key = 'TICKET_PREMIUM'`, `status = 'active'`).
 4. Tant que 1-3 ne sont pas faits : fail-closed partout, Free inchangé.
 
+## Addendum — nommage Free atomique (P15)
+
+Le nommage Free est désormais atomique lui aussi : les salons Free sont
+nommés `ticket-001`, `ticket-002`… (format `ticket-{number}`, paddé 3) via
+le **même compteur unique** (`guild_configs.ticket_counter` + RPC
+`increment_ticket_counter`) que le placeholder Premium `{number}`. Un seul
+canal d'incrément par guilde — aucun `COUNT(*) + 1` nulle part.
+
+- Free et Premium partagent la séquence : un ticket Free suivi d'un Premium
+  `vip-{number}` donnent `ticket-001` puis `vip-002`.
+- Compteur indisponible (RPC absente, Supabase non configuré, erreur) :
+  comportement fail-closed conservé — le transport retombe sur
+  `ticket-<userId>` et la création n'est jamais bloquée.
+- La convergence P15 a retiré le moteur tickets legacy de
+  `src/events/interactionCreate.js` (dont sa numérotation `COUNT(*) + 1`
+  non atomique, sujette aux collisions en concurrence) : l'unicité des noms
+  ne dépend plus que du compteur RPC.
+- Tests de non-régression :
+  `src/modules/tickets/tests/TicketPremiumNaming.test.js` (séquences Free,
+  compteur partagé Free/Premium, simultanéité sans collision, fail-closed)
+  et `test/runtime/ticket-legacy-convergence.test.js` (dispatcher sans
+  moteur legacy, welcome à 5 contrôles, notices post-action).
+
 ## Rollback (manuel, uniquement si abandon complet)
 
 ```sql

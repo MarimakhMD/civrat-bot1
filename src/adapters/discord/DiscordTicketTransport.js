@@ -70,6 +70,23 @@ class DiscordTicketTransport {
     });
   }
 
+  // P15 — notices post-action (fermeture/réouverture) du moteur Tickets.
+  // Composants optionnels : la notice de réouverture n'en embarque aucun.
+  // Styles connus : danger/success/primary ; repli Secondary sinon.
+  async sendTicketNotice(channelId, view) {
+    const channel = this.guild.channels.cache.get(channelId);
+    if (!channel?.isTextBased()) throw new Error("ticket_channel_unavailable");
+    const styles = { danger: ButtonStyle.Danger, success: ButtonStyle.Success, primary: ButtonStyle.Primary };
+    const buttons = (view.components || []).map((component) => new ButtonBuilder()
+      .setCustomId(component.customId)
+      .setLabel(component.label)
+      .setStyle(styles[component.style] || ButtonStyle.Secondary));
+    return channel.send({
+      embeds: [new EmbedBuilder().setDescription(view.description)],
+      components: buttons.length ? [new ActionRowBuilder().addComponents(buttons)] : [],
+    });
+  }
+
   async isMemberInRole(member, roleId) {
     return Boolean(member?.roles?.cache?.has(roleId));
   }

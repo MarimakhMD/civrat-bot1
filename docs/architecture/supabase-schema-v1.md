@@ -258,27 +258,29 @@ resolvers Premium (fail-closed) → tout le bot reste en mode Free. Aucun crash.
 
 ---
 
-## 3. `tickets` — registre des tickets (deux écrivains)
+## 3. `tickets` — registre des tickets (un seul écrivain)
 
-**Consommateurs :**
-`src/modules/tickets/persistence/SupabaseTicketRepository.js` (moteur V1) **et**
-`src/events/interactionCreate.js` (moteur legacy, lignes 216-234) — **les deux
-écrivent dans la même table** (cohabitation à assumer tant que le legacy n'est
-pas retiré).
+**Consommateur unique :**
+`src/modules/tickets/persistence/SupabaseTicketRepository.js` (moteur V1).
+Depuis la convergence P15, le moteur legacy de
+`src/events/interactionCreate.js` (qui écrivait aussi dans cette table et
+numérotait par `COUNT(*) + 1` non atomique) **n'existe plus** : il n'y a
+plus qu'un writer, et la numérotation des salons passe par le compteur
+atomique unique (§ RPC `increment_ticket_counter`).
 
 **Opérations :** SELECT (`maybeSingle` par `guild_id+user_id+status IN`,
-`maybeSingle` par `channel_id`), INSERT, UPDATE (`eq channel_id`), et legacy
-`SELECT id` avec `count: "exact", head: true`. Aucun DELETE.
+`maybeSingle` par `channel_id`), INSERT, UPDATE (`eq channel_id`).
+Aucun DELETE.
 
 ### Colonnes consommées
 
 | Colonne | Type déduit | Preuve |
 |---|---|---|
-| `id` | PK (`bigint`/`uuid` — à confirmer ; le legacy fait seulement `count`) | `select("id", { count:"exact" })` |
+| `id` | PK (`bigint`/`uuid` — à confirmer ; non lue par le code V1) | aucune lecture directe |
 | `guild_id` | `text` | filtres + inserts |
 | `user_id` | `text` (créateur) | filtres + inserts |
 | `channel_id` | `text` | filtres `maybeSingle`, `update ... eq channel_id` |
-| `category` | `text` (`"support"` côté V1 ; valeur libre côté legacy `interaction.values[0]`) | inserts |
+| `category` | `text` (`"support"` en V1) | inserts |
 | `status` | `text` (`"open"`, `"claimed"`, `"closed"`, `"deleted"`) | filtres `.in(...)`, updates |
 | `closed` | `boolean` | inserts/updates |
 | `closed_at` | `timestamptz` nullable | `new Date().toISOString()` / `null` |
@@ -288,7 +290,7 @@ pas retiré).
 | Contrainte | Statut | Justification |
 |---|---|---|
 | `UNIQUE (channel_id)` | **justifiée** | `findByChannel` en `maybeSingle()` + `update ... eq channel_id` supposent une ligne unique par salon. |
-| PK sur `id` | à confirmer (présence prouvée par le legacy count, type libre) |
+| PK sur `id` | à confirmer (non consommée par le code, type libre) |
 | CHECK sur `status` | à confirmer (le code accepte 4 valeurs, aucune contrainte exigée) |
 
 ### DDL documentaire (non exécutée)
@@ -311,8 +313,7 @@ create table if not exists public.tickets (
 > (toute valeur default `now()` convient).
 
 **Si la table manque :** moteur V1 → `TICKET_CONFIG_INCOMPLETE`/erreurs
-`PERSISTENCE_ERROR` ; legacy → `logger.error` et fallback nommage. Aucun crash
-processus.
+`PERSISTENCE_ERROR`. Aucun crash processus.
 
 ---
 

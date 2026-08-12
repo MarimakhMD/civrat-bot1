@@ -48,8 +48,14 @@ test("welcome view is localized and contains creator, support role, and stable c
   assert.equal(english.title, "🎫 New ticket");
   assert.equal(french.fields[0].value, "<@creator>");
   assert.equal(french.fields[1].value, "<@&support>");
-  assert.deepEqual(french.components.map((component) => component.customId), [Id.CLOSE, Id.CLAIM]);
-  assert.deepEqual(english.components.map((component) => component.customId), ["civrat:v1:tickets:close", "civrat:v1:tickets:claim"]);
+  // P15 : l'accueil expose les 5 actions du cycle de vie (capacité max d'une
+  // ActionRow Discord), toutes branchées sur les routes modulaires stables.
+  const expectedControls = [Id.CLOSE, Id.CLAIM, Id.RENAME, Id.ADD_MEMBER, Id.REMOVE_MEMBER];
+  assert.deepEqual(french.components.map((component) => component.customId), expectedControls);
+  assert.deepEqual(english.components.map((component) => component.customId), [
+    "civrat:v1:tickets:close", "civrat:v1:tickets:claim", "civrat:v1:tickets:rename",
+    "civrat:v1:tickets:add-member", "civrat:v1:tickets:remove-member",
+  ]);
 });
 
 test("Claim control is registered separately from legacy interactions", () => {
@@ -99,6 +105,8 @@ test("Discord transport sends an embed with prepared controls only", async () =>
   await transport.sendTicketWelcome(channel, view);
   assert.equal(payload.embeds[0].data.title, "🎫 New ticket");
   assert.equal(payload.embeds[0].data.fields[0].value, "<@creator>");
-  assert.equal(payload.components[0].components[0].data.custom_id, Id.CLOSE);
-  assert.equal(payload.components[0].components[1].data.custom_id, Id.CLAIM);
+  // P15 : les 5 contrôles tiennent dans une seule ActionRow (capacité Discord).
+  const renderedIds = payload.components[0].components.map((component) => component.data.custom_id);
+  assert.deepEqual(renderedIds, [Id.CLOSE, Id.CLAIM, Id.RENAME, Id.ADD_MEMBER, Id.REMOVE_MEMBER]);
+  assert.equal(payload.components.length, 1);
 });

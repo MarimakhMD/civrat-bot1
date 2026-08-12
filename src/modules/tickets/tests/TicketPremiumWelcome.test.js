@@ -47,7 +47,8 @@ test("Free welcome embed stays exactly the historical embed without custom messa
     { name: "tickets.welcomeCreator", value: "<@m1>", inline: true },
     { name: "tickets.welcomeSupportRole", value: "<@&r1>", inline: true },
   ]);
-  assert.deepEqual(welcome.components.map((c) => c.customId), [Id.CLOSE, Id.CLAIM]);
+  // P15 : 5 contrôles du cycle de vie sur les routes modulaires.
+  assert.deepEqual(welcome.components.map((c) => c.customId), [Id.CLOSE, Id.CLAIM, Id.RENAME, Id.ADD_MEMBER, Id.REMOVE_MEMBER]);
 });
 
 test("custom welcome message overrides only the description, with placeholders resolved", () => {
@@ -59,7 +60,7 @@ test("custom welcome message overrides only the description, with placeholders r
   });
   assert.equal(welcome.description, "Bienvenue <@member> (maria) sur CIVRAT, rôle <@&sup> !");
   assert.equal(welcome.title, "tickets.welcomeTitle");
-  assert.deepEqual(welcome.components.map((c) => c.customId), [Id.CLOSE, Id.CLAIM]);
+  assert.deepEqual(welcome.components.map((c) => c.customId), [Id.CLOSE, Id.CLAIM, Id.RENAME, Id.ADD_MEMBER, Id.REMOVE_MEMBER]);
 });
 
 test("ticket placeholders follow the product convention (unknown tokens preserved, missing data empty)", () => {
@@ -247,7 +248,7 @@ test("welcome preview renders the real welcome embed ephemerally, resolved for t
   assert.equal(sent.embed.title, "tickets.welcomeTitle");
   assert.equal(sent.embed.description, "Salut <@admin> !");
   assert.deepEqual(sent.embed.fields[0].value, "<@admin>");
-  assert.deepEqual(sent.components.map((c) => c.customId), [Id.CLOSE, Id.CLAIM]);
+  assert.deepEqual(sent.components.map((c) => c.customId), [Id.CLOSE, Id.CLAIM, Id.RENAME, Id.ADD_MEMBER, Id.REMOVE_MEMBER]);
   assert.ok(toActionRows(sent.components).length <= 5);
 });
 
