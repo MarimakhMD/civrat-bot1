@@ -7,6 +7,7 @@
     "enabled": "Suggestions are enabled.",
     "disabled": "Suggestions are disabled.",
     "channel": "Select suggestion channel",
+    "back": "Back",
     "created": "Suggestion created!",
     "voted": "Vote recorded!",
     "alreadyVoted": "You already voted!",

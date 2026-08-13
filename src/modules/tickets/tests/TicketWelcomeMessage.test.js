@@ -15,13 +15,15 @@ function translate(dictionary) {
   return (key) => key.split(".").reduce((value, segment) => value[segment], dictionary);
 }
 
-function createTicketService({ createChannelError = null, welcomeError = null } = {}) {
+function createTicketService({ createChannelError = null, welcomeError = null, deleteError = null, ticketLog = null } = {}) {
   let welcomeCalls = 0;
   let persisted = 0;
+  const deleted = [];
   const service = new TicketService({
     configService: { read: async () => ({ tickets_enabled: true, ticket_category_id: "category", ticket_support_role_id: "support" }) },
     repository: { findOpen: async () => null, create: async (record) => { persisted += 1; return record; } },
     welcomeService: new TicketWelcomeService(),
+    ticketLog,
     transport: {
       getCategory: async () => ({ id: "category" }),
       getSupportRole: async () => ({ id: "support" }),
@@ -30,9 +32,10 @@ function createTicketService({ createChannelError = null, welcomeError = null } 
       createTicketChannel: async () => { if (createChannelError) throw createChannelError; return { id: "channel", isTextBased: () => true }; },
       applyTicketOverwrites: async () => ({ applied: true }),
       sendTicketWelcome: async () => { welcomeCalls += 1; if (welcomeError) throw welcomeError; },
+      deleteTicketChannel: async (id) => { deleted.push(id); if (deleteError) throw deleteError; },
     },
   });
-  return { service, get welcomeCalls() { return welcomeCalls; }, get persisted() { return persisted; } };
+  return { service, deleted, get welcomeCalls() { return welcomeCalls; }, get persisted() { return persisted; } };
 }
 
 test("welcome view is localized and contains creator, support role, and stable controls", () => {
@@ -45,8 +48,14 @@ test("welcome view is localized and contains creator, support role, and stable c
   assert.equal(english.title, "🎫 New ticket");
   assert.equal(french.fields[0].value, "<@creator>");
   assert.equal(french.fields[1].value, "<@&support>");
-  assert.deepEqual(french.components.map((component) => component.customId), [Id.CLOSE, Id.CLAIM]);
-  assert.deepEqual(english.components.map((component) => component.customId), ["civrat:v1:tickets:close", "civrat:v1:tickets:claim"]);
+  // P15 : l'accueil expose les 5 actions du cycle de vie (capacité max d'une
+  // ActionRow Discord), toutes branchées sur les routes modulaires stables.
+  const expectedControls = [Id.CLOSE, Id.CLAIM, Id.RENAME, Id.ADD_MEMBER, Id.REMOVE_MEMBER];
+  assert.deepEqual(french.components.map((component) => component.customId), expectedControls);
+  assert.deepEqual(english.components.map((component) => component.customId), [
+    "civrat:v1:tickets:close", "civrat:v1:tickets:claim", "civrat:v1:tickets:rename",
+    "civrat:v1:tickets:add-member", "civrat:v1:tickets:remove-member",
+  ]);
 });
 
 test("Claim control is registered separately from legacy interactions", () => {
@@ -75,6 +84,17 @@ test("welcome send failure returns a structured result without persistence", asy
   assert.equal(result.code, "TICKET_WELCOME_SEND_FAILED");
   assert.equal(fixture.welcomeCalls, 1);
   assert.equal(fixture.persisted, 0);
+  // P13 (B2) : le salon créé est supprimé — plus de ticket orphelin.
+  assert.deepEqual(fixture.deleted, ["channel"]);
+});
+
+test("welcome failure with a failing compensation still returns the original error and logs the orphan", async () => {
+  const events = [];
+  const fixture = createTicketService({ welcomeError: new Error("send failed"), deleteError: new Error("cannot delete"), ticketLog: (event) => events.push(event) });
+  const result = await fixture.service.createTicket({ guildId: "guild", member: { id: "creator" }, t: translate(en) });
+  assert.equal(result.code, "TICKET_WELCOME_SEND_FAILED");
+  assert.deepEqual(fixture.deleted, ["channel"], "compensation must be attempted");
+  assert.deepEqual(events, [{ action: "ticket_creation_orphan", ticketChannelId: "channel", reason: "welcome" }]);
 });
 
 test("Discord transport sends an embed with prepared controls only", async () => {
@@ -85,6 +105,8 @@ test("Discord transport sends an embed with prepared controls only", async () =>
   await transport.sendTicketWelcome(channel, view);
   assert.equal(payload.embeds[0].data.title, "🎫 New ticket");
   assert.equal(payload.embeds[0].data.fields[0].value, "<@creator>");
-  assert.equal(payload.components[0].components[0].data.custom_id, Id.CLOSE);
-  assert.equal(payload.components[0].components[1].data.custom_id, Id.CLAIM);
+  // P15 : les 5 contrôles tiennent dans une seule ActionRow (capacité Discord).
+  const renderedIds = payload.components[0].components.map((component) => component.data.custom_id);
+  assert.deepEqual(renderedIds, [Id.CLOSE, Id.CLAIM, Id.RENAME, Id.ADD_MEMBER, Id.REMOVE_MEMBER]);
+  assert.equal(payload.components.length, 1);
 });

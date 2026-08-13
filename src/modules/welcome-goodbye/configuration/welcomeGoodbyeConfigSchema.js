@@ -7,5 +7,6 @@ const WelcomeGoodbyeConfigSchema = Object.freeze({
   [Key.WELCOME_EMBED]: { type: "boolean" }, [Key.GOODBYE_EMBED]: { type: "boolean" },
   [Key.WELCOME_COLOR]: { type: "hex-color" }, [Key.GOODBYE_COLOR]: { type: "hex-color" },
   [Key.WELCOME_DM]: { type: "boolean" }, [Key.WELCOME_DM_MESSAGE]: { type: "string", nullable: true, maxLength: 4000 },
+  [Key.WELCOME_TEMPLATE]: { type: "enum", values: ["template-1", "template-2", "template-3"] },
 });
 module.exports = { WelcomeGoodbyeConfigSchema };

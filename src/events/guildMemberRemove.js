@@ -45,7 +45,13 @@ async function handleKickDetection(member, config) {
 }
 
 async function handleInviteDecrement(member, config) {
-  if (!config.invitations_enabled) return;
+  // Phase 11 : garde alignée sur guildMemberAdd — défaut « activé » (tracking
+  // historique inconditionnel), opt-out explicite uniquement.
+  // De plus, invitedBy est lu dans le MÊME stockage que l'écriture
+  // (inviteService.statsRepository partagé) : la lecture directe du modèle
+  // mongoose (jamais alimenté par le service legacy) rendait le décrément
+  // inopérant — les classements Invites/Analytics ne décroissaient jamais.
+  if (config.invitations_enabled === false) return;
   if (member.user.bot) return;
 
   try {
@@ -53,9 +59,7 @@ async function handleInviteDecrement(member, config) {
     await new Promise((resolve) => setTimeout(resolve, 1500));
     const entry = await fetchAuditLog(member.guild, 20);
     if (entry?.target?.id === member.id) return;
-    const mongoose = require("mongoose");
-    const InviteStats = mongoose.models.InviteStats || mongoose.model("InviteStats");
-    const userData = await InviteStats.findOne({ userId: member.id, guildId: member.guild.id });
+    const userData = await inviteService.getInviteStats(member.id, member.guild.id);
     if (userData?.invitedBy) await inviteService.removeInvite(userData.invitedBy, member.guild.id);
   } catch {}
 }

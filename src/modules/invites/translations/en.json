@@ -11,6 +11,7 @@
     "back": "Back",
     "count": "You have {{count}} invites.",
     "leaderboardTitle": "🏆 Invite Leaderboard",
+    "leaderboardEntry": "{{rank}}. <@{{userId}}> — {{count}} invites",
     "noInvites": "No invites yet.",
     "userNotFound": "User not found."
   }

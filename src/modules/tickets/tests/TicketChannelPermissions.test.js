@@ -27,6 +27,7 @@ function createTransportFixture({ manageable = true, overwriteError = null } = {
 
 function createService({ category = { id: "category" }, supportRole = { id: "support" }, member = { id: "creator" }, botMember = { id: "bot" }, channel = { id: "channel" }, overwriteResult = { applied: true }, createChannelError = null } = {}) {
   let overwriteCalls = 0;
+  const deleted = [];
   const service = new TicketService({
     configService: { read: async () => ({ tickets_enabled: true, ticket_category_id: "category", ticket_support_role_id: "support" }) },
     repository: { findOpen: async () => null, create: async (record) => record },
@@ -37,9 +38,11 @@ function createService({ category = { id: "category" }, supportRole = { id: "sup
       getBotMember: async () => botMember,
       createTicketChannel: async () => { if (createChannelError) throw createChannelError; return channel; },
       applyTicketOverwrites: async () => { overwriteCalls += 1; return overwriteResult; },
+      // P13 (B2) : espion de compensation.
+      deleteTicketChannel: async (id) => { deleted.push(id); },
     },
   });
-  return { service, get overwriteCalls() { return overwriteCalls; } };
+  return { service, deleted, get overwriteCalls() { return overwriteCalls; } };
 }
 
 test("Discord transport denies everyone and allows creator, support role, and bot", async () => {
@@ -84,6 +87,8 @@ test("ticket service returns overwrite failure without persisting a ticket", asy
   const result = await fixture.service.createTicket({ guildId: "guild", member: { id: "creator" } });
   assert.equal(result.code, "TICKET_PERMISSION_INSUFFICIENT");
   assert.equal(fixture.overwriteCalls, 1);
+  // P13 (B2) : le salon créé est supprimé en compensation.
+  assert.deepEqual(fixture.deleted, ["channel"]);
 });
 
 test("ticket service never applies overwrites when channel creation fails", async () => {

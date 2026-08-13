@@ -8,6 +8,13 @@ class XPRepository {
   async upsert(guildId, userId, xp, level) {
     throw new Error("XPRepository.upsert must be implemented");
   }
+
+  // Phase 11 : contrat du classement XP consommé par Analytics (/analytics,
+  // /analytics_xp). Retourne [{ userId, xp, level }] trié du plus haut XP au
+  // plus bas, limité à `limit` entrées, isolé par guilde.
+  async getLeaderboard(_guildId, _limit = 10) {
+    throw new Error("XPRepository.getLeaderboard must be implemented");
+  }
 }
 
 class InMemoryXPRepository extends XPRepository {
@@ -29,6 +36,14 @@ class InMemoryXPRepository extends XPRepository {
     const record = { guildId, userId, xp, level, updatedAt: Date.now() };
     this.store.set(key, record);
     return record;
+  }
+
+  async getLeaderboard(guildId, limit = 10) {
+    const entries = [];
+    for (const record of this.store.values()) {
+      if (record.guildId === guildId) entries.push({ userId: record.userId, xp: record.xp, level: record.level });
+    }
+    return entries.sort((a, b) => b.xp - a.xp || b.level - a.level).slice(0, limit);
   }
 
   clear() {

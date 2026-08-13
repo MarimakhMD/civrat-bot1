@@ -1,6 +1,7 @@
 "use strict";
 
 const { PermissionName } = require("../../core/permissions");
+const { prefix } = require("../../core/interactions/routeMatchers");
 const { SuggestionComponentId: Id } = require("./configuration/suggestionConstants");
 const { suggestionView } = require("./interactions/suggestionViews");
 const { toggleSuggestion, selectSuggestionChannel } = require("./interactions/configureSuggestions");
@@ -60,8 +61,7 @@ function registerSuggestions({ registry, configService, supabase, logsRuntimeFac
   const deleteId = `${Id.DELETE}:`;
 
   registry.registerButton({
-    customId: voteUpId,
-    matcher: (id) => id.startsWith(voteUpId),
+    matcher: prefix(voteUpId),
     permissions: null,
     execute: async (context) => {
       const suggestionId = context.envelope.customId.split(":")[1];
@@ -79,8 +79,7 @@ function registerSuggestions({ registry, configService, supabase, logsRuntimeFac
   });
 
   registry.registerButton({
-    customId: voteDownId,
-    matcher: (id) => id.startsWith(voteDownId),
+    matcher: prefix(voteDownId),
     permissions: null,
     execute: async (context) => {
       const suggestionId = context.envelope.customId.split(":")[1];
@@ -104,8 +103,7 @@ function registerSuggestions({ registry, configService, supabase, logsRuntimeFac
     ["delete", deleteId],
   ]) {
     registry.registerButton({
-      customId,
-      matcher: (id) => id.startsWith(customId),
+      matcher: prefix(customId),
       permissions: staffPerms,
       execute: async (context) => {
         const suggestionId = context.envelope.customId.split(":")[1];

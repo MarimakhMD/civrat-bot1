@@ -25,11 +25,19 @@ function getXPRuntime() {
       };
     }
     const configService = new XPConfigService({ guildConfigResolver });
-    // Try Mongo, fallback to in-memory
+    // Phase 11 : Mongo seulement si mongoose est RÉELLEMENT connecté. Le
+    // modèle UserXP se construit même sans connexion ; sans ce garde-fou,
+    // toute lecture/écriture (XP activé, leaderboard Analytics) se bufferisait
+    // indéfiniment hors ligne. readyState 1 = connected.
     let repository;
     try {
-      const { MongoXPRepository } = require("../persistence/MongoXPRepository");
-      repository = new MongoXPRepository();
+      const mongoose = require("mongoose");
+      if (mongoose.connection?.readyState === 1) {
+        const { MongoXPRepository } = require("../persistence/MongoXPRepository");
+        repository = new MongoXPRepository();
+      } else {
+        repository = new InMemoryXPRepository();
+      }
     } catch {
       repository = new InMemoryXPRepository();
     }

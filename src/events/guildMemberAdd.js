@@ -27,9 +27,13 @@ module.exports = {
     await require("../runtime/getWelcomeGoodbyeRuntime").getWelcomeGoodbyeRuntime().handleMemberAdded(member);
     // 3. Captcha reminder (best effort; DMs can be closed)
     await require("../modules/captcha/runtime/getCaptchaRuntime").getCaptchaRuntime().handleMemberJoined(member);
-    // 4. Invite Tracking
-    const inviteResult = await handleInviteTracking(member, config);
-    await handleInviteJoinLog(member, config, inviteResult);
+    // 4. Invite Tracking — Phase 11 : respecte le toggle /settings Invites.
+    //    Comportement historique préservé par défaut : la clé absente (guilde
+    //    jamais configurée) laisse le tracking actif ; seul un opt-out explicite
+    //    (invitations_enabled === false) le désactive (attribution ET log).
+    const invitesEnabled = config.invitations_enabled !== false;
+    const inviteResult = invitesEnabled ? await handleInviteTracking(member, config) : null;
+    if (invitesEnabled) await handleInviteJoinLog(member, config, inviteResult);
     // 4. Join Log
     await require("../modules/logs/runtime/getLogsRuntime").getLogsRuntime().handleMemberJoined(member);
     // 5. Security Center (modern Foundation → Runtime → Transport/Logs, no legacy securityService)

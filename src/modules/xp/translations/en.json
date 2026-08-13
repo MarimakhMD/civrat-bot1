@@ -4,6 +4,15 @@
     "levelUpDescription": "{{user}} leveled up to {{level}} ({{xp}} XP)",
     "gained": "{{user}} gained {{gain}} XP ({{xp}} total)",
     "cooldown": "XP on cooldown",
-    "disabled": "XP is disabled"
+    "section": "XP",
+    "settingsTitle": "⭐ XP",
+    "enable": "Enable XP",
+    "disable": "Disable XP",
+    "enabled": "XP is enabled.",
+    "disabled": "XP is disabled.",
+    "channel": "Restrict XP to a channel",
+    "channelAll": "all channels",
+    "channelLine": "XP channel: {{channel}}",
+    "back": "Back"
   }
 }

@@ -32,6 +32,10 @@ function createAnalyticsRuntime({ configService, analyticsRepository, xpReposito
     getTopInvites: async (guildId, limit) => service.getTopInvites(guildId, limit),
     _service: service,
     _repository: repo,
+    // Phase 11 : exposé pour que la composition /settings partage la MÊME
+    // instance de config que le chemin d'écriture (fin des instances lues
+    // disjointes des instances écrites).
+    _configService: configService,
   });
 }
 

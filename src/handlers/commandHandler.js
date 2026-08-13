@@ -1,20 +1,32 @@
 // ═══════════════════════════════════════════════════
 // COMMAND HANDLER - Loads and dispatches slash commands
 // ═══════════════════════════════════════════════════
+// P17 — audit : seuls loadCommands (bootstrap index.js + deploy.js) et
+// handleCommand (dispatcher interactionCreate) sont consommés. L'ancien
+// registerCommands (doublon mort de deploy.js, zéro appelant) et getCommands
+// (zéro appelant) ont été retirés, avec leurs imports REST/Routes/config.
 
-const { REST, Routes } = require("discord.js");
 const fs = require("fs");
 const path = require("path");
-const { config } = require("../config");
 const logger = require("../utils/logger");
 
 const commands = new Map();
+
+// Garde anti-doublon : ces trois fichiers legacy existent ENCORE sur disque
+// pendant que registerModeration expose leurs équivalents modulaires
+// (référence V1). Sans exclusion, loadCommands chargerait warn/mute/unmute en
+// double et l'enregistrement modulaire lèverait « Duplicate module command »,
+// privant le bot de TOUTES les commandes modulaires. Les anciennes gardes
+// bannir/debannir/expulser/supprimer/slowmode/verrouiller/deverrouiller/
+// pseudo visaient des fichiers supprimés dans les phases précédentes : entrées
+// mortes retirées (P17), comportement inchangé tant que les fichiers absents.
+const MIGRATED_LEGACY_FILES = Object.freeze(["warn.js", "mute.js", "unmute.js"]);
 
 function loadCommands() {
   const commandsPath = path.join(__dirname, "..", "commands");
   const commandFiles = fs
     .readdirSync(commandsPath)
-    .filter((file) => file.endsWith(".js") && !["warn.js", "mute.js", "unmute.js", "bannir.js", "debannir.js", "expulser.js", "supprimer.js", "slowmode.js", "verrouiller.js", "deverrouiller.js", "pseudo.js"].includes(file))
+    .filter((file) => file.endsWith(".js") && !MIGRATED_LEGACY_FILES.includes(file))
     .sort();
 
   // Makes a repeated in-process load deterministic and exposes the exact
@@ -53,21 +65,6 @@ function loadCommands() {
   return commands;
 }
 
-async function registerCommands() {
-  const rest = new REST({ version: "10" }).setToken(config.token);
-  const commandData = Array.from(commands.values()).map((c) => c.data.toJSON());
-
-  try {
-    logger.info(`Registering ${commandData.length} slash commands globally...`);
-    await rest.put(Routes.applicationCommands(config.clientId), {
-      body: commandData,
-    });
-    logger.success(`${commandData.length} commands registered`);
-  } catch (err) {
-    logger.error("Failed to register commands:", err.message);
-  }
-}
-
 async function handleCommand(interaction) {
   const command = commands.get(interaction.commandName);
   if (!command) return;
@@ -88,8 +85,4 @@ async function handleCommand(interaction) {
   }
 }
 
-function getCommands() {
-  return commands;
-}
-
-module.exports = { loadCommands, registerCommands, handleCommand, getCommands };
+module.exports = { loadCommands, handleCommand };

@@ -1,17 +1,75 @@
 "use strict";
 
-const { TicketConfigKey: Key } = require("../configuration/ticketConstants");
+const { TicketConfigKey: Key, TicketComponentId: Id } = require("../configuration/ticketConstants");
+const { TicketPremiumConfigKey: PKey } = require("../configuration/ticketPremiumConstants");
 const { TicketPermissionService } = require("./TicketPermissionService");
 
+// Nommage Free atomique (ticket-001) : le Free suit le même format de
+// référence que le défaut Premium, via le compteur atomique unique de la
+// guilde. Un seul compteur, un seul canal d'incrément — aucun COUNT(*)+1.
+const FREE_CHANNEL_NAME_FORMAT = "ticket-{number}";
+
 class TicketService {
-  constructor({ repository, configService = null, transport = null, welcomeService = null, transcriptService = null, ticketLog = null }) {
+  constructor({ repository, configService = null, transport = null, welcomeService = null, transcriptService = null, ticketLog = null, premiumConfigResolver = null, counterRepository = null, channelNamingService = null }) {
     this.repository = repository;
     this.configService = configService;
     this.transport = transport;
     this.welcomeService = welcomeService;
     this.transcriptService = transcriptService;
     this.ticketLog = ticketLog;
+    this.premiumConfigResolver = premiumConfigResolver;
+    this.counterRepository = counterRepository;
+    this.channelNamingService = channelNamingService;
     this.permissions = new TicketPermissionService();
+  }
+
+  // Phase 10.3 : les contenus Premium (message d'accueil, salon transcript) ne
+  // sont résolus que si l'entitlement TICKET_PREMIUM est actif ; sans resolver
+  // ou sans entitlement, null => comportement Free historique, inchangé.
+  async resolvePremium(guildId, config) {
+    return this.premiumConfigResolver
+      ? this.premiumConfigResolver.resolve({ guildId, config })
+      : Promise.resolve(null);
+  }
+
+  // Phase 10.4 : nom Premium du salon. Fail-closed à chaque étape : sans
+  // entitlement, sans format valide, sans compteur disponible ou avec un
+  // rendu invalide => null => le nommage Free atomique prend le relais
+  // (resolveFreeChannelName), puis repli transport ticket-<userId> si le
+  // compteur est indisponible.
+  // Note concurrence : le numéro est réservé avant la création Discord ; si
+  // celle-ci échoue ensuite, le trou de séquence est assumé (documenté
+  // docs/architecture/phase-10-4-ticket-counter.md).
+  async resolvePremiumChannelName({ guildId, config, member = null, supportRole = null }) {
+    const premium = await this.resolvePremium(guildId, config);
+    const format = premium?.[PKey.NAME_FORMAT] || null;
+    if (!format || !this.channelNamingService || !member) return null;
+    let number = null;
+    if (format.includes("{number}")) {
+      if (!this.counterRepository) return null;
+      try {
+        number = await this.counterRepository.next(guildId);
+      } catch (_error) {
+        return null;
+      }
+    }
+    return this.channelNamingService.build({ format, member, supportRole, number });
+  }
+
+  // Nommage Free atomique : ticket-001, ticket-002… via le compteur unique
+  // de la guilde (la même source que le placeholder Premium {number} — Free
+  // et Premium partagent un seul compteur). Fail-closed à chaque étape :
+  // compteur absent/en échec ou rendu invalide => null => l'appelant garde
+  // le repli ticket-<userId> du transport, sans jamais bloquer la création.
+  async resolveFreeChannelName(guildId) {
+    if (!guildId || !this.counterRepository || !this.channelNamingService) return null;
+    let number;
+    try {
+      number = await this.counterRepository.next(guildId);
+    } catch (_error) {
+      return null;
+    }
+    return this.channelNamingService.build({ format: FREE_CHANNEL_NAME_FORMAT, number });
   }
 
   findOpen(guildId, userId) { return this.repository.findOpen(guildId, userId); }
@@ -78,9 +136,20 @@ class TicketService {
     }
     if (openTicket) return result(false, "OPEN_TICKET_EXISTS", { channelId: openTicket.channel_id || null });
 
+    // Nommage : format Premium personnalisé d'abord ; sinon nommage Free
+    // atomique (ticket-001 via le compteur unique). Toute erreur de
+    // résolution => null => repli transport ticket-<userId> (fail-closed).
+    let channelName = null;
+    try {
+      channelName = await this.resolvePremiumChannelName({ guildId, config, member: ticketMember, supportRole });
+      if (!channelName) channelName = await this.resolveFreeChannelName(guildId);
+    } catch (_error) {
+      channelName = null;
+    }
+
     let channel;
     try {
-      channel = await this.transport.createTicketChannel({ category, member, supportRole });
+      channel = await this.transport.createTicketChannel({ category, member, supportRole, name: channelName || undefined });
     } catch (_error) {
       return result(false, "TICKET_CHANNEL_CREATION_FAILED");
     }
@@ -94,15 +163,22 @@ class TicketService {
         botMember,
       });
     } catch (_error) {
+      await this.rollbackTicketChannel(channel.id, "overwrites");
       return result(false, "TICKET_DISCORD_ERROR", { channelId: channel.id });
     }
-    if (!overwrites?.applied) return result(false, overwrites?.code || "TICKET_OVERWRITE_FAILED", { channelId: channel.id });
+    if (!overwrites?.applied) {
+      await this.rollbackTicketChannel(channel.id, "overwrites_refused");
+      return result(false, overwrites?.code || "TICKET_OVERWRITE_FAILED", { channelId: channel.id });
+    }
 
     if (this.welcomeService) {
-      const welcome = this.welcomeService.build({ t, member: ticketMember, supportRole });
+      const premium = await this.resolvePremium(guildId, config);
+      const welcome = this.welcomeService.build({ t, member: ticketMember, supportRole, welcomeMessage: premium ? premium[PKey.WELCOME_MESSAGE] : null });
       try {
         await this.transport.sendTicketWelcome(channel, welcome);
       } catch (_error) {
+        // P13 (B2) : compensation — plus de salon orphelin sans record.
+        await this.rollbackTicketChannel(channel.id, "welcome");
         return result(false, "TICKET_WELCOME_SEND_FAILED", { channelId: channel.id });
       }
     }
@@ -119,11 +195,26 @@ class TicketService {
       const ticket = await this.create(record);
       this.ticketLog?.({action:"ticket_created",ticketChannelId:channel.id,userId:member.id}); return result(true, "TICKET_CREATED", { channelId: channel.id, ticket });
     } catch (_error) {
+      await this.rollbackTicketChannel(channel.id, "persistence");
       return result(false, "PERSISTENCE_ERROR", { channelId: channel.id });
     }
   }
 
-  async closeTicket({ guildId, channelId, member }) {
+  // P13 (B2) — compensation best-effort après échec partiel de createTicket :
+  // tout salon Discord déjà créé est supprimé (aucun record n'existe encore),
+  // puis l'événement est logué. Si la suppression échoue elle-même, l'orphelin
+  // est logué pour le staff au lieu d'être abandonné silencieusement. Ne lève
+  // jamais d'erreur : le code d'échec d'origine est toujours retourné ensuite.
+  async rollbackTicketChannel(channelId, cause) {
+    try {
+      await this.transport.deleteTicketChannel(channelId);
+      this.ticketLog?.({ action: "ticket_creation_rolled_back", ticketChannelId: channelId, reason: cause });
+    } catch (_error) {
+      this.ticketLog?.({ action: "ticket_creation_orphan", ticketChannelId: channelId, reason: cause });
+    }
+  }
+
+  async closeTicket({ guildId, channelId, member, t = null }) {
     const result = (closed, code, details = {}) => ({
       closed,
       code,
@@ -172,14 +263,39 @@ class TicketService {
     const closedAt = new Date().toISOString();
     try {
       const updatedTicket = await this.repository.updateByChannel(channelId, { status: "closed", closed: true, closed_at: closedAt });
-      if (this.transcriptService) await this.transcriptService.deliver({ channelId, logChannelId: config.ticket_log_channel_id, transport: this.transport });
+      const premium = await this.resolvePremium(guildId, config);
+      const transcriptChannelId = premium?.[PKey.TRANSCRIPT_CHANNEL_ID] || config.ticket_log_channel_id;
+      if (this.transcriptService) await this.transcriptService.deliver({ channelId, logChannelId: transcriptChannelId, transport: this.transport });
+      // P15 : notice de fermeture avec les actions staff (réouvrir /
+      // supprimer), branchées sur les routes modulaires — best-effort,
+      // après le résultat : elle ne change jamais le code retourné.
+      await this.sendTicketNotice(channelId, t ? {
+        description: t("tickets.closedNotice"),
+        components: [
+          { customId: Id.REOPEN, label: t("tickets.reopen"), style: "success" },
+          { customId: Id.DELETE, label: t("tickets.delete"), style: "danger" },
+        ],
+      } : null);
       this.ticketLog?.({action:"ticket_closed",ticketChannelId:channelId,userId:member.id}); return result(true, "TICKET_CLOSED", { ticket: updatedTicket, closedAt });
     } catch (_error) {
       return result(false, "TICKET_CLOSE_FAILED");
     }
   }
 
-  async reopenTicket({ guildId, channelId, member }) {
+  // P15 — notice post-action (fermeture/réouverture), best-effort : envoyée
+  // une fois le résultat connu, après la mise à jour persistante. Toute
+  // erreur (transport absent, salon indisponible, envoi refusé) est absorbée
+  // — la notice ne change jamais le code métier retourné à l'appelant.
+  async sendTicketNotice(channelId, view) {
+    if (!view || typeof this.transport?.sendTicketNotice !== "function") return;
+    try {
+      await this.transport.sendTicketNotice(channelId, view);
+    } catch (_error) {
+      // best-effort : échec de notice absorbé, résultat métier inchangé.
+    }
+  }
+
+  async reopenTicket({ guildId, channelId, member, t = null }) {
     const result = (reopened, code, details = {}) => ({
       reopened,
       code,
@@ -225,6 +341,8 @@ class TicketService {
 
     try {
       const updatedTicket = await this.repository.updateByChannel(channelId, { status: "open", closed: false, closed_at: null });
+      // P15 : notice de réouverture, sans composants — best-effort.
+      await this.sendTicketNotice(channelId, t ? { description: t("tickets.reopenedNotice"), components: [] } : null);
       this.ticketLog?.({action:"ticket_reopened",ticketChannelId:channelId,userId:member.id}); return result(true, "TICKET_REOPENED", { ticket: updatedTicket });
     } catch (_error) {
       return result(false, "TICKET_REOPEN_FAILED");
@@ -368,4 +486,4 @@ function isValidTicketChannelName(name) {
   return typeof name === "string" && /^[a-z0-9][a-z0-9-_]{0,88}$/.test(name);
 }
 
-module.exports = { TicketService, isValidTicketChannelName };
+module.exports = { TicketService, isValidTicketChannelName, FREE_CHANNEL_NAME_FORMAT };

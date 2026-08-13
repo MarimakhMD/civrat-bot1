@@ -19,8 +19,14 @@ class DiscordTicketTransport {
     const channel = this.guild.channels.cache.get(channelId);
     if (!channel?.isTextBased()) throw new Error("channel_unavailable");
     const button = view.components[0];
+    // Phase 10.2 : les personnalisations Premium couleur/image n'arrivent que
+    // si le resolver a autorisé Premium. Sans view.embed (Free), le payload
+    // envoyé est strictement identique à l'historique.
+    const embed = new EmbedBuilder().setTitle(view.title).setDescription(view.content);
+    if (view.embed?.color) embed.setColor(view.embed.color);
+    if (view.embed?.image) embed.setImage(view.embed.image);
     await channel.send({
-      embeds: [new EmbedBuilder().setTitle(view.title).setDescription(view.content)],
+      embeds: [embed],
       components: [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(button.customId).setLabel(button.label).setStyle(ButtonStyle.Primary))],
     });
   }
@@ -42,9 +48,11 @@ class DiscordTicketTransport {
     return this.guild.members.me || null;
   }
 
-  async createTicketChannel({ category, member }) {
+  async createTicketChannel({ category, member, name = null }) {
     return this.guild.channels.create({
-      name: `ticket-${member.id}`,
+      // Phase 10.4 : name = nom Premium résolu par TicketService ; absent =>
+      // nommage Free historique ticket-<userId>, strictement inchangé.
+      name: name || `ticket-${member.id}`,
       type: ChannelType.GuildText,
       parent: category.id,
     });
@@ -59,6 +67,23 @@ class DiscordTicketTransport {
     return channel.send({
       embeds: [new EmbedBuilder().setTitle(view.title).setDescription(view.description).addFields(view.fields)],
       components: [new ActionRowBuilder().addComponents(components)],
+    });
+  }
+
+  // P15 — notices post-action (fermeture/réouverture) du moteur Tickets.
+  // Composants optionnels : la notice de réouverture n'en embarque aucun.
+  // Styles connus : danger/success/primary ; repli Secondary sinon.
+  async sendTicketNotice(channelId, view) {
+    const channel = this.guild.channels.cache.get(channelId);
+    if (!channel?.isTextBased()) throw new Error("ticket_channel_unavailable");
+    const styles = { danger: ButtonStyle.Danger, success: ButtonStyle.Success, primary: ButtonStyle.Primary };
+    const buttons = (view.components || []).map((component) => new ButtonBuilder()
+      .setCustomId(component.customId)
+      .setLabel(component.label)
+      .setStyle(styles[component.style] || ButtonStyle.Secondary));
+    return channel.send({
+      embeds: [new EmbedBuilder().setDescription(view.description)],
+      components: buttons.length ? [new ActionRowBuilder().addComponents(buttons)] : [],
     });
   }
 

@@ -12,6 +12,7 @@ const { handleTicketCreate } = require("../interactions/ticketCreateRoute");
 function createService({ config, openTicket = null, createError = null, category = { id: "category" }, supportRole = { id: "support" } } = {}) {
   let createdRecord = null;
   let channelCreates = 0;
+  const deleted = [];
   const service = new TicketService({
     configService: { read: async () => config },
     repository: {
@@ -29,9 +30,12 @@ function createService({ config, openTicket = null, createError = null, category
       getBotMember: async () => ({ id: "bot" }),
       createTicketChannel: async () => { channelCreates += 1; return { id: "channel-1" }; },
       applyTicketOverwrites: async () => ({ applied: true }),
+      // P13 (B2) : espion de compensation — tout salon créé puis abandonné sur
+      // échec partiel doit être supprimé.
+      deleteTicketChannel: async (id) => { deleted.push(id); },
     },
   });
-  return { service, get createdRecord() { return createdRecord; }, get channelCreates() { return channelCreates; } };
+  return { service, deleted, get createdRecord() { return createdRecord; }, get channelCreates() { return channelCreates; } };
 }
 
 const completeConfig = { tickets_enabled: true, ticket_category_id: "category", ticket_support_role_id: "support" };
@@ -96,11 +100,13 @@ test("no open ticket creates a schema-compatible Supabase record", async () => {
   assert.deepEqual(fixture.createdRecord, { guild_id: "guild", user_id: "member", channel_id: "channel-1", category: "support", status: "open", closed: false });
 });
 
-test("Supabase persistence failure is structured", async () => {
+test("Supabase persistence failure is structured and rolls back the created channel", async () => {
   const fixture = createService({ config: completeConfig, createError: new Error("database unavailable") });
   const result = await fixture.service.createTicket({ guildId: "guild", member: { id: "member" } });
   assert.equal(result.code, "PERSISTENCE_ERROR");
   assert.equal(fixture.channelCreates, 1);
+  // P13 (B2) : le salon créé avant l'échec de persistance est compensé.
+  assert.deepEqual(fixture.deleted, ["channel-1"]);
 });
 
 test("Supabase repository creates records and surfaces insert errors", async () => {

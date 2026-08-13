@@ -7,6 +7,7 @@
     "enabled": "Giveaways are enabled.",
     "disabled": "Giveaways are disabled.",
     "channel": "Select giveaway channel",
+    "back": "Back",
     "createSuccess": "Giveaway created: {{prize}}",
     "alreadyJoined": "You already joined this giveaway.",
     "joined": "You joined the giveaway!",
