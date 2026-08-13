@@ -4,8 +4,11 @@ const guildConfigService = require("../../../services/guildConfig");
 const { supabase } = require("../../../config/database");
 const { EntitlementService } = require("../../../core/entitlements");
 const { SupabaseEntitlementRepository } = require("../../../adapters/supabase");
+const { I18nService } = require("../../../core/i18n");
 const { TicketConfigService } = require("../services/TicketConfigService");
 const { TicketPremiumConfigResolver } = require("../services/TicketPremiumConfigResolver");
+const ticketEn = require("../translations/en.json");
+const ticketFr = require("../translations/fr.json");
 
 // Runtime partagé du panneau Tickets (Phase 10.2) : même injection que la
 // composition /settings — config legacy guild_configs + entitlement Supabase +
@@ -26,6 +29,11 @@ function getTicketPanelRuntime() {
       premiumConfigResolver: new TicketPremiumConfigResolver({
         entitlementService: new EntitlementService({ repository: new SupabaseEntitlementRepository({ supabase }) }),
       }),
+      // P17 : traducteur i18n du module Tickets — même convention que le
+      // runtime /settings (I18nService + dictionnaires du module). La locale
+      // vient de config.language ; valeur inconnue => FR par défaut
+      // (resolveGuildLocale). Plus aucune clé brute dans le panneau Free.
+      i18n: new I18nService({ dictionaries: { en: ticketEn, fr: ticketFr } }),
     });
   }
   return runtime;

@@ -9,9 +9,11 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 
 // Store de config partagé patché avant toute construction de runtime (même
-// rôle que la table guild_configs en production).
+// rôle que la table guild_configs en production). g : sans langue => FR par
+// défaut ; gen : language "en" => panneau en anglais (P17).
 const store = {
   g: { tickets_enabled: true, ticket_category_id: "cat-1", ticket_support_role_id: "role-1" },
+  gen: { tickets_enabled: true, ticket_category_id: "cat-1", ticket_support_role_id: "role-1", language: "en" },
 };
 const guildConfigModule = require("../../src/services/guildConfig");
 const originalGet = guildConfigModule.getGuildConfig;
@@ -42,11 +44,25 @@ test("/ticketpanel delivers the panel to the invoking text channel, never the ca
   const payload = interaction.sent[0];
   assert.ok(JSON.stringify(payload.components).includes("civrat:v1:tickets:create"), "stable create custom id");
   assert.equal(payload.embeds.length, 1);
-  // Pas de fuite Premium hors ligne : rendu Free historique (titre = clé i18n, t identitaire dans la commande).
+  // P17 : rendu Free réellement TRADUIT — fini les clés brutes dans le panneau.
+  // Guilde sans langue configurée => FR par défaut (resolveGuildLocale).
+  assert.equal(payload.embeds[0].data.title, "🎫 Tickets");
+  assert.equal(payload.embeds[0].data.description, "Cliquez ci-dessous pour créer un ticket.");
+  assert.equal(payload.components[0].components[0].data.label, "Créer un ticket");
   assert.ok(interaction.captured.reply, "the command must reply to the admin");
   assert.ok(interaction.captured.reply.content.includes("chan-home"), "reply must name the invoking text channel");
   assert.ok(!interaction.captured.reply.content.includes("cat-1"), "reply must never name the category");
   // Et surtout : la cible de l'envoi était le salon texte (preuve par le mock ci-dessus — la catégorie n'a pas de send()).
+});
+
+test("/ticketpanel renders English when the guild language is en", async () => {
+  const interaction = makeInteraction({ guildId: "gen", channel: { id: "chan-en" } });
+  await ticketpanelCommand.execute(interaction);
+  assert.equal(interaction.sent.length, 1);
+  const payload = interaction.sent[0];
+  assert.equal(payload.embeds[0].data.title, "🎫 Tickets");
+  assert.equal(payload.embeds[0].data.description, "Click below to create a ticket.");
+  assert.equal(payload.components[0].components[0].data.label, "Create a ticket");
 });
 
 test("/ticketpanel on an unconfigured guild keeps the historical error path (no send)", async () => {
