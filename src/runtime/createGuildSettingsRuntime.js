@@ -76,18 +76,31 @@ const { InviteConfigService } = require("../modules/invites/services/InviteConfi
 const { registerInvites } = require("../modules/invites/register");
 const invitesEn = require("../modules/invites/translations/en.json");
 const invitesFr = require("../modules/invites/translations/fr.json");
+const { registerRecovery } = require("../modules/recovery/register");
+const { getRecoveryRuntime } = require("../modules/recovery/runtime/getRecoveryRuntime");
+const recoveryEn = require("../modules/recovery/translations/en.json");
+const recoveryFr = require("../modules/recovery/translations/fr.json");
+const { registerOwnerPanel } = require("../modules/owner-panel/register");
+const { CivratIdentityOwnerProvider } = require("../modules/owner-panel/services/CivratIdentityOwnerProvider");
+const { getOwnerPanelRuntime } = require("../modules/owner-panel/runtime/getOwnerPanelRuntime");
+const ownerPanelEn = require("../modules/owner-panel/translations/en.json");
+const ownerPanelFr = require("../modules/owner-panel/translations/fr.json");
 // Service legacy d'invitations : son statsRepository est le stockage réel du
 // tracking (guildMemberAdd/Remove) — on le partage avec /invites et Analytics.
 const legacyInviteService = require("../services/inviteService");
 function createGuildSettingsRuntime({ legacyConfigService, logger = null }) {
   const dictionaries = {
-    en: { ...coreDictionaries.en, ...en, ...welcomeEn, ...autoRoleEn, ...logsEn, ...captchaEn, ...ticketEn, ...moderationEn, ...autoModEn, ...securityEn, ...stickerEn, ...tempVoiceEn, ...giveawayEn, ...suggestionEn, ...analyticsEn, ...xpEn, ...invitesEn },
-    fr: { ...coreDictionaries.fr, ...fr, ...welcomeFr, ...autoRoleFr, ...logsFr, ...captchaFr, ...ticketFr, ...moderationFr, ...autoModFr, ...securityFr, ...stickerFr, ...tempVoiceFr, ...giveawayFr, ...suggestionFr, ...analyticsFr, ...xpFr, ...invitesFr },
+    en: { ...coreDictionaries.en, ...en, ...welcomeEn, ...autoRoleEn, ...logsEn, ...captchaEn, ...ticketEn, ...moderationEn, ...autoModEn, ...securityEn, ...stickerEn, ...tempVoiceEn, ...giveawayEn, ...suggestionEn, ...analyticsEn, ...xpEn, ...invitesEn, ...recoveryEn, ...ownerPanelEn },
+    fr: { ...coreDictionaries.fr, ...fr, ...welcomeFr, ...autoRoleFr, ...logsFr, ...captchaFr, ...ticketFr, ...moderationFr, ...autoModFr, ...securityFr, ...stickerFr, ...tempVoiceFr, ...giveawayFr, ...suggestionFr, ...analyticsFr, ...xpFr, ...invitesFr, ...recoveryFr, ...ownerPanelFr },
   }; validateTranslationParity(dictionaries);
   const i18n = new I18nService({ dictionaries, logger });
   const repository = new LegacyGuildConfigRepository({ getConfig: legacyConfigService.getGuildConfig, updateConfig: legacyConfigService.updateGuildConfig, invalidateConfig: legacyConfigService.invalidateCache });
   const guildConfigResolver = new GuildConfigResolver({ repository, logger });
-  const permissions = new PermissionService({ logger }); const errorResponder = new ErrorResponder({ logger });
+  // P20 — couture CIVRAT_OWNER désormais ACTIVE : le provider concret
+  // (Owner CIVRAT = env initial puis persistance PostgreSQL) est injecté ici,
+  // point de composition prévu par le core. Fail-closed (erreur => false).
+  const civratOwnerProvider = new CivratIdentityOwnerProvider({ identityServiceFactory: () => getOwnerPanelRuntime().identity, logger });
+  const permissions = new PermissionService({ civratOwnerProvider, logger }); const errorResponder = new ErrorResponder({ logger });
   const contextFactory = new InteractionContextFactory({ guildConfigResolver, i18n, permissions, errorResponder, logger });
   const registry = new InteractionRegistry(); const router = new InteractionRouter({ registry, contextFactory, logger });
   const settings = new GuildSettingsService({ guildConfigResolver, logger });
@@ -166,7 +179,15 @@ function createGuildSettingsRuntime({ legacyConfigService, logger = null }) {
   // Phase 11 — XP et Invites rejoignent /settings et les commandes publiques.
   registerXPSettings({ registry, configService: new XPConfigService({ guildConfigResolver }), settingsHome: async (context) => context.envelope.transport.update({ view: require("../modules/guild-settings/interactions/openSettingsPanel").settingsView(context.t, await settings.getLanguage(context.guildId), settingsSections) }) });
   const invitesRegistration = registerInvites({ registry, configService: new InviteConfigService({ guildConfigResolver }), inviteService: legacyInviteService, settingsHome: async (context) => context.envelope.transport.update({ view: require("../modules/guild-settings/interactions/openSettingsPanel").settingsView(context.t, await settings.getLanguage(context.guildId), settingsSections) }) });
+  // P20 — récupération propriétaire : commande publique, double facteur
+  // (Master Code env-only + code e-mail à usage unique). Aucune permission
+  // requise par conception ; aucune surface d'administration n'en dépend.
+  const recoveryRegistration = registerRecovery({ registry, serviceFactory: () => getRecoveryRuntime().serviceFactory() });
+  // P20 — Owner Panel CIVRAT : ouverture contrôlée dynamiquement (Owner /
+  // Admins CIVRAT / élévation Recovery), contenu sous Master Code, actions
+  // réservées à CIVRAT_OWNER (vérifiées par le router sur chaque route).
+  const ownerPanelRegistration = registerOwnerPanel({ registry, runtimeFactory: getOwnerPanelRuntime });
   const discord = new DiscordInteractionAdapter({ router, registry });
-  return Object.freeze({ tryHandle: (interaction) => discord.tryHandle(interaction), getDiscordCommands: () => [...registration.commands, ...moderationRegistration.commands, ...channelModerationRegistration.commands, ...autoModRegistration.commands, ...stickerRegistration.commands, ...giveawayRegistration.commands, ...suggestionRegistration.commands, ...analyticsRegistration.commands, ...invitesRegistration.commands].map((definition) => toDiscordCommand(definition, async (interaction) => discord.tryHandle(interaction))), registry, ticketPremiumResolver: ticketPremiumConfigResolver });
+  return Object.freeze({ tryHandle: (interaction) => discord.tryHandle(interaction), getDiscordCommands: () => [...registration.commands, ...moderationRegistration.commands, ...channelModerationRegistration.commands, ...autoModRegistration.commands, ...stickerRegistration.commands, ...giveawayRegistration.commands, ...suggestionRegistration.commands, ...analyticsRegistration.commands, ...invitesRegistration.commands, ...recoveryRegistration.commands, ...ownerPanelRegistration.commands].map((definition) => toDiscordCommand(definition, async (interaction) => discord.tryHandle(interaction))), registry, ticketPremiumResolver: ticketPremiumConfigResolver });
 }
 module.exports = { createGuildSettingsRuntime };

@@ -39,6 +39,11 @@
 | `SUPABASE_ANON_KEY` | fallback | utilisée seulement si la service key est absente — attention RLS (§2.3) |
 | `MONGO_URI` / `MONGO_DB_NAME` | optionnel | persistance XP/Invites ; défaut db `civrat` ; **sans Mongo : classements volatils au redémarrage** |
 | `LEGACY_GUILD_ID` | optionnel | purge des commandes guild legacy au `deploy` |
+| `RECOVERY_MASTER_CODE`, `RECOVERY_EMAIL` | optionnel | `/recovery` (P20) : Master Code permanent (env-only) + adresse e-mail de réception du code temporaire ; **sans le couple complet : `/recovery` se contente d'une réponse générique et n'envoie rien (fail-closed)** |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD` | optionnel | relais SMTP (Brevo : `smtp-relay.brevo.com`, `587` STARTTLS ou `465` TLS) pour l'e-mail de récupération ; config incomplète => récupération indisponible, rien n'est envoyé ni loggé |
+| `CIVRAT_OWNER_ID` | recommandé | Owner CIVRAT initial (ID Discord public, **≠** Server Owner) ; repli de lecture tant que `civrat_owner_state` est vide — tables : `docs/architecture/owner-panel-identity.md` §3 |
+| `OWNER_PANEL_MASTER_CODE` | optionnel | `/ownerpanel` : débloque le contenu (session 10 min) ; **vide ⇒ panneau indisponible, fail-closed** |
+| `OWNER_TRANSFER_CODE` | optionnel | exigé (avec confirmation finale) pour transférer le Owner ; vide ⇒ transfert impossible |
 | `API_PORT`, `API_SECRET`, `DASHBOARD_URL`, `DISCORD_CLIENT_SECRET`, `DISCORD_REDIRECT_URI` | **non** | conservées, **inutilisées par le code actuel** — ne pas peupler |
 
 ### Intents Discord (portail développeur)
@@ -111,12 +116,13 @@ npm run deploy
 - Refuse tout token manquant/placeholder **sans appel réseau** (garde
   P12.1).
 - Purge les commandes guild legacy si `LEGACY_GUILD_ID` est défini.
-- Enregistre **22 commandes globales** (liste exacte : `settings`, `captcha`,
+- Enregistre **24 commandes globales** (liste exacte : `settings`, `captcha`,
   `warn`, `mute`, `unmute`, `bannir`, `debannir`, `expulser`, `supprimer`,
   `slowmode`, `verrouiller`, `deverrouiller`, `pseudo`, `automod`,
   `uploadsticker`, `giveaway`, `suggest`, `analytics`, `analytics_xp`,
-  `analytics_invites`, `invites`, `ticketpanel`). La propagation globale
-  peut prendre du temps (comportement Discord documenté).
+  `analytics_invites`, `invites`, `ticketpanel`, `recovery`, `ownerpanel`).
+  La propagation globale peut prendre du temps (comportement Discord
+  documenté).
 
 ## 6. Démarrage
 
@@ -124,7 +130,7 @@ npm run deploy
 node index.js        # ou npm start
 ```
 
-Logs attendus : `22 slash commands available.`, puis `MongoDB connected.`
+Logs attendus : `24 slash commands available.`, puis `MongoDB connected.`
 **ou** `MongoDB connection failed — continuing without it.` (toléré :
 persistance XP/Invites en mémoire seulement), puis `CIVRAT is online as
 <tag>.`
@@ -182,6 +188,26 @@ Ordre recommandé ; chaque case = preuve visuelle dans la guild.
       (logs modération) ; automod (suppression message interdit).
 - [ ] XP : quelques messages puis `/analytics_xp` ; **redémarrage** =>
       classement conservé **si** Mongo configuré (sinon perte assumée).
+- [ ] `/recovery` (P20 — **owner uniquement, nécessite le couple
+      `RECOVERY_*` + SMTP configurés**) : Master Code erroné => même réponse
+      générique qu'un code juste (aucun oracle) ; Master Code juste =>
+      e-mail reçu sur `RECOVERY_EMAIL` (code 6 chiffres) ; code saisi =>
+      « Récupération validée » ; réutilisation du même code => refus ; sans
+      configuration recovery => réponse générique, aucun e-mail.
+- [ ] `/ownerpanel` (P20 — tables `owner-panel-identity.md` §3 appliquées +
+      `CIVRAT_OWNER_ID` + `OWNER_PANEL_MASTER_CODE` définis) : membre simple
+      => refus générique éphémère ; Owner/Admin => modale Master Code ;
+      mauvais code => refus générique identique ; bon code => panneau
+      (Owner/Admins visibles) ; **Admin** : aucun bouton d'action ; **Owner** :
+      ajout admin / retrait admin avec confirmation ; transfert Owner exige
+      `OWNER_TRANSFER_CODE` + confirmation finale, puis l'ancien Owner perd
+      immédiatement le rôle (vérifier `isOwner` des deux côtés) ; Recovery
+      validé => `/ownerpanel` ouvrable pendant 15 min en **mode récupération**
+      (P20.1 — vue sans aucune donnée d'identité) : transfert possible
+      UNIQUEMENT avec `OWNER_TRANSFER_CODE` + confirmation finale (revérif
+      de l'élévation à chaque étape) ; élévation consommée au succès (pas de
+      second transfert) ; jamais de promotion automatique ; mauvais Transfer
+      Code => refus générique (et compté dans le verrou anti force brute).
 - [ ] Réfs : `welcome-image-production-validation.md`,
       `captcha-production-validation.md`, `autorole-production-validation.md`,
       `logs-production-validation.md`, `phase-3-real-environment-protocol.md`.
@@ -189,7 +215,7 @@ Ordre recommandé ; chaque case = preuve visuelle dans la guild.
 ## 8. GO / NO-GO
 
 **GO** si : toutes les cases §7 cochées, aucun secret non roté, migrations
-§2 appliquées et vérifiées, 22 commandes visibles, aucun crash en
+§2 appliquées et vérifiées, 24 commandes visibles, aucun crash en
 redémarrage.
 
 **NO-GO** (bloquer et corriger avant diffusion) : clés brutes dans le

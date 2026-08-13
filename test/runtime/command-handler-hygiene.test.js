@@ -13,11 +13,13 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const commandHandler = require("../../src/handlers/commandHandler");
 
+// P20 : +recovery + ownerpanel => 2 fichiers legacy actifs +
+// 22 commandes modulaires = 24.
 const EXPECTED_COMMANDS = [
   "analytics", "analytics_invites", "analytics_xp", "automod", "bannir",
   "captcha", "debannir", "deverrouiller", "expulser", "giveaway", "invites",
-  "mute", "pseudo", "settings", "slowmode", "suggest", "supprimer",
-  "ticketpanel", "unmute", "uploadsticker", "verrouiller", "warn",
+  "mute", "ownerpanel", "pseudo", "recovery", "settings", "slowmode", "suggest",
+  "supprimer", "ticketpanel", "unmute", "uploadsticker", "verrouiller", "warn",
 ];
 
 test("loadCommands loads exactly the V1 command set, each name once", () => {
