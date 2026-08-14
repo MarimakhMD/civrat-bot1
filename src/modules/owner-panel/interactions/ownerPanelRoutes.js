@@ -42,12 +42,21 @@ function readField(context, fieldId) {
   return typeof value === "string" ? value.trim() : "";
 }
 
-// 1. Ouverture : Owner/Admin => modale du Master Code (P20 inchangé) ;
-// utilisateur avec élévation Recovery active (et ni Owner ni Admin) => vue
-// de récupération (P20.1) ; tout le reste => refus générique.
+// 1. Ouverture :
+//   - Owner CIVRAT => modale du Master Code (authentification obligatoire,
+//     session 24 h) ;
+//   - Admin CIVRAT => accès PERMANENT sans code ni session : panneau en
+//     lecture seule (aucun bouton d'action), lié au statut Admin persistant —
+//     un retrait de la liste referme l'accès immédiatement ;
+//   - utilisateur avec élévation Recovery active (ni Owner ni Admin) => vue
+//     de récupération (P20.1) ;
+//   - tout le reste => refus générique.
 async function openOwnerPanel(context, runtime) {
-  if (await runtime.identity.isOwnerOrAdmin(context.userId)) {
+  if (await runtime.identity.isOwner(context.userId)) {
     return context.envelope.transport.showModal(views.masterModal(context.t));
+  }
+  if (await runtime.identity.isAdmin(context.userId)) {
+    return context.envelope.transport.reply({ view: await buildPanelView(context, runtime), ephemeral: true });
   }
   if (!runtime.hasRecoveryElevation(context.userId)) return replyRefused(context);
   // P20.1 — canal de récupération : aucune donnée d'identité affichée,
@@ -55,10 +64,12 @@ async function openOwnerPanel(context, runtime) {
   return context.envelope.transport.reply({ view: views.recoveryView(context.t), ephemeral: true });
 }
 
-// 2. Soumission du Master Code : session + panneau (ou refus générique).
+// 2. Soumission du Master Code : session (24 h si Owner, sinon courte) +
+// panneau (ou refus générique). Un Admin n'a pas besoin de passer par ici.
 async function submitMasterCode(context, runtime) {
   if (!(await canOpen(context, runtime))) return replyRefused(context);
-  const result = runtime.panel.tryAuthenticate(context.userId, readField(context, Field.MASTER));
+  const isOwner = await runtime.identity.isOwner(context.userId);
+  const result = runtime.panel.tryAuthenticate(context.userId, readField(context, Field.MASTER), { isOwner });
   if (!result.ok) return replyRefused(context);
   return context.envelope.transport.reply({ view: await buildPanelView(context, runtime), ephemeral: true });
 }

@@ -83,21 +83,29 @@ membre Discord      Admin CIVRAT        Owner CIVRAT        Recovery validé
       │                  │                   │                     │
       ▼                  ▼                   ▼                     ▼
   refus générique   /ownerpanel         /ownerpanel          élévation 15 min
-                    + Master Code       + Master Code        ► vue récupéra-
-                    = lecture seule     = lecture + actions    tion (AUCUNE
-                    (aucun bouton)      (CIVRAT_OWNER router)  donnée) : un
-                                                              seul canal —
-                                                              transfert sous
-                                                              Transfer Code
-                                                              + confirmation
+                    accès PERMANENT     + Master Code        ► vue récupéra-
+                    (statut Admin       = session 24 h       tion (AUCUNE
+                    persistant)         lecture + actions    donnée) : un
+                    lecture seule       (CIVRAT_OWNER router) seul canal —
+                    (aucun bouton,                          transfert sous
+                    aucun code,                             Transfer Code
+                    aucune session)                         + confirmation
 ```
 
 - L'**ouverture** de `/ownerpanel` exige : Owner CIVRAT **ou** Admin CIVRAT
   **ou** élévation Recovery active (temporaire, fail-closed, jamais une
   promotion automatique). Tout autre utilisateur : réponse générique éphémère.
-- Le **contenu** exige `OWNER_PANEL_MASTER_CODE` (session 10 min en mémoire ;
-  5 échecs ⇒ verrouillage 5 min ; comparaison à temps constant ; le code
-  n'est jamais loggé ni réaffiché).
+- **Owner CIVRAT** : le **contenu** exige `OWNER_PANEL_MASTER_CODE`
+  (session **24 h** en mémoire ; 5 échecs ⇒ verrouillage 5 min ; comparaison à
+  temps constant ; le code n'est jamais loggé ni réaffiché). L'expiration de
+  la session ne retire JAMAIS le statut Owner : l'Owner se ré-authentifie
+  simplement. Tout transfert réussi révoque immédiatement la session de
+  l'ancien Owner (aucune session automatique pour le nouveau).
+- **Admin CIVRAT** : accès **permanent** lié à sa présence dans la liste
+  persistante `civrat_admins` — aucun Master Code, aucune session, aucune
+  expiration. L'accès est re-vérifié à chaque interaction ; un retrait de la
+  liste referme l'accès immédiatement. L'Admin ne voit que la vue en lecture
+  seule (aucun bouton d'action) et ne satisfait jamais `CIVRAT_OWNER`.
 - Les **actions** portent `{ allOf: [CIVRAT_OWNER] }` vérifié par le router
   **et** re-vérifiées dans le service (défense en profondeur). Chaque action
   exige une **confirmation explicite** (action en attente 10 min, consommée

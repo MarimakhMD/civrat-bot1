@@ -25,12 +25,15 @@ const { OwnerPanelPolicy } = require("../configuration/ownerPanelConstants");
 // déjà via PermissionName.CIVRAT_OWNER).
 
 class CivratIdentityService {
-  constructor({ repository = null, env, logger = null, elevation = null }) {
+  constructor({ repository = null, env, logger = null, elevation = null, onOwnershipTransferred = null }) {
     this.repository = repository; // null => offline : lecture env, mutations refusées
     this.env = env; // { civratOwnerId: () => string|null } — lecture live, jamais figée
     // P20.1 — élévations Recovery injectées ({ isActive, consume }) ; null =>
     // le canal de transfert par récupération est indisponible (fail-closed).
     this.elevation = elevation;
+    // V1 — appelé après un transfert réussi avec l'ancien Owner : permet de
+    // révoquer immédiatement sa session (canal normal ET canal Recovery).
+    this.onOwnershipTransferred = onOwnershipTransferred;
     this.logger = logger;
   }
 
@@ -102,6 +105,9 @@ class CivratIdentityService {
     // immédiatement son statut (non rétrogradé admin).
     await this.repository.transferOwnership({ newOwnerId, previousOwnerId: currentOwnerId });
     this.log("ownership_transferred", { actorId });
+    // V1 — session de l'ancien Owner révoquée immédiatement (aucune session
+    // automatique pour le nouveau : il s'authentifie lui-même ensuite).
+    this.onOwnershipTransferred?.(currentOwnerId);
     return { ok: true, code: "OWNERSHIP_TRANSFERRED" };
   }
 
@@ -123,6 +129,8 @@ class CivratIdentityService {
     await this.repository.transferOwnership({ newOwnerId, previousOwnerId: currentOwnerId });
     this.elevation.consume(actorId); // une élévation = un seul transfert
     this.log("ownership_transferred_via_recovery", { actorId });
+    // V1 — même révocation de session que le transfert normal.
+    this.onOwnershipTransferred?.(currentOwnerId);
     return { ok: true, code: "OWNERSHIP_TRANSFERRED" };
   }
 }

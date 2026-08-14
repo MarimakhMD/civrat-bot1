@@ -41,6 +41,9 @@ function getOwnerPanelRuntime() {
         isActive: (userId) => getRecoveryRuntime().hasActiveElevation(userId),
         consume: (userId) => getRecoveryRuntime().clearElevation(userId),
       },
+      // V1 — tout transfert réussi révoque immédiatement la session de
+      // l'ancien Owner (aucune session automatique pour le nouveau).
+      onOwnershipTransferred: (previousOwnerId) => state.revokeSession(previousOwnerId),
     });
     const panel = new OwnerPanelService({ state, env });
     runtime = Object.freeze({

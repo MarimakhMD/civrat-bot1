@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, PermissionsBitField } = require("discord.js");
+const { SlashCommandBuilder, PermissionsBitField, InteractionContextType } = require("discord.js");
 const { CaptchaConfigService } = require("../modules/captcha/services/CaptchaConfigService");
 const { CaptchaPanelService } = require("../modules/captcha/services/CaptchaPanelService");
 const { CaptchaPanelDeliveryService } = require("../modules/captcha/services/CaptchaPanelDeliveryService");
@@ -9,6 +9,8 @@ module.exports = {
   data: new SlashCommandBuilder()
     .setName("captcha")
     .setDescription("Gérer le panneau de vérification")
+    // V1 — exposition : /captcha est strictement serveur (Guild-only).
+    .setContexts([InteractionContextType.Guild])
     .setDefaultMemberPermissions(PermissionsBitField.Flags.ManageGuild)
     .addSubcommand((sub) => sub.setName("panel").setDescription("Envoyer le panneau de vérification")),
   async execute(interaction) {
