@@ -9,6 +9,7 @@
     "adminsNone": "none",
     "ownerNone": "not configured",
     "youAreOwner": "You are the Owner: the actions below are yours alone.",
+    "adminOperations": "🛠️ Admin operations",
     "youAreViewer": "Read-only access: actions are reserved for the Owner.",
     "addAdmin": "Add an admin",
     "removeAdmin": "Remove an admin",

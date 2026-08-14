@@ -32,7 +32,11 @@ const OwnerPanelFieldId = Object.freeze({
 
 // Limites de politique (valeurs NON secrètes) :
 const OwnerPanelPolicy = Object.freeze({
-  SESSION_TTL_MS: 10 * 60 * 1000, // session après authentification par le Master Code
+  SESSION_TTL_MS: 10 * 60 * 1000, // session courte (accès lecture non-Owner via Master Code)
+  // V1 — l'Owner authentifié obtient une session de 24 h ; les Admins CIVRAT
+  // n'ont AUCUNE session (accès lié au statut Admin persistant, sans code ni
+  // expiration). L'expiration d'une session ne touche jamais le statut Owner.
+  OWNER_SESSION_TTL_MS: 24 * 60 * 60 * 1000, // session Owner = 24 heures
   MAX_MASTER_FAILURES: 5, // mauvais codes consécutifs avant verrouillage
   LOCK_TTL_MS: 5 * 60 * 1000, // durée du verrouillage anti force brute
   PENDING_TTL_MS: 10 * 60 * 1000, // durée de vie d'une action en attente de confirmation

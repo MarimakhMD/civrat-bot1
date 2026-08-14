@@ -97,7 +97,8 @@ function makeRuntime({ canOpenUser = true, viewerIsOwner = false } = {}) {
     identity: {
       isOwnerOrAdmin: async () => canOpenUser,
       isOwner: async () => viewerIsOwner,
-      isAdmin: async () => !viewerIsOwner,
+      // Admin = peut ouvrir sans être Owner (accès permanent, sans code).
+      isAdmin: async () => canOpenUser && !viewerIsOwner,
       getOwnerId: async () => "111111111111111111",
       listAdminIds: async () => ["222222222222222222"],
     },
@@ -127,14 +128,24 @@ function makeContext({ userId = "u", modalValues = {}, locale = fr } = {}) {
   return { context, state };
 }
 
-test("open shows an empty master modal; outsiders get the generic ephemeral refusal", async () => {
-  const { context, state } = makeContext();
-  await routes.openOwnerPanel(context, makeRuntime());
-  const modal = state.modals[0];
+test("open: owner gets the master modal, admin gets direct read-only access, outsiders refused", async () => {
+  // Owner → modale Master Code (authentification obligatoire, session 24 h).
+  const owner = makeContext({ userId: "owner" });
+  await routes.openOwnerPanel(owner.context, makeRuntime({ viewerIsOwner: true }));
+  const modal = owner.state.modals[0];
   assert.equal(modal.customId, Id.MASTER_SUBMIT);
   assert.equal(modal.fields[0].id, Field.MASTER);
   assert.equal(modal.fields[0].value, "", "master field never prefilled");
 
+  // Admin → accès direct (aucune modale, aucun code), vue lecture seule.
+  const admin = makeContext({ userId: "admin" });
+  await routes.openOwnerPanel(admin.context, makeRuntime({ viewerIsOwner: false }));
+  assert.equal(admin.state.modals.length, 0);
+  assert.equal(admin.state.replies.length, 1);
+  assert.equal(admin.state.replies[0].ephemeral, true);
+  assert.deepEqual(admin.state.replies[0].view.components, [], "admin has no action buttons");
+
+  // Membre sans rien → refus générique éphémère.
   const denied = makeContext();
   await routes.openOwnerPanel(denied.context, makeRuntime({ canOpenUser: false }));
   assert.equal(denied.state.modals.length, 0);
@@ -146,7 +157,7 @@ test("master submit: fr copy, owner sees buttons, admin read-only, wrong code ge
   // Owner : vue avec les 3 actions.
   const owner = makeContext({ userId: "owner", modalValues: { [Field.MASTER]: "fake-panel-code-for-tests" } });
   await routes.submitMasterCode(owner.context, makeRuntime({ viewerIsOwner: true }));
-  assert.equal(owner.state.replies[0].view.components.length, 3);
+  assert.equal(owner.state.replies[0].view.components.length, 4);
   assert.ok(owner.state.replies[0].view.content.includes("111111111111111111"));
   // Admin : lecture seule.
   const admin = makeContext({ userId: "admin", modalValues: { [Field.MASTER]: "fake-panel-code-for-tests" } });

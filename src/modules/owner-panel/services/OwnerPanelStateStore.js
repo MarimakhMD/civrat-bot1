@@ -22,6 +22,12 @@ class OwnerPanelStateStore {
     this.sessions.set(userId, expiresAt);
   }
 
+  // V1 — révocation immédiate (transfert Owner réussi) : l'ancien Owner perd
+  // sa session sur-le-champ ; aucune session ne survit au transfert.
+  revokeSession(userId) {
+    this.sessions.delete(userId);
+  }
+
   hasActiveSession(userId, now) {
     const expiresAt = this.sessions.get(userId);
     if (!expiresAt) return false;

@@ -1,5 +1,6 @@
 "use strict";
 
+const { PermissionName } = require("../../core/permissions");
 const { RecoveryComponentId: Id } = require("./configuration/recoveryConstants");
 const { startRecovery, submitMaster, openCodeModal, submitCode } = require("./interactions/recoveryRoutes");
 
@@ -13,6 +14,12 @@ function registerRecovery({ registry, serviceFactory }) {
     name: "recovery",
     description: "Récupération propriétaire (code maître + code e-mail)",
     permissions: { allOf: [] },
+    // V1 — exposition : serveur + DM avec le bot. En serveur, Discord exige
+    // Administrator par défaut ; l'autorité réelle reste le double facteur du
+    // service Recovery (aucune surface d'administration n'en dépend).
+    contexts: ["guild", "botDm"],
+    integrationTypes: ["guildInstall", "userInstall"],
+    defaultMemberPermissions: PermissionName.ADMINISTRATOR,
     options: [],
     execute: startRecovery,
   };

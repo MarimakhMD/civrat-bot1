@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, PermissionsBitField } = require("discord.js");
+const { SlashCommandBuilder, PermissionsBitField, InteractionContextType } = require("discord.js");
 const { TicketPanelService } = require("../modules/tickets/services/TicketPanelService");
 const { TicketPanelDeliveryService } = require("../modules/tickets/services/TicketPanelDeliveryService");
 const { DiscordTicketTransport } = require("../adapters/discord/DiscordTicketTransport");
@@ -8,6 +8,8 @@ module.exports = {
   data: new SlashCommandBuilder()
     .setName("ticketpanel")
     .setDescription("Envoyer le panel ticket")
+    // V1 — exposition : /ticketpanel est strictement serveur (Guild-only).
+    .setContexts([InteractionContextType.Guild])
     .setDefaultMemberPermissions(PermissionsBitField.Flags.ManageGuild),
 
   async execute(interaction) {

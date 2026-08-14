@@ -12,6 +12,7 @@ const { CivratIdentityService } = require("../services/CivratIdentityService");
 const { OwnerPanelService } = require("../services/OwnerPanelService");
 const { CivratIdentityOwnerProvider } = require("../services/CivratIdentityOwnerProvider");
 const { OwnerPanelPolicy, OwnerPanelFieldId: Field, OwnerPanelComponentId: Id } = require("../configuration/ownerPanelConstants");
+const { AdminPanelComponentId: AdminId } = require("../../admin-panel/configuration/adminPanelConstants");
 const routes = require("../interactions/ownerPanelRoutes");
 const fr = require("../translations/fr.json");
 const en = require("../translations/en.json");
@@ -144,7 +145,7 @@ test("the owner with the right code sees the action buttons", async () => {
   const { context, sent } = makeContext({ userId: OWNER_ID, modalValues: { [Field.MASTER]: FAKE_PANEL_CODE } });
   await routes.submitMasterCode(context, f.runtime);
   const ids = sent.replies[0].view.components.map((c) => c.customId);
-  assert.deepEqual(ids, [Id.ADD_ADMIN, Id.REMOVE_ADMIN, Id.TRANSFER]);
+  assert.deepEqual(ids, [Id.ADD_ADMIN, Id.REMOVE_ADMIN, Id.TRANSFER, AdminId.HOME]);
   assert.ok(sent.replies[0].view.content.includes(en.ownerpanel.youAreOwner.slice(0, 20)));
 });
 

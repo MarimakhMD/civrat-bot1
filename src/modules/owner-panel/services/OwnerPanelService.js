@@ -48,7 +48,10 @@ class OwnerPanelService {
   }
 
   // code : saisie utilisateur. Retourne { ok, code } — jamais de détail.
-  tryAuthenticate(userId, code) {
+  // V1 — la durée de session dépend du rôle : Owner = 24 h, sinon (accès
+  // lecture Master Code) = session courte. Les Admins CIVRAT ne passent PAS
+  // par ici (accès permanent lié à leur statut, sans code ni session).
+  tryAuthenticate(userId, code, { isOwner = false } = {}) {
     const master = this.env.panelMasterCode();
     if (!master) {
       this.log("owner_panel_unavailable", { userId });
@@ -68,7 +71,8 @@ class OwnerPanelService {
       return { ok: false, code: "PANEL_AUTH_REFUSED" };
     }
     this.state.clearFailures(userId);
-    this.state.setSession(userId, this.now() + this.policy.SESSION_TTL_MS);
+    const ttl = isOwner ? this.policy.OWNER_SESSION_TTL_MS : this.policy.SESSION_TTL_MS;
+    this.state.setSession(userId, this.now() + ttl);
     this.log("owner_panel_authenticated", { userId });
     return { ok: true, code: "PANEL_AUTHENTICATED" };
   }

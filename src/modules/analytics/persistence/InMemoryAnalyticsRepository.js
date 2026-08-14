@@ -25,6 +25,26 @@ class InMemoryAnalyticsRepository {
     return filtered.slice(-limit);
   }
 
+  // Alias du périmètre Admin Panel (statistiques par serveur).
+  async getServerStats(guildId) {
+    return this.getStats(guildId);
+  }
+
+  // Agrégats globaux (dashboard Admin).
+  async getGlobalStats() {
+    let messages = 0;
+    const memberIds = new Set();
+    const guildIds = new Set();
+    for (const [guildId, list] of this.events.entries()) {
+      guildIds.add(guildId);
+      for (const e of list) {
+        if (e.type === "message") messages += 1;
+        if (e.type === "member" && e.userId) memberIds.add(e.userId);
+      }
+    }
+    return { messages, members: memberIds.size, servers: guildIds.size };
+  }
+
   clear(guildId) {
     if (guildId) this.events.delete(guildId);
     else this.events.clear();

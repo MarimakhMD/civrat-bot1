@@ -1,6 +1,7 @@
 "use strict";
 
 const { OwnerPanelComponentId: Id, OwnerPanelFieldId: Field } = require("../configuration/ownerPanelConstants");
+const { AdminPanelComponentId: AdminId } = require("../../admin-panel/configuration/adminPanelConstants");
 
 // P20 — vues du Owner Panel. Tout le texte passe par l'i18n du module
 // (EN/FR, parité vérifiée). Règles d'affichage :
@@ -38,6 +39,8 @@ function panelView(t, { viewerIsOwner, ownerId, adminIds }) {
         { type: "button", customId: Id.ADD_ADMIN, label: t("ownerpanel.addAdmin"), style: "primary" },
         { type: "button", customId: Id.REMOVE_ADMIN, label: t("ownerpanel.removeAdmin"), style: "secondary" },
         { type: "button", customId: Id.TRANSFER, label: t("ownerpanel.transferOwner"), style: "danger" },
+        // L'Owner garde aussi toutes les fonctions opérationnelles du panel.
+        { type: "button", customId: AdminId.HOME, label: t("ownerpanel.adminOperations"), style: "secondary" },
       ]
     : [];
   return { title: t("ownerpanel.title"), content, components };

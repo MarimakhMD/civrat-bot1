@@ -5,20 +5,21 @@ const { CivratIdentityService } = require("../services/CivratIdentityService");
 const { OwnerPanelService } = require("../services/OwnerPanelService");
 const { SupabaseCivratIdentityRepository } = require("../persistence/SupabaseCivratIdentityRepository");
 const { getRecoveryRuntime } = require("../../recovery/runtime/getRecoveryRuntime");
+const { EntitlementService } = require("../../../core/entitlements");
+const { SupabaseEntitlementRepository } = require("../../../adapters/supabase");
+const { SupabasePremiumHistoryRepository } = require("../../admin-panel/persistence/SupabasePremiumHistoryRepository");
+const { SupabaseAdminAuditRepository } = require("../../admin-panel/persistence/SupabaseAdminAuditRepository");
+const { AdminPanelService } = require("../../admin-panel/services/AdminPanelService");
+const adminPanelRoutes = require("../../admin-panel/interactions/adminPanelRoutes");
 
-// P20 — runtime partagé du Owner Panel (pattern getTicketPanelRuntime /
-// getRecoveryRuntime : singleton paresseux). L'état volatil (sessions,
-// verrouillages, confirmations) est commun à toutes les interactions du
-// processus ; un redémarrage l'efface (fail-closed, testé).
+// P20 + Admin Panel — runtime partagé (singleton paresseux). L'état volatil
+// (sessions Owner, verrouillages, confirmations, élévations Recovery) est
+// commun à toutes les interactions du processus ; un redémarrage l'efface.
 //
-// - Persistance : le client Supabase partagé (src/config/database) ; s'il est
-//   absent (offline / clés manquantes), repository = null => lecture repliée
-//   sur l'env et mutations refusées (fail-closed, jamais de crash).
-// - Secrets : lus À LA DEMANDE dans process.env (jamais copiés, jamais
-//   loggés) — une rotation côté hosting ne demande qu'un redémarrage.
-// - Lien Recovery : hasRecoveryElevation expose l'élévation temporaire issue
-//   d'un Recovery validé (OUVERTURE du panel uniquement ; jamais une
-//   promotion Owner — le transfert reste Owner-only + OWNER_TRANSFER_CODE).
+// L'Admin Panel réutilise le CORE EntitlementService (le SEUL système
+// Premium) + deux journaux append-only (historique Premium, audit Admin).
+// Offline (supabase absent) : repositories null => lecture repliée et
+// mutations refusées (fail-closed, jamais de crash). Aucun secret ici.
 let runtime = null;
 
 function getOwnerPanelRuntime() {
@@ -41,13 +42,32 @@ function getOwnerPanelRuntime() {
         isActive: (userId) => getRecoveryRuntime().hasActiveElevation(userId),
         consume: (userId) => getRecoveryRuntime().clearElevation(userId),
       },
+      // V1 — tout transfert réussi révoque immédiatement la session de
+      // l'ancien Owner (aucune session automatique pour le nouveau).
+      onOwnershipTransferred: (previousOwnerId) => state.revokeSession(previousOwnerId),
     });
     const panel = new OwnerPanelService({ state, env });
+
+    // Admin Panel opérationnel : entitlement (core) + historique + audit +
+    // lecteur analytics partagé. Offline => repositories null (fail-closed).
+    const entitlementService = new EntitlementService({ repository: new SupabaseEntitlementRepository({ supabase }) });
+    const historyRepository = supabase ? new SupabasePremiumHistoryRepository({ supabase }) : null;
+    const auditRepository = supabase ? new SupabaseAdminAuditRepository({ supabase }) : null;
+    let analyticsReader = null;
+    try {
+      analyticsReader = require("../../analytics/runtime/getAnalyticsRuntime").getAnalyticsRuntime()._repository;
+    } catch {
+      analyticsReader = null;
+    }
+    const admin = new AdminPanelService({ entitlementService, historyRepository, auditRepository, analyticsReader });
+
     runtime = Object.freeze({
       identity,
       panel,
       state,
+      admin,
       hasRecoveryElevation: (userId) => getRecoveryRuntime().hasActiveElevation(userId),
+      adminPanel: { openDashboard: (context) => adminPanelRoutes.openDashboard(context, runtime) },
     });
   }
   return runtime;
