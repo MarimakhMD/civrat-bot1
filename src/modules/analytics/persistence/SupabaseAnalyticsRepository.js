@@ -29,6 +29,22 @@ class SupabaseAnalyticsRepository {
     if (error) throw error;
     return data || [];
   }
+
+  // Alias du périmètre Admin Panel (statistiques par serveur).
+  async getServerStats(guildId) {
+    return this.getStats(guildId);
+  }
+
+  // Agrégats globaux pour le dashboard Admin (sans filtre guild).
+  async getGlobalStats() {
+    const { data, error } = await this.supabase.from("analytics_events").select("event_type, user_id, guild_id");
+    if (error) throw error;
+    const rows = data || [];
+    const messages = rows.filter((r) => r.event_type === "message").length;
+    const members = new Set(rows.filter((r) => r.event_type === "member").map((r) => r.user_id)).size;
+    const servers = new Set(rows.map((r) => r.guild_id).filter(Boolean)).size;
+    return { messages, members, servers };
+  }
 }
 
 module.exports = { SupabaseAnalyticsRepository };

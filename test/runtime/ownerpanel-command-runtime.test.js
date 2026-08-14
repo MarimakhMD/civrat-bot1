@@ -157,7 +157,7 @@ test("master submit: fr copy, owner sees buttons, admin read-only, wrong code ge
   // Owner : vue avec les 3 actions.
   const owner = makeContext({ userId: "owner", modalValues: { [Field.MASTER]: "fake-panel-code-for-tests" } });
   await routes.submitMasterCode(owner.context, makeRuntime({ viewerIsOwner: true }));
-  assert.equal(owner.state.replies[0].view.components.length, 3);
+  assert.equal(owner.state.replies[0].view.components.length, 4);
   assert.ok(owner.state.replies[0].view.content.includes("111111111111111111"));
   // Admin : lecture seule.
   const admin = makeContext({ userId: "admin", modalValues: { [Field.MASTER]: "fake-panel-code-for-tests" } });

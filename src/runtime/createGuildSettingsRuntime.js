@@ -85,13 +85,16 @@ const { CivratIdentityOwnerProvider } = require("../modules/owner-panel/services
 const { getOwnerPanelRuntime } = require("../modules/owner-panel/runtime/getOwnerPanelRuntime");
 const ownerPanelEn = require("../modules/owner-panel/translations/en.json");
 const ownerPanelFr = require("../modules/owner-panel/translations/fr.json");
+const { registerAdminPanel } = require("../modules/admin-panel/register");
+const adminPanelEn = require("../modules/admin-panel/translations/en.json");
+const adminPanelFr = require("../modules/admin-panel/translations/fr.json");
 // Service legacy d'invitations : son statsRepository est le stockage réel du
 // tracking (guildMemberAdd/Remove) — on le partage avec /invites et Analytics.
 const legacyInviteService = require("../services/inviteService");
 function createGuildSettingsRuntime({ legacyConfigService, logger = null }) {
   const dictionaries = {
-    en: { ...coreDictionaries.en, ...en, ...welcomeEn, ...autoRoleEn, ...logsEn, ...captchaEn, ...ticketEn, ...moderationEn, ...autoModEn, ...securityEn, ...stickerEn, ...tempVoiceEn, ...giveawayEn, ...suggestionEn, ...analyticsEn, ...xpEn, ...invitesEn, ...recoveryEn, ...ownerPanelEn },
-    fr: { ...coreDictionaries.fr, ...fr, ...welcomeFr, ...autoRoleFr, ...logsFr, ...captchaFr, ...ticketFr, ...moderationFr, ...autoModFr, ...securityFr, ...stickerFr, ...tempVoiceFr, ...giveawayFr, ...suggestionFr, ...analyticsFr, ...xpFr, ...invitesFr, ...recoveryFr, ...ownerPanelFr },
+    en: { ...coreDictionaries.en, ...en, ...welcomeEn, ...autoRoleEn, ...logsEn, ...captchaEn, ...ticketEn, ...moderationEn, ...autoModEn, ...securityEn, ...stickerEn, ...tempVoiceEn, ...giveawayEn, ...suggestionEn, ...analyticsEn, ...xpEn, ...invitesEn, ...recoveryEn, ...ownerPanelEn, ...adminPanelEn },
+    fr: { ...coreDictionaries.fr, ...fr, ...welcomeFr, ...autoRoleFr, ...logsFr, ...captchaFr, ...ticketFr, ...moderationFr, ...autoModFr, ...securityFr, ...stickerFr, ...tempVoiceFr, ...giveawayFr, ...suggestionFr, ...analyticsFr, ...xpFr, ...invitesFr, ...recoveryFr, ...ownerPanelFr, ...adminPanelFr },
   }; validateTranslationParity(dictionaries);
   const i18n = new I18nService({ dictionaries, logger });
   const repository = new LegacyGuildConfigRepository({ getConfig: legacyConfigService.getGuildConfig, updateConfig: legacyConfigService.updateGuildConfig, invalidateConfig: legacyConfigService.invalidateCache });
@@ -187,6 +190,9 @@ function createGuildSettingsRuntime({ legacyConfigService, logger = null }) {
   // Admins CIVRAT / élévation Recovery), contenu sous Master Code, actions
   // réservées à CIVRAT_OWNER (vérifiées par le router sur chaque route).
   const ownerPanelRegistration = registerOwnerPanel({ registry, runtimeFactory: getOwnerPanelRuntime });
+  // Admin Panel opérationnel : mêmes routes de composition, garde d'accès
+  // re-vérifiée dans chaque handler (Admin persistant OU Owner authentifié).
+  registerAdminPanel({ registry, runtimeFactory: getOwnerPanelRuntime });
   const discord = new DiscordInteractionAdapter({ router, registry });
   return Object.freeze({ tryHandle: (interaction) => discord.tryHandle(interaction), getDiscordCommands: () => [...registration.commands, ...moderationRegistration.commands, ...channelModerationRegistration.commands, ...autoModRegistration.commands, ...stickerRegistration.commands, ...giveawayRegistration.commands, ...suggestionRegistration.commands, ...analyticsRegistration.commands, ...invitesRegistration.commands, ...recoveryRegistration.commands, ...ownerPanelRegistration.commands].map((definition) => toDiscordCommand(definition, async (interaction) => discord.tryHandle(interaction))), registry, ticketPremiumResolver: ticketPremiumConfigResolver });
 }

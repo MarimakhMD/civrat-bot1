@@ -45,9 +45,9 @@ function readField(context, fieldId) {
 // 1. Ouverture :
 //   - Owner CIVRAT => modale du Master Code (authentification obligatoire,
 //     session 24 h) ;
-//   - Admin CIVRAT => accès PERMANENT sans code ni session : panneau en
-//     lecture seule (aucun bouton d'action), lié au statut Admin persistant —
-//     un retrait de la liste referme l'accès immédiatement ;
+//   - Admin CIVRAT => accès PERMANENT sans code ni session : ouverture directe
+//     du tableau de bord opérationnel (Premium / Serveurs / Audit), lié au
+//     statut Admin persistant — un retrait de la liste referme l'accès ;
 //   - utilisateur avec élévation Recovery active (ni Owner ni Admin) => vue
 //     de récupération (P20.1) ;
 //   - tout le reste => refus générique.
@@ -56,6 +56,8 @@ async function openOwnerPanel(context, runtime) {
     return context.envelope.transport.showModal(views.masterModal(context.t));
   }
   if (await runtime.identity.isAdmin(context.userId)) {
+    if (runtime.adminPanel?.openDashboard) return runtime.adminPanel.openDashboard(context);
+    // Repli (tests/offline sans panneau admin câblé) : lecture seule sans action.
     return context.envelope.transport.reply({ view: await buildPanelView(context, runtime), ephemeral: true });
   }
   if (!runtime.hasRecoveryElevation(context.userId)) return replyRefused(context);
