@@ -121,8 +121,10 @@ async function clearLegacyGuildCommands(rest, clientId) {
 }
 
 // Shared deployment routine. Returns { ok, sent, registered, status, code }.
+// `guildId` (optional) overrides config.deployGuildId, letting callers without
+// environment-variable support (e.g. start.js) target a guild-scoped deploy.
 // Never throws for Discord API failures: it reports them and returns ok=false.
-async function deployCommands({ commands = null, rest = null } = {}) {
+async function deployCommands({ commands = null, rest = null, guildId = null } = {}) {
   if (!config.token || config.token.startsWith("replace_with_")) {
     logger.error("DISCORD_TOKEN is missing or still a placeholder. Deployment aborted (no network call made).");
     return { ok: false, sent: 0, registered: null, status: null, code: null };
@@ -139,21 +141,21 @@ async function deployCommands({ commands = null, rest = null } = {}) {
     logger.warn(`Payload warning: ${issue}`);
   }
 
-  const guildId = config.deployGuildId || null;
-  const endpointLabel = guildId ? ENDPOINT_LABEL.guild : ENDPOINT_LABEL.global;
+  const targetGuildId = guildId || config.deployGuildId || null;
+  const endpointLabel = targetGuildId ? ENDPOINT_LABEL.guild : ENDPOINT_LABEL.global;
 
   logger.info("Discord deployment started");
-  logger.info(`${body.length} commands prepared (${guildId ? "guild-scoped" : "global"}).`);
+  logger.info(`${body.length} commands prepared (${targetGuildId ? "guild-scoped" : "global"}).`);
 
   const restClient = rest || new REST({ version: "10" }).setToken(config.token);
 
   // Historical guild-scoped cleanup only makes sense for a global deploy.
-  if (!guildId) {
+  if (!targetGuildId) {
     await clearLegacyGuildCommands(restClient, config.clientId);
   }
 
-  const route = guildId
-    ? Routes.applicationGuildCommands(config.clientId, guildId)
+  const route = targetGuildId
+    ? Routes.applicationGuildCommands(config.clientId, targetGuildId)
     : Routes.applicationCommands(config.clientId);
 
   try {
@@ -174,7 +176,7 @@ async function deployCommands({ commands = null, rest = null } = {}) {
   }
 
   logger.success("Deployment successful");
-  logger.info(`${body.length} commands registered (${guildId ? "guild-scoped" : "global"}).`);
+  logger.info(`${body.length} commands registered (${targetGuildId ? "guild-scoped" : "global"}).`);
 
   // Post-deploy verification: read back the commands and compare the count.
   try {

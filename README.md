@@ -41,6 +41,29 @@ npm start
 `npm run deploy` registers global slash commands. Discord can take time to
 propagate global command changes.
 
+## Deploy on Bot-Hosting / Pterodactyl (no free-form env variables)
+
+The Bot-Hosting startup template does not expose free-form environment
+variables, so deployment is triggered through the **Start bash file** only.
+Use `start.js` as the single launcher:
+
+1. Set **Start bash file** to `node start.js` once. The bot starts normally
+   (identical to `node index.js`, no deployment).
+2. To deploy the 24 slash commands, set **Start bash file** to:
+   - `node start.js deploy` — global deploy (propagation can take time), or
+   - `node start.js deploy <guildId>` — guild-scoped deploy (instant) for fast testing.
+   Then restart and watch the console for:
+   `Discord deployment started` → `24 commands prepared` → `Deployment successful`
+   → `24 commands registered` → `Read-back: 24 commands currently registered.`
+   → `CIVRAT is online …`.
+3. After a successful deploy, set **Start bash file** back to `node start.js`
+   so the next restart does not deploy again.
+
+The bot always comes online even if the deploy fails: the failure is logged
+with its HTTP status and Discord code only (never the token). If Discord
+returns `50001 Missing Access`, re-invite the bot with the
+`applications.commands` scope (`scope=bot%20applications.commands`).
+
 ## Scripts
 
 | Script | Purpose |
