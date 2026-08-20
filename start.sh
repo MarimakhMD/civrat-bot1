@@ -14,15 +14,17 @@
 #   start            -> normal start (no deploy)
 #   deploy           -> one-shot GLOBAL deploy + read-back, then start the bot
 #   deploy <guildId> -> one-shot GUILD-SCOPED deploy (instant), then start the bot
+#   clear <guildId>  -> clear GUILD-SCOPED commands only on one guild, then start
+#   list [guildId]   -> list registered commands (global or guild), then start
 #
-# The bot ALWAYS comes online even when the deploy fails. Deploy logging is
-# handled by deploy.js and never prints the token or any secret.
+# The bot ALWAYS comes online even when the deploy/clear fails. Deploy logging
+# is handled by deploy.js and never prints the token or any secret.
 
 set -euo pipefail
 
 # ---- EDIT HERE (only these two values) -------------------------------------
-MODE="start"   # "start" or "deploy"
-GUILD_ID=""    # guild id for a guild-scoped deploy; empty = global deploy
+MODE="start"   # "start" | "deploy" | "clear" | "list"
+GUILD_ID=""    # guild id (required for clear; optional for deploy/list)
 # ----------------------------------------------------------------------------
 
 # Arguments (when the field contains "start.sh deploy <guildId>") override the
@@ -47,6 +49,22 @@ case "$MODE" in
     else
       echo "[CIVRAT] Launch mode: deploy (global)."
       node start.js deploy
+    fi
+    ;;
+  clear)
+    if [[ -n "$GUILD_ID" ]]; then
+      echo "[CIVRAT] Launch mode: clear (guild-scoped commands only; global untouched)."
+      node start.js clear "$GUILD_ID"
+    else
+      echo "[CIVRAT] ERROR: clear requires GUILD_ID — refusing to clear anything. Starting normally." >&2
+      node start.js
+    fi
+    ;;
+  list)
+    if [[ -n "$GUILD_ID" ]]; then
+      node start.js list "$GUILD_ID"
+    else
+      node start.js list
     fi
     ;;
   start|"")

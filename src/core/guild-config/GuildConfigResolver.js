@@ -23,8 +23,8 @@ class GuildConfigResolver {
       return config;
     } catch (error) {
       if (error instanceof ConfigurationError) throw error;
-      this.logger?.error?.("Guild configuration resolution failed", { guildId, error: error.message });
-      throw new ConfigurationError("CONFIGURATION_UNAVAILABLE", { guildId }, error);
+      this.logger?.error?.("Guild configuration resolution failed", { guildId, reason: error?.code || "unknown", error: error?.message || String(error) });
+      throw new ConfigurationError("CONFIGURATION_UNAVAILABLE", { guildId, reason: error?.code || "unknown" }, error);
     }
   }
 
@@ -50,8 +50,8 @@ class GuildConfigResolver {
       return config;
     } catch (error) {
       if (error instanceof ConfigurationError) throw error;
-      this.logger?.error?.("Guild configuration update failed", { guildId, keys: Object.keys(updates), error: error.message });
-      throw new ConfigurationError("CONFIGURATION_UNAVAILABLE", { guildId }, error);
+      this.logger?.error?.("Guild configuration update failed", { guildId, keys: Object.keys(updates), reason: error?.code || "unknown", error: error?.message || String(error) });
+      throw new ConfigurationError("CONFIGURATION_UNAVAILABLE", { guildId, reason: error?.code || "unknown" }, error);
     }
   }
 

@@ -42,6 +42,10 @@ function registerGiveaways({ registry, configService, supabase, logsRuntimeFacto
       { type: "string", name: "id", description: "Giveaway ID", required: false },
     ],
     execute: async (context) => {
+      // Déferrement immédiat : create/draw font de l'I/O Supabase/Discord avant
+      // de répondre ; sans deferReply, une réponse tardive (>3 s) rendrait
+      // l'interaction « l'application ne répond plus ».
+      await context.envelope.transport.deferReply?.({ ephemeral: true });
       const action = context.envelope.options.getString("action");
       const guildId = context.guildId;
       const guild = context.envelope.discordMember.guild;
@@ -58,6 +62,12 @@ function registerGiveaways({ registry, configService, supabase, logsRuntimeFacto
         const id = context.envelope.options.getString("id");
         result = await service.draw({ guildId, giveawayId: id });
         await context.envelope.transport.reply({ view: { title: context.t(result.ok ? "giveaway.drawSuccess" : "giveaway.drawFailed", { winners: (result.winners || []).join(", ") }), content: "", components: [] }, ephemeral: true });
+      } else {
+        // Réponse garantie même pour une valeur d'action inconnue : Discord
+        // accepte n'importe quelle chaîne ; sans ce else, la commande ne
+        // répondait jamais (« l'application ne répond plus »).
+        result = { ok: false, code: "GIVEAWAY_INVALID_ACTION" };
+        await context.envelope.transport.reply({ view: { title: context.t("giveaway.invalidAction"), content: "", components: [] }, ephemeral: true });
       }
       return result;
     },

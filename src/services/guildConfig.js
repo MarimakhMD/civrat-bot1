@@ -1,8 +1,18 @@
 "use strict";
 
+const logger = require("../utils/logger");
+
 const CACHE_TTL_MS = 5 * 60 * 1000;
 
 const cache = new Map(); // guildId -> { config, expiresAt }
+
+// Ne journalise JAMAIS de secret : masque toute éventuelle URL d'identification
+// (motif scheme://user:password@) par précaution, bien que Supabase ne renvoie
+// pas de credentials dans ses messages d'erreur.
+function sanitizeError(error) {
+  const message = String(error?.message || error || "unknown");
+  return message.replace(/([a-zA-Z][a-zA-Z0-9+.-]*:\/\/)[^/@\s]+@/g, "$1***@");
+}
 
 function getSupabase() {
   try {
@@ -35,7 +45,15 @@ async function getGuildConfig(guildId) {
     const config = data || {};
     cache.set(guildId, { config, expiresAt: now + CACHE_TTL_MS });
     return config;
-  } catch {
+  } catch (error) {
+    // Lecture tolérante : en cas d'erreur, on sert le cache ou {} (jamais de
+    // crash), mais on logue la vraie cause (table absente, connexion refusée…)
+    // pour que l'hébergement révèle pourquoi la config est indisponible.
+    logger.warn("guild_configs read failed (falling back to cache/empty)", {
+      guildId,
+      code: error?.code || error?.name || null,
+      error: sanitizeError(error),
+    });
     if (cached && cached.expiresAt > now) return cached.config;
     return {};
   }
@@ -61,7 +79,19 @@ async function updateGuildConfig(guildId, updates) {
     .upsert({ guild_id: guildId, ...updates }, { onConflict: "guild_id" })
     .select()
     .single();
-  if (error) throw error;
+  if (error) {
+    // Écriture échouée : logue la vraie cause (code PostgREST/Postgres,
+    // ex. "42P01" table inexistante) puis propage une erreur typée pour que
+    // le resolver puisse la distinguer (SUPABASE_WRITE_FAILED vs autre).
+    logger.warn("guild_configs write failed", {
+      guildId,
+      code: error?.code || error?.name || "SUPABASE_WRITE_FAILED",
+      error: sanitizeError(error),
+    });
+    const wrapped = new Error(`guild_configs write failed: ${sanitizeError(error)}`);
+    wrapped.code = error?.code || "SUPABASE_WRITE_FAILED";
+    throw wrapped;
+  }
   const config = data || { guild_id: guildId, ...updates };
   cache.set(guildId, { config, expiresAt: Date.now() + CACHE_TTL_MS });
   return config;

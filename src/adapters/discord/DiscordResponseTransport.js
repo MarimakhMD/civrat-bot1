@@ -48,6 +48,12 @@ function payload(view, ephemeral = true) { return { content: [view.title, view.c
 
 class DiscordResponseTransport {
   constructor(interaction) { this.interaction = interaction; }
+  // Déferrement explicite : à appeler au tout début d'une commande qui fait de
+  // l'I/O (Supabase/Mongo/Discord) avant de répondre, pour ne jamais dépasser
+  // les 3 s d'expiration de l'interaction (« l'application ne répond plus »).
+  // Idempotent : sans effet si l'interaction est déjà déférée ou répondue.
+  async deferReply({ ephemeral = true } = {}) { if (this.interaction.deferred || this.interaction.replied) return; if (typeof this.interaction.deferReply !== "function") return; await this.interaction.deferReply({ ephemeral }); }
+  async deferUpdate() { if (this.interaction.deferred || this.interaction.replied) return; if (typeof this.interaction.deferUpdate !== "function") return; await this.interaction.deferUpdate(); }
   async reply({ view, ephemeral }) { const data = payload(view, ephemeral); if (this.interaction.replied || this.interaction.deferred) return this.interaction.followUp(data); return this.interaction.reply(data); }
   async update({ view }) { const data = payload(view, true); delete data.ephemeral; if (this.interaction.deferred) return this.interaction.editReply(data); if (this.interaction.replied) return this.interaction.editReply(data); return this.interaction.update(data); }
   async replyImagePreview({ image, content, ephemeral }) { const data = { content, files: [{ attachment: image.buffer, name: "welcome-preview.png" }], ephemeral }; if (this.interaction.replied || this.interaction.deferred) return this.interaction.followUp(data); return this.interaction.reply(data); }

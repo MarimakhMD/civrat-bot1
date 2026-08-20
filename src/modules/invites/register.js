@@ -19,6 +19,9 @@ function registerInvites({ registry, configService, inviteService, settingsHome 
       { type: "boolean", name: "leaderboard", description: "Show leaderboard", required: false },
     ],
     execute: async (context) => {
+      // Déferrement immédiat : les stats viennent de Mongo/Supabase avant de
+      // répondre (évite l'expiration de l'interaction).
+      await context.envelope.transport.deferReply?.({ ephemeral: true });
       const targetUser = (context.envelope.options && typeof context.envelope.options.getUser === "function" ? context.envelope.options.getUser("user") : null) || context.envelope.discordMember;
       const showLeaderboard = Boolean(context.envelope.options && typeof context.envelope.options.getBoolean === "function" ? context.envelope.options.getBoolean("leaderboard") : false);
       const guildId = context.guildId;

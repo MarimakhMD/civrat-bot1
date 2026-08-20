@@ -30,6 +30,23 @@ class EntitlementService {
     return Boolean(record && record.status === "active" && (!record.ends_at || new Date(record.ends_at) > this.now()));
   }
 
+  // Gate centralisée et fail-closed, consommée par les modules pour refuser
+  // proprement l'accès Premium. Elle distingue EXPLICITEMENT les causes :
+  //   granted                 -> { ok: true,  granted: true,  code: "ENTITLEMENT_GRANTED" }
+  //   Premium absent          -> { ok: true,  granted: false, code: "PREMIUM_REQUIRED" }
+  //   erreur backend/repo     -> { ok: false, granted: false, code: "ENTITLEMENT_UNAVAILABLE" }
+  async requireFeature({ guildId, feature }) {
+    if (!this.repository) {
+      return { ok: false, granted: false, code: "ENTITLEMENT_UNAVAILABLE" };
+    }
+    try {
+      const granted = await this.hasFeature({ guildId, feature });
+      return { ok: true, granted, code: granted ? "ENTITLEMENT_GRANTED" : "PREMIUM_REQUIRED" };
+    } catch {
+      return { ok: false, granted: false, code: "ENTITLEMENT_UNAVAILABLE" };
+    }
+  }
+
   async findFeature(guildId, feature) {
     return this.repository.findFeature(guildId, feature);
   }
@@ -84,4 +101,16 @@ class EntitlementService {
   }
 }
 
-module.exports = { EntitlementService, describeRecord };
+// Vue transport-agnostique « Premium requis », partagée par tous les modules
+// pour que le refus Premium soit COHÉRENT partout. Le traducteur `t` est
+// injecté par l'appelant. `unavailable` bascule sur le message « vérification
+// impossible » (erreur backend) au lieu de « Premium absent ».
+function premiumRequiredView(t, { unavailable = false } = {}) {
+  return {
+    title: t("errors.premiumRequiredTitle"),
+    content: unavailable ? t("errors.entitlementUnavailable") : t("errors.premiumRequired"),
+    components: [],
+  };
+}
+
+module.exports = { EntitlementService, describeRecord, premiumRequiredView };

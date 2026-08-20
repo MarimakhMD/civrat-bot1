@@ -58,14 +58,21 @@ test("the 22 normal commands are guild-only (contexts = [0])", () => {
   }
 });
 
-test("/ownerpanel and /recovery are guild + bot DM with Administrator default", () => {
+test("/ownerpanel and /recovery are guild + bot DM with no Discord permission default (handler-guarded)", () => {
   const { all } = allCommands();
   for (const name of ["ownerpanel", "recovery"]) {
     const command = all.find((c) => c.name === name);
     assert.ok(command, `/${name} must exist`);
     assert.deepEqual(command.contexts, [0, 1], `/${name} must be Guild + BotDM`);
     assert.deepEqual(command.integration_types, [0, 1], `/${name} must allow user install (DM)`);
-    assert.equal(command.default_member_permissions, "8", `/${name} requires Administrator by default on servers`);
+    // Aucun default_member_permissions : une permission de type Administrator
+    // n'est pas évaluable en DM (pas de membre/rôle) et masquerait la commande.
+    // La commande est donc visible en DM ET en serveur ; l'autorisation réelle
+    // (Owner/Admin CIVRAT) est appliquée dans le handler, jamais exposée ici.
+    assert.ok(
+      command.default_member_permissions === undefined || command.default_member_permissions === null,
+      `/${name} must not carry a Discord permission default (it would hide it in DM)`
+    );
   }
 });
 

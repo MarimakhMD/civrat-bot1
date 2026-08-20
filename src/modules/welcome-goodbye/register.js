@@ -1,6 +1,7 @@
 "use strict";
 const { previewWelcomeImage } = require("./image/pipeline/previewWelcomeImage");
 const { PermissionName } = require("../../core/permissions");
+const { EntitlementFeature, premiumRequiredView } = require("../../core/entitlements");
 const { WelcomeGoodbyeComponentId: Id, WelcomeGoodbyeConfigKey: Key } = require("./configuration/welcomeGoodbyeConstants");
 const { settingsView, welcomeView, goodbyeView } = require("./interactions/welcomeGoodbyeViews");
 const { toggleWelcome } = require("./interactions/updateWelcomeSettings");
@@ -21,8 +22,9 @@ const { previewGoodbye } = require("./interactions/previewGoodbye");
 const { testGoodbye } = require("./interactions/testGoodbye");
 const { WelcomeTemplateRenderer, defaultPlaceholderProviders } = require("./services/WelcomeTemplateRenderer");
 const { WelcomeAdminAction } = require("./services/WelcomeAdminLogService");
-function registerWelcomeGoodbye({registry,service,adminLogService=null,settingsHome=null,imagePipeline=null,templateRegistry=null}) { const permissions={allOf:[PermissionName.MANAGE_GUILD]}; const update=async(c)=>c.envelope.transport.update({view:settingsView({t:c.t,config:await service.get(c.guildId)})}); const log=(action,c)=>adminLogService?.record({action,guildId:c.guildId,actorId:c.userId});
+function registerWelcomeGoodbye({registry,service,adminLogService=null,settingsHome=null,imagePipeline=null,templateRegistry=null,entitlementService=null}) { const permissions={allOf:[PermissionName.MANAGE_GUILD]}; const update=async(c)=>c.envelope.transport.update({view:settingsView({t:c.t,config:await service.get(c.guildId)})}); const log=(action,c)=>adminLogService?.record({action,guildId:c.guildId,actorId:c.userId});
   registry.registerButton({customId:Id.PREVIEW_WELCOME_IMAGE,permissions,execute:async c=>{
+    if(entitlementService){const ent=await entitlementService.requireFeature({guildId:c.guildId,feature:EntitlementFeature.WELCOME_IMAGE}).catch(()=>({ok:false,granted:false,code:"ENTITLEMENT_UNAVAILABLE"}));if(!ent.granted){return c.envelope.transport.reply({view:premiumRequiredView(c.t,{unavailable:ent.code==="ENTITLEMENT_UNAVAILABLE"}),ephemeral:true});}}
     const config=await service.get(c.guildId);
     const template=(templateRegistry&&(templateRegistry.get(config[Key.WELCOME_TEMPLATE])||templateRegistry.get("template-1")))||null;
     const dm=c.envelope.discordMember;
