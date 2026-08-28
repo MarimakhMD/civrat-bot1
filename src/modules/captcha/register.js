@@ -1,19 +1,25 @@
 "use strict";
+
 const { PermissionName } = require("../../core/permissions");
 const { CaptchaComponentId: Id } = require("./configuration/captchaConstants");
 const { captchaView } = require("./interactions/captchaViews");
-const { toggleCaptcha, selectCaptcha } = require("./interactions/configureCaptcha");
+const { toggleCaptcha, selectCaptcha, resetCaptcha } = require("./interactions/configureCaptcha");
 const { handleCaptchaVerify } = require("./interactions/captchaVerifyRoute");
 const { previewCaptcha } = require("./interactions/captchaPreview");
+
 function registerCaptcha({ registry, service, verificationServiceFactory, settingsHome = null }) {
   const permissions = { allOf: [PermissionName.MANAGE_GUILD] };
-  registry.registerButton({customId:Id.SECTION,permissions,execute:async c=>c.envelope.transport.update({view:captchaView({t:c.t,config:await service.read(c.guildId)})})});
-  registry.registerButton({customId:Id.TOGGLE,permissions,execute:async c=>toggleCaptcha({...c,service})});
-  registry.registerSelectMenu({customId:Id.CHANNEL,permissions,execute:async c=>selectCaptcha({...c,service})});
-  registry.registerSelectMenu({customId:Id.ROLE,permissions,execute:async c=>selectCaptcha({...c,service})});
-  registry.registerButton({customId:Id.PREVIEW,permissions,execute:async c=>previewCaptcha({...c,service})});
-  registry.registerButton({customId:Id.VERIFY,permissions:{allOf:[]},execute:async c=>handleCaptchaVerify(c,verificationServiceFactory(c))});
-  registry.registerButton({customId:Id.BACK,permissions,execute:settingsHome});
-  return {id:Id.SECTION,permissions};
+
+  registry.registerButton({ customId: Id.SECTION, permissions, execute: async (c) => c.envelope.transport.update({ view: captchaView({ t: c.t, config: await service.read(c.guildId) }) }) });
+  registry.registerButton({ customId: Id.TOGGLE, permissions, execute: async (c) => toggleCaptcha({ ...c, service }) });
+  registry.registerSelectMenu({ customId: Id.CHANNEL, permissions, execute: async (c) => selectCaptcha({ ...c, service }) });
+  registry.registerSelectMenu({ customId: Id.ROLE, permissions, execute: async (c) => selectCaptcha({ ...c, service }) });
+  registry.registerButton({ customId: Id.PREVIEW, permissions, execute: async (c) => previewCaptcha({ ...c, service }) });
+  registry.registerButton({ customId: Id.RESET, permissions, execute: async (c) => resetCaptcha({ ...c, service }) });
+  registry.registerButton({ customId: Id.VERIFY, permissions: { allOf: [] }, execute: async (c) => handleCaptchaVerify(c, verificationServiceFactory(c)) });
+  registry.registerButton({ customId: Id.BACK, permissions, execute: settingsHome });
+
+  return { id: Id.SECTION, permissions };
 }
-module.exports={registerCaptcha};
+
+module.exports = { registerCaptcha };

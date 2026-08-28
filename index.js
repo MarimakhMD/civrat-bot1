@@ -19,6 +19,7 @@ const { Client, GatewayIntentBits, Partials } = require("discord.js");
 const { config } = require("./src/config");
 const logger = require("./src/utils/logger");
 const commandHandler = require("./src/handlers/commandHandler");
+const { deployCommands } = require("./deploy");
 
 // Intents required by the event listeners actually present in src/events:
 // - Guilds: base guild data, channel/role/thread events, interactions
@@ -105,6 +106,24 @@ async function main() {
   loadEvents(client);
   const commands = commandHandler.loadCommands();
   logger.info(`${commands.size} slash commands available.`);
+
+  // Optional one-shot deploy at startup, controlled by DEPLOY_COMMANDS.
+  // DEPLOY_COMMANDS=1  -> load (already done) + deploy + verify + log, then
+  //                       continue with the normal bot startup.
+  // any other value   -> normal startup, no deploy (no PUT on every restart).
+  if (config.deployCommands) {
+    logger.info("DEPLOY_COMMANDS=1 — deploying slash commands before login.");
+    try {
+      await deployCommands({ commands });
+    } catch (error) {
+      // A failing deploy must never prevent the bot from coming online.
+      logger.error("Startup deployment failed — bot startup continues.", {
+        error: error?.message || String(error),
+      });
+    }
+  } else {
+    logger.info("DEPLOY_COMMANDS is not '1' — deploy skipped (normal startup).");
+  }
 
   await connectMongo();
 

@@ -7,6 +7,9 @@
     "interactionUnsupported": "This interaction is not supported.",
     "resourceNotFound": "The requested resource could not be found.",
     "routeNotFound": "This action is no longer available.",
-    "validationFailed": "Some information is invalid. Please review it and try again."
+    "validationFailed": "Some information is invalid. Please review it and try again.",
+    "premiumRequiredTitle": "🔒 Premium Feature",
+    "premiumRequired": "This feature is reserved for CIVRAT Premium members.",
+    "entitlementUnavailable": "Could not verify your Premium access right now. Please try again later."
   }
 }

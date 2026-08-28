@@ -15,6 +15,7 @@
     "notFound": "Giveaway introuvable.",
     "closed": "Giveaway fermé.",
     "invalidPrize": "Le lot doit contenir au moins 2 caractères.",
+    "invalidAction": "Action invalide. Utilisez « create » ou « draw ».",
     "createFailed": "Impossible de créer le giveaway.",
     "drawFailed": "Impossible de tirer le giveaway."
   }

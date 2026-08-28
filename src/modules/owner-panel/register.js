@@ -22,12 +22,16 @@ function registerOwnerPanel({ registry, runtimeFactory }) {
     name: "ownerpanel",
     description: "Panneau propriétaire CIVRAT (Owner/Admins CIVRAT)",
     permissions: open,
-    // V1 — exposition : serveur + DM avec le bot. En serveur, Discord exige
-    // Administrator par défaut ; l'autorité réelle reste la chaîne interne
-    // P20 (identity + Master Code + CIVRAT_OWNER sur les routes d'action).
+    // V1 — exposition : serveur + DM avec le bot.
+    // AUCUNE permission Discord par défaut : un default_member_permissions
+    // (ex. Administrator) n'est pas évaluable en DM (pas de membre/role) et
+    // masquerait la commande en DM. La commande est donc VISIBLE partout,
+    // mais l'AUTORISATION réelle reste entièrement côté handler :
+    // openOwnerPanel refuse génériquement tout non-Owner/non-Admin
+    // (replyRefused) et les routes d'action exigent CIVRAT_OWNER via le
+    // router. Un utilisateur non autorisé ne peut jamais atteindre le contenu.
     contexts: ["guild", "botDm"],
     integrationTypes: ["guildInstall", "userInstall"],
-    defaultMemberPermissions: PermissionName.ADMINISTRATOR,
     options: [],
     execute: (context) => routes.openOwnerPanel(context, runtime()),
   };

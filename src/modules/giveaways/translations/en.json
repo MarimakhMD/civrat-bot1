@@ -15,6 +15,7 @@
     "notFound": "Giveaway not found.",
     "closed": "Giveaway is closed.",
     "invalidPrize": "Prize must be at least 2 characters.",
+    "invalidAction": "Invalid action. Use \"create\" or \"draw\".",
     "createFailed": "Could not create giveaway.",
     "drawFailed": "Could not draw giveaway."
   }

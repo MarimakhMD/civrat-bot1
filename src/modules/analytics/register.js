@@ -31,6 +31,7 @@ function registerAnalytics({ registry, configService, analyticsService, settings
     description: "Show server analytics overview",
     permissions: permissionsManage,
     execute: async (context) => {
+      await context.envelope.transport.deferReply?.({ ephemeral: true });
       const guildId = context.guildId;
       const stats = await analyticsService.getStats(guildId);
       const topXP = await analyticsService.getTopXP(guildId, 5);
@@ -48,6 +49,7 @@ function registerAnalytics({ registry, configService, analyticsService, settings
     description: "Show XP leaderboard",
     permissions: null,
     execute: async (context) => {
+      await context.envelope.transport.deferReply?.({ ephemeral: true });
       const topXP = await analyticsService.getTopXP(context.guildId, 10);
       const view = {
         title: context.t("analytics.xpTop"),
@@ -65,6 +67,7 @@ function registerAnalytics({ registry, configService, analyticsService, settings
     description: "Show invite leaderboard",
     permissions: null,
     execute: async (context) => {
+      await context.envelope.transport.deferReply?.({ ephemeral: true });
       const topInvites = await analyticsService.getTopInvites(context.guildId, 10);
       const view = {
         title: context.t("analytics.invitesTop"),

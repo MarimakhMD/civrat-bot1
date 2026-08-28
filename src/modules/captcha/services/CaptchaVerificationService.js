@@ -1,3 +1,36 @@
 "use strict";
-const {CaptchaConfigKey:Key}=require("../configuration/captchaConstants");
-class CaptchaVerificationService{constructor({configService,transport}){this.configService=configService;this.transport=transport;}async verify({guildId,member}){const config=await this.configService.read(guildId);const result=(verified,code,details={})=>({verified,code,guildId,memberId:member?.id||null,details});if(!guildId||!member)return result(false,"CAPTCHA_GUILD_OR_MEMBER_MISSING");if(!config[Key.ENABLED])return result(false,"CAPTCHA_DISABLED");const roleId=config[Key.ROLE_ID];if(!roleId)return result(false,"CAPTCHA_ROLE_NOT_CONFIGURED");const role=await this.transport.getRole(roleId);if(!role)return result(false,"CAPTCHA_ROLE_MISSING");if(!this.transport.canManageRole(role))return result(false,"CAPTCHA_ROLE_UNMANAGEABLE");if(member.roleIds?.includes(roleId))return result(true,"CAPTCHA_ALREADY_VERIFIED");try{await this.transport.assignRole(member.discordMember, role);return result(true,"CAPTCHA_VERIFIED");}catch(error){return result(false,"CAPTCHA_ASSIGNMENT_FAILED");}}}module.exports={CaptchaVerificationService};
+
+const { CaptchaConfigKey: Key } = require("../configuration/captchaConstants");
+
+class CaptchaVerificationService {
+  constructor({ configService, transport }) {
+    this.configService = configService;
+    this.transport = transport;
+  }
+
+  async verify({ guildId, member }) {
+    const config = await this.configService.read(guildId);
+    const result = (verified, code, details = {}) => ({ verified, code, guildId, memberId: member?.id || null, details });
+
+    if (!guildId || !member) return result(false, "CAPTCHA_GUILD_OR_MEMBER_MISSING");
+    if (!config[Key.ENABLED]) return result(false, "CAPTCHA_DISABLED");
+
+    const roleId = config[Key.ROLE_ID];
+    if (!roleId) return result(false, "CAPTCHA_ROLE_NOT_CONFIGURED");
+
+    const role = await this.transport.getRole(roleId);
+    if (!role) return result(false, "CAPTCHA_ROLE_MISSING", { roleId });
+    if (!this.transport.canManageRole(role)) return result(false, "CAPTCHA_ROLE_UNMANAGEABLE", { roleId });
+
+    if (member.roleIds?.includes(roleId)) return result(true, "CAPTCHA_ALREADY_VERIFIED", { roleId });
+
+    try {
+      await this.transport.assignRole(member.discordMember, role);
+      return result(true, "CAPTCHA_VERIFIED", { roleId });
+    } catch (error) {
+      return result(false, "CAPTCHA_ASSIGNMENT_FAILED", { roleId, error: error?.message || String(error) });
+    }
+  }
+}
+
+module.exports = { CaptchaVerificationService };

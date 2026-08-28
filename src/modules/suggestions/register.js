@@ -38,6 +38,9 @@ function registerSuggestions({ registry, configService, supabase, logsRuntimeFac
     permissions: null,
     options: [{ type: "string", name: "content", description: "Suggestion content", required: true }],
     execute: async (context) => {
+      // Déferrement immédiat : la création fait de l'I/O Supabase avant de
+      // répondre (évite l'expiration de l'interaction).
+      await context.envelope.transport.deferReply?.({ ephemeral: true });
       const content = context.envelope.options.getString("content");
       const guildId = context.guildId;
       const authorId = context.envelope.discordMember.id;

@@ -1,6 +1,5 @@
 "use strict";
 
-const { PermissionName } = require("../../core/permissions");
 const { RecoveryComponentId: Id } = require("./configuration/recoveryConstants");
 const { startRecovery, submitMaster, openCodeModal, submitCode } = require("./interactions/recoveryRoutes");
 
@@ -14,12 +13,14 @@ function registerRecovery({ registry, serviceFactory }) {
     name: "recovery",
     description: "Récupération propriétaire (code maître + code e-mail)",
     permissions: { allOf: [] },
-    // V1 — exposition : serveur + DM avec le bot. En serveur, Discord exige
-    // Administrator par défaut ; l'autorité réelle reste le double facteur du
-    // service Recovery (aucune surface d'administration n'en dépend).
+    // V1 — exposition : serveur + DM avec le bot.
+    // AUCUNE permission Discord par défaut : un default_member_permissions
+    // (ex. Administrator) n'est pas évaluable en DM et masquerait la commande
+    // en DM. La commande est VISIBLE partout, mais toute la sécurité reste le
+    // double facteur du service Recovery (Master Code + code e-mail à usage
+    // unique) ; aucun utilisateur non autorisé ne peut aboutir sans les deux.
     contexts: ["guild", "botDm"],
     integrationTypes: ["guildInstall", "userInstall"],
-    defaultMemberPermissions: PermissionName.ADMINISTRATOR,
     options: [],
     execute: startRecovery,
   };

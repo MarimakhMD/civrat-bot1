@@ -41,6 +41,44 @@ npm start
 `npm run deploy` registers global slash commands. Discord can take time to
 propagate global command changes.
 
+## Deploy on Bot-Hosting / Pterodactyl (no free-form env variables)
+
+The daemon runs `bash ${START_BASH_FILE}` when **Start bash file** is set, so
+that field must point to a real **Bash script** — never a `.js` file and never
+a `node ...` command line. Use `start.sh`:
+
+1. Set **Start bash file** to `start.sh` for a normal start (no deploy).
+2. To deploy the 24 slash commands, either:
+   - edit `MODE="deploy"` (and `GUILD_ID` for a guild-scoped test) at the top
+     of `start.sh`, or
+   - put arguments in the field: `start.sh deploy` (global) or
+     `start.sh deploy <guildId>` (guild-scoped, instant).
+   Then restart and watch the console for:
+   `Discord deployment started` → `24 commands prepared` → `Deployment successful`
+   → `24 commands registered` → `Read-back: 24 commands currently registered.`
+   → `CIVRAT is online …`.
+3. After a successful deploy, set **Start bash file** back to `start.sh`
+   (or `MODE="start"`) so the next restart does not deploy again.
+
+### Removing duplicate (legacy guild-scoped) commands
+
+If a server shows duplicated commands (e.g. `/bannir` twice), old guild-scoped
+commands are still registered on that guild alongside the global ones:
+
+- `start.sh list` lists global commands; `start.sh list <guildId>` lists the
+  guild-scoped commands of one server (see which are stale).
+- `start.sh clear <guildId>` removes **only** the guild-scoped commands of that
+  server. It never touches the global commands. Re-invite/restart afterwards
+  with the global 24 already deployed.
+
+The clear is explicit and safe: it requires a real guild id and logs the count
+of commands removed (`Clear OK — N guild-scoped command(s) removed`).
+
+The bot always comes online even if the deploy fails: the failure is logged
+with its HTTP status and Discord code only (never the token). If Discord
+returns `50001 Missing Access`, re-invite the bot with the
+`applications.commands` scope (`scope=bot%20applications.commands`).
+
 ## Scripts
 
 | Script | Purpose |

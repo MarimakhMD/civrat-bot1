@@ -161,6 +161,10 @@ function createGuildSettingsRuntime({ legacyConfigService, logger = null }) {
     registry,
     service: new WelcomeGoodbyeService({ guildConfigResolver }),
     adminLogService: new WelcomeAdminLogService({ logger }),
+    // Phase Premium — gate centralisée : l'aperçu de la carte Welcome image
+    // exige l'entitlement WELCOME_IMAGE (le service est partagé avec le
+    // panneau Tickets/Admin, une seule source de vérité Premium).
+    entitlementService,
 
   });
   const autoModConfigService = new AutoModConfigService({ guildConfigResolver });
