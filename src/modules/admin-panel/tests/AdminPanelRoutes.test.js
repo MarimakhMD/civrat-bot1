@@ -9,8 +9,10 @@ const { OwnerPanelStateStore } = require("../../owner-panel/services/OwnerPanelS
 const { CivratIdentityService } = require("../../owner-panel/services/CivratIdentityService");
 const { OwnerPanelService } = require("../../owner-panel/services/OwnerPanelService");
 const { AdminPanelService } = require("../services/AdminPanelService");
+const { AdminSystemService } = require("../services/AdminSystemService");
 const routes = require("../interactions/adminPanelRoutes");
 const { AdminPanelComponentId: Id, AdminPanelFieldId: Field } = require("../configuration/adminPanelConstants");
+const { RecoveryComponentId, RecoveryFieldId } = require("../../recovery/configuration/recoveryConstants");
 const { toActionRows } = require("../../../adapters/discord/DiscordResponseTransport");
 const adminEn = require("../translations/en.json");
 
@@ -48,7 +50,7 @@ function t(key, vars) {
   return typeof raw === "string" ? raw.replace(/\{\{\s*(\w+)\s*\}\}/g, (_m, n) => String(vars?.[n] ?? "")) : raw;
 }
 
-function makeRuntime({ adminIds = [ADMIN_ID] } = {}) {
+function makeRuntime({ adminIds = [ADMIN_ID], entitlementRepository = new InMemoryEntitlementRepository() } = {}) {
   const clock = { now: 1_700_000_000_000 };
   const state = new OwnerPanelStateStore();
   const env = { civratOwnerId: () => "111111111111111111", panelMasterCode: () => FAKE_CODE, transferCode: () => FAKE_CODE };
@@ -57,23 +59,46 @@ function makeRuntime({ adminIds = [ADMIN_ID] } = {}) {
     env,
   });
   const panel = new OwnerPanelService({ state, env, now: () => clock.now });
-  const entitlementService = new EntitlementService({ repository: new InMemoryEntitlementRepository(), now: () => new Date(clock.now) });
+  const entitlementService = new EntitlementService({ repository: entitlementRepository, now: () => new Date(clock.now) });
   const admin = new AdminPanelService({
     entitlementService,
     historyRepository: new InMemoryHistoryRepository(),
     auditRepository: new InMemoryAuditRepository(),
     analyticsReader: { getGlobalStats: async () => ({ messages: 1, members: 1, servers: 1 }), getServerStats: async () => ({ messages: 1, members: 1, total: 2 }) },
   });
-  return { runtime: { identity, panel, state, admin, hasRecoveryElevation: () => false }, clock };
+  const system = new AdminSystemService({
+    technicalConfig: { guildId: GUILD_A, channelId: "555555555555555555", roleId: "666666666666666666" },
+    configurationReader: async () => ({ config: { language: "en", tickets_enabled: true }, available: true, found: true, source: "database" }),
+    entitlementService,
+    now: () => clock.now,
+    startedAt: clock.now - 5000,
+  });
+  return {
+    runtime: {
+      identity,
+      panel,
+      state,
+      admin,
+      system,
+      technicalAdminProvider: { isAdmin: async () => true },
+      hasRecoveryElevation: () => false,
+      recoveryServiceFactory: () => ({ requestRecovery: async () => ({ requested: true }), verifyRecovery: async () => ({ recovered: false }) }),
+    },
+    clock,
+  };
 }
 
 function makeContext({ userId = ADMIN_ID, modalValues = {}, values = [], customId = "" } = {}) {
   const sent = { replies: [], updates: [], modals: [] };
+  const cache = new Map([
+    [GUILD_A, { id: GUILD_A, name: "Alpha", memberCount: 10 }],
+    [GUILD_B, { id: GUILD_B, name: "Beta", memberCount: 20 }],
+  ]);
   const context = {
-    userId, guildId: "g1", t,
+    userId, guildId: GUILD_A, channelId: "555555555555555555", member: { hasRole: () => true }, t,
     envelope: {
       modalValues, values, customId,
-      discordClient: { guilds: { cache: { size: 2, get: (id) => (id === GUILD_A ? { name: "Alpha" } : { name: "Beta" }) } } },
+      discordClient: { isReady: () => true, guilds: { cache } },
       transport: {
         reply: async (p) => { sent.replies.push(p); },
         update: async (p) => { sent.updates.push(p); },
@@ -89,9 +114,36 @@ test("dashboard renders with nav buttons and packs within Discord limits", async
   const { context, sent } = makeContext();
   await routes.openDashboard(context, runtime);
   const view = sent.replies[0].view;
-  assert.ok(view.content.includes(t("adminpanel.dashboardTitle")));
-  assert.deepEqual(view.components.map((c) => c.customId), [Id.PREMIUM, Id.SERVERS, Id.AUDIT, Id.REFRESH]);
+  assert.ok(view.content.includes(t("adminpanel.dashboardDescription")));
+  assert.deepEqual(view.components.map((c) => c.customId), [
+    Id.SERVERS,
+    Id.DIAGNOSTICS,
+    Id.CONFIGURATION,
+    Id.PREMIUM,
+    Id.AUDIT,
+    Id.RECOVERY,
+    Id.REFRESH,
+  ]);
   assert.ok(toActionRows(view.components).length <= 5, "dashboard packs within 5 action rows");
+});
+
+test("installations, diagnostics, and configuration render only available data", async () => {
+  const { runtime } = makeRuntime();
+
+  const installations = makeContext();
+  await routes.openServers(installations.context, runtime);
+  assert.ok(installations.sent.replies[0].view.content.includes("Alpha"));
+  assert.ok(installations.sent.replies[0].view.content.includes(GUILD_B));
+
+  const diagnostics = makeContext();
+  await routes.openDiagnostics(diagnostics.context, runtime);
+  assert.ok(diagnostics.sent.replies[0].view.content.includes("5s"));
+  assert.ok(diagnostics.sent.replies[0].view.content.includes(t("adminpanel.available")));
+
+  const configuration = makeContext();
+  await routes.openConfiguration(configuration.context, runtime);
+  assert.ok(configuration.sent.replies[0].view.content.includes("TICKET".toLowerCase()));
+  assert.ok(configuration.sent.replies[0].view.content.includes(GUILD_A));
 });
 
 test("premium view lists servers with a select menu and pagination buttons", async () => {
@@ -104,6 +156,17 @@ test("premium view lists servers with a select menu and pagination buttons", asy
   assert.ok(view.content.includes(GUILD_A));
   assert.equal(view.components.find((c) => c.type === "select").options.length, 2);
   assert.ok(toActionRows(view.components).length <= 5);
+});
+
+test("premium outage is shown as unavailable, never as an empty subscription list", async () => {
+  const repository = new InMemoryEntitlementRepository();
+  repository.listAll = async () => { throw new Error("offline"); };
+  const { runtime } = makeRuntime({ entitlementRepository: repository });
+  const { context, sent } = makeContext();
+  await routes.openPremium(context, runtime);
+  const view = sent.replies[0].view;
+  assert.ok(view.content.includes(t("adminpanel.premiumUnavailable")));
+  assert.equal(view.components.some((component) => component.type === "select"), false);
 });
 
 test("search opens a modal and submit renders the server detail", async () => {
@@ -125,6 +188,23 @@ test("invalid search is generically refused", async () => {
   const submit = makeContext({ modalValues: { [Field.GUILD_ID]: "nope" } });
   await routes.submitSearch(submit.context, runtime);
   assert.equal(submit.sent.replies[0].view.content, t("adminpanel.refused"));
+});
+
+test("integrated Recovery preserves its generic response and never renders the submitted secret", async () => {
+  const { runtime } = makeRuntime();
+  let received = null;
+  runtime.recoveryServiceFactory = () => ({
+    requestRecovery: async (input) => { received = input; return { requested: true }; },
+  });
+  const open = makeContext();
+  await routes.openRecovery(open.context, runtime);
+  assert.equal(open.sent.modals[0].customId, RecoveryComponentId.MASTER_SUBMIT);
+
+  const submit = makeContext({ modalValues: { [RecoveryFieldId.MASTER]: FAKE_CODE } });
+  await routes.submitRecoveryMaster(submit.context, runtime);
+  assert.equal(received.masterCode, FAKE_CODE);
+  assert.equal(JSON.stringify(submit.sent).includes(FAKE_CODE), false);
+  assert.equal(submit.sent.replies[0].ephemeral, true);
 });
 
 test("activate flow: modal prefills guild id, submit grants premium", async () => {

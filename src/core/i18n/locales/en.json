@@ -8,8 +8,8 @@
     "resourceNotFound": "The requested resource could not be found.",
     "routeNotFound": "This action is no longer available.",
     "validationFailed": "Some information is invalid. Please review it and try again.",
-    "premiumRequiredTitle": "🔒 Premium Feature",
-    "premiumRequired": "This feature is reserved for CIVRAT Premium members.",
-    "entitlementUnavailable": "Could not verify your Premium access right now. Please try again later."
+    "premiumRequiredTitle": "🔒 CIVRAT Premium feature",
+    "premiumRequired": "This feature requires CIVRAT Premium. Premium unlocks the advanced customizations available for this feature. To get or verify your access, join the CIVRAT support server at https://discord.gg/BA3aDFqtXr and open a ticket with the team.",
+    "entitlementUnavailable": "Your Premium access cannot be verified right now. No access or configuration was changed. Please try again later; if the issue persists, join https://discord.gg/BA3aDFqtXr and open a support ticket."
   }
 }

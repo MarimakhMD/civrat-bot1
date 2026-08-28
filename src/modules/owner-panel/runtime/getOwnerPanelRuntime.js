@@ -5,8 +5,7 @@ const { CivratIdentityService } = require("../services/CivratIdentityService");
 const { OwnerPanelService } = require("../services/OwnerPanelService");
 const { SupabaseCivratIdentityRepository } = require("../persistence/SupabaseCivratIdentityRepository");
 const { getRecoveryRuntime } = require("../../recovery/runtime/getRecoveryRuntime");
-const { EntitlementService } = require("../../../core/entitlements");
-const { SupabaseEntitlementRepository } = require("../../../adapters/supabase");
+const { getEntitlementService } = require("../../../runtime/getEntitlementService");
 const { SupabasePremiumHistoryRepository } = require("../../admin-panel/persistence/SupabasePremiumHistoryRepository");
 const { SupabaseAdminAuditRepository } = require("../../admin-panel/persistence/SupabaseAdminAuditRepository");
 const { AdminPanelService } = require("../../admin-panel/services/AdminPanelService");
@@ -50,7 +49,7 @@ function getOwnerPanelRuntime() {
 
     // Admin Panel opérationnel : entitlement (core) + historique + audit +
     // lecteur analytics partagé. Offline => repositories null (fail-closed).
-    const entitlementService = new EntitlementService({ repository: new SupabaseEntitlementRepository({ supabase }) });
+    const entitlementService = getEntitlementService();
     const historyRepository = supabase ? new SupabasePremiumHistoryRepository({ supabase }) : null;
     const auditRepository = supabase ? new SupabaseAdminAuditRepository({ supabase }) : null;
     let analyticsReader = null;

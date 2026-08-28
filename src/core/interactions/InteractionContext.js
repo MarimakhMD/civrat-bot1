@@ -26,6 +26,7 @@ class InteractionContextFactory {
     return Object.freeze({
       envelope,
       guildId,
+      channelId: envelope.channelId || null,
       userId: envelope.userId || null,
       member: envelope.member || null,
       config,

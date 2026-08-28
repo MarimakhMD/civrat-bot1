@@ -3,12 +3,8 @@
 const logger = require("../utils/logger");
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
+const cache = new Map(); // guildId -> { config, expiresAt, found, source }
 
-const cache = new Map(); // guildId -> { config, expiresAt }
-
-// Ne journalise JAMAIS de secret : masque toute éventuelle URL d'identification
-// (motif scheme://user:password@) par précaution, bien que Supabase ne renvoie
-// pas de credentials dans ses messages d'erreur.
 function sanitizeError(error) {
   const message = String(error?.message || error || "unknown");
   return message.replace(/([a-zA-Z][a-zA-Z0-9+.-]*:\/\/)[^/@\s]+@/g, "$1***@");
@@ -23,40 +19,80 @@ function getSupabase() {
   }
 }
 
-async function getGuildConfig(guildId) {
-  if (!guildId || typeof guildId !== "string") return {};
-  const cached = cache.get(guildId);
-  const now = Date.now();
-  if (cached && cached.expiresAt > now) {
-    return cached.config;
+function hasPersistedValues(config) {
+  return Boolean(config && typeof config === "object" && Object.keys(config).length > 0);
+}
+
+function state({ config = {}, available, found, source }) {
+  return {
+    config,
+    available: Boolean(available),
+    found: Boolean(found),
+    source,
+  };
+}
+
+/**
+ * Reads both the effective configuration and its observable persistence state.
+ * No backend error details are exposed to callers; detailed sanitized logging
+ * remains server-side. `getGuildConfig` below preserves the legacy API.
+ */
+async function getGuildConfigState(guildId) {
+  if (!guildId || typeof guildId !== "string") {
+    return state({ config: {}, available: false, found: false, source: "invalid" });
   }
 
+  const cached = cache.get(guildId);
+  const now = Date.now();
   const supabase = getSupabase();
+
+  if (cached && cached.expiresAt > now) {
+    return state({
+      config: cached.config,
+      available: Boolean(supabase),
+      found: cached.found ?? hasPersistedValues(cached.config),
+      source: cached.source === "memory" ? "memory" : "cache",
+    });
+  }
+
   if (!supabase) {
-    // Offline / tests / missing database.js → return valid cached or empty, no throw
-    if (cached && cached.expiresAt > now) return cached.config;
-    // Expired or no cache → treat as unknown guild → empty
-    return {};
+    return state({ config: {}, available: false, found: false, source: "unavailable" });
   }
 
   try {
-    const { data, error } = await supabase.from("guild_configs").select("*").eq("guild_id", guildId).maybeSingle();
+    const { data, error } = await supabase
+      .from("guild_configs")
+      .select("*")
+      .eq("guild_id", guildId)
+      .maybeSingle();
     if (error) throw error;
+
     const config = data || {};
-    cache.set(guildId, { config, expiresAt: now + CACHE_TTL_MS });
-    return config;
+    const found = Boolean(data);
+    cache.set(guildId, {
+      config,
+      expiresAt: now + CACHE_TTL_MS,
+      found,
+      source: "database",
+    });
+    return state({
+      config,
+      available: true,
+      found,
+      source: found ? "database" : "defaults",
+    });
   } catch (error) {
-    // Lecture tolérante : en cas d'erreur, on sert le cache ou {} (jamais de
-    // crash), mais on logue la vraie cause (table absente, connexion refusée…)
-    // pour que l'hébergement révèle pourquoi la config est indisponible.
     logger.warn("guild_configs read failed (falling back to cache/empty)", {
       guildId,
       code: error?.code || error?.name || null,
       error: sanitizeError(error),
     });
-    if (cached && cached.expiresAt > now) return cached.config;
-    return {};
+    return state({ config: {}, available: false, found: false, source: "unavailable" });
   }
+}
+
+async function getGuildConfig(guildId) {
+  return (await getGuildConfigState(guildId)).config;
 }
 
 async function updateGuildConfig(guildId, updates) {
@@ -67,10 +103,14 @@ async function updateGuildConfig(guildId, updates) {
 
   const supabase = getSupabase();
   if (!supabase) {
-    // Offline: merge into cache and return
     const current = (await getGuildConfig(guildId)) || {};
     const merged = { ...current, ...updates };
-    cache.set(guildId, { config: merged, expiresAt: Date.now() + CACHE_TTL_MS });
+    cache.set(guildId, {
+      config: merged,
+      expiresAt: Date.now() + CACHE_TTL_MS,
+      found: true,
+      source: "memory",
+    });
     return merged;
   }
 
@@ -80,9 +120,6 @@ async function updateGuildConfig(guildId, updates) {
     .select()
     .single();
   if (error) {
-    // Écriture échouée : logue la vraie cause (code PostgREST/Postgres,
-    // ex. "42P01" table inexistante) puis propage une erreur typée pour que
-    // le resolver puisse la distinguer (SUPABASE_WRITE_FAILED vs autre).
     logger.warn("guild_configs write failed", {
       guildId,
       code: error?.code || error?.name || "SUPABASE_WRITE_FAILED",
@@ -92,8 +129,14 @@ async function updateGuildConfig(guildId, updates) {
     wrapped.code = error?.code || "SUPABASE_WRITE_FAILED";
     throw wrapped;
   }
+
   const config = data || { guild_id: guildId, ...updates };
-  cache.set(guildId, { config, expiresAt: Date.now() + CACHE_TTL_MS });
+  cache.set(guildId, {
+    config,
+    expiresAt: Date.now() + CACHE_TTL_MS,
+    found: true,
+    source: "database",
+  });
   return config;
 }
 
@@ -105,7 +148,6 @@ async function invalidateCache(guildId) {
   cache.delete(guildId);
 }
 
-// Test helpers
 function _clearCache() {
   cache.clear();
 }
@@ -114,4 +156,12 @@ function _getCache() {
   return cache;
 }
 
-module.exports = { getGuildConfig, updateGuildConfig, invalidateCache, _clearCache, _getCache, CACHE_TTL_MS };
+module.exports = {
+  getGuildConfig,
+  getGuildConfigState,
+  updateGuildConfig,
+  invalidateCache,
+  _clearCache,
+  _getCache,
+  CACHE_TTL_MS,
+};

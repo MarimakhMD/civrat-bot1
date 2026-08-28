@@ -84,7 +84,6 @@ function recoveryView(t) {
     content: t("ownerpanel.recoveryNotice"),
     components: [
       { type: "button", customId: Id.RECOVERY_TRANSFER, label: t("ownerpanel.transferOwner"), style: "danger" },
-      { type: "button", customId: Id.RECOVERY_MASTER, label: t("ownerpanel.recoveryMasterAuth"), style: "secondary" },
     ],
   };
 }
@@ -102,13 +101,18 @@ function recoveryTransferModal(t) {
   };
 }
 
-function confirmView(t, { textKey, targetId }) {
+function confirmView(t, {
+  textKey,
+  targetId,
+  confirmId = Id.CONFIRM,
+  cancelId = Id.CANCEL,
+}) {
   return {
     title: t("ownerpanel.title"),
     content: t(textKey, { target: `<@${targetId}> (\`${targetId}\`)` }),
     components: [
-      { type: "button", customId: Id.CONFIRM, label: t("ownerpanel.confirm"), style: "danger" },
-      { type: "button", customId: Id.CANCEL, label: t("ownerpanel.cancel"), style: "secondary" },
+      { type: "button", customId: confirmId, label: t("ownerpanel.confirm"), style: "danger" },
+      { type: "button", customId: cancelId, label: t("ownerpanel.cancel"), style: "secondary" },
     ],
   };
 }

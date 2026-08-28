@@ -4,6 +4,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { toDiscordCommand } = require("../../../src/adapters/discord");
 const { PermissionName } = require("../../../src/core/permissions");
+const { CommandDeploymentScope } = require("../../../src/core/interactions");
 
 test("Discord command adapter maps a neutral command definition", () => {
   const command = toDiscordCommand(
@@ -75,4 +76,36 @@ test("explicit defaultMemberPermissions wins over permissions.allOf fallback", (
     async () => {}
   );
   assert.equal(command.data.toJSON().default_member_permissions, "8");
+});
+
+test("commands default to the global deployment scope", () => {
+  const command = toDiscordCommand(
+    { name: "settings", description: "Settings", permissions: { allOf: [] } },
+    async () => {}
+  );
+  assert.equal(command.deploymentScope, CommandDeploymentScope.GLOBAL);
+});
+
+test("the technical-guild deployment scope is preserved", () => {
+  const command = toDiscordCommand(
+    {
+      name: "admin",
+      description: "CIVRAT Admin",
+      permissions: { allOf: [] },
+      deploymentScope: CommandDeploymentScope.CIVRAT_ADMIN_GUILD,
+    },
+    async () => {}
+  );
+  assert.equal(command.deploymentScope, CommandDeploymentScope.CIVRAT_ADMIN_GUILD);
+  assert.deepEqual(command.data.toJSON().contexts, [0], "technical commands remain Guild-only");
+});
+
+test("an unsupported deployment scope fails explicitly", () => {
+  assert.throws(
+    () => toDiscordCommand(
+      { name: "invalid", description: "Invalid", permissions: { allOf: [] }, deploymentScope: "elsewhere" },
+      async () => {}
+    ),
+    /Unsupported command deployment scope/
+  );
 });

@@ -13,6 +13,30 @@ test("guildConfig reads guild, caches, and returns empty for unknown", async () 
   assert.equal(cached.language, "fr");
 });
 
+test("guildConfig exposes an explicit unavailable/cache state offline", async () => {
+  const mod = require("../guildConfig");
+  mod._clearCache();
+  assert.deepEqual(await mod.getGuildConfigState("unknown"), {
+    config: {},
+    available: false,
+    found: false,
+    source: "unavailable",
+  });
+
+  mod._getCache().set("cached", {
+    config: { guild_id: "cached", language: "en" },
+    expiresAt: Date.now() + 100000,
+    found: true,
+    source: "database",
+  });
+  assert.deepEqual(await mod.getGuildConfigState("cached"), {
+    config: { guild_id: "cached", language: "en" },
+    available: false,
+    found: true,
+    source: "cache",
+  });
+});
+
 test("guildConfig update merges and invalidates cache", async () => {
   const mod = require("../guildConfig");
   mod._clearCache();
@@ -21,6 +45,10 @@ test("guildConfig update merges and invalidates cache", async () => {
   assert.equal(updated.security_enabled, true);
   const cached = await mod.getGuildConfig("g2");
   assert.equal(cached.language, "en");
+  const snapshot = await mod.getGuildConfigState("g2");
+  assert.equal(snapshot.source, "memory");
+  assert.equal(snapshot.available, false);
+  assert.equal(snapshot.found, true);
   await mod.invalidateCache("g2");
   const after = await mod.getGuildConfig("g2");
   assert.deepEqual(after, {});

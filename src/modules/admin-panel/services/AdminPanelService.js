@@ -37,10 +37,11 @@ class AdminPanelService {
 
   // ---------- Dashboard / statistiques ----------
   async getDashboardStats({ clientGuildCount = null } = {}) {
-    let premiumTotal = 0;
-    let premiumActive = 0;
-    let premiumExpired = 0;
-    let premiumInactive = 0;
+    let premiumAvailable = true;
+    let premiumTotal = null;
+    let premiumActive = null;
+    let premiumExpired = null;
+    let premiumInactive = null;
     try {
       const servers = await this.entitlementService.listPremiumServers();
       premiumTotal = servers.length;
@@ -48,28 +49,35 @@ class AdminPanelService {
       premiumExpired = servers.filter((s) => s.expired).length;
       premiumInactive = servers.filter((s) => s.status && s.status !== "active").length;
     } catch (error) {
+      premiumAvailable = false;
       this.log("premium_stats_unavailable", { error: error.message });
     }
 
+    let analyticsAvailable = false;
     let analytics = { messages: null, members: null, servers: null };
     try {
       if (this.analyticsReader && typeof this.analyticsReader.getGlobalStats === "function") {
         analytics = (await this.analyticsReader.getGlobalStats()) || analytics;
+        analyticsAvailable = true;
       }
     } catch (error) {
       this.log("analytics_stats_unavailable", { error: error.message });
     }
 
     const knownServers = Number.isInteger(clientGuildCount) ? clientGuildCount : null;
-    const freeServers = knownServers === null ? null : Math.max(0, knownServers - premiumActive);
+    const freeServers = knownServers === null || premiumActive === null
+      ? null
+      : Math.max(0, knownServers - premiumActive);
 
     return {
       knownServers,
       freeServers,
+      premiumAvailable,
       premiumTotal,
       premiumActive,
       premiumExpired,
       premiumInactive,
+      analyticsAvailable,
       analytics,
     };
   }

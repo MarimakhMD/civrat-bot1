@@ -31,6 +31,21 @@ test("interaction registry routes every supported normalized interaction kind", 
   assert.equal(await router.handle({ kind: InteractionKind.MODAL, customId: "civrat:v1:settings:language", locale: "en" }), "modal");
 });
 
+test("interaction context exposes normalized guild and channel identifiers", async () => {
+  const { registry, router } = createRouter();
+  let captured = null;
+  registry.registerCommand({ name: "admin", execute: (context) => { captured = context; } });
+  await router.handle({
+    kind: InteractionKind.COMMAND,
+    name: "admin",
+    guildId: "1320817768962064384",
+    channelId: "1542957356382552154",
+    locale: "fr",
+  });
+  assert.equal(captured.guildId, "1320817768962064384");
+  assert.equal(captured.channelId, "1542957356382552154");
+});
+
 test("registry rejects duplicate and ambiguous route definitions", () => {
   const registry = new InteractionRegistry();
   registry.registerCommand({ name: "config", execute: () => {} });

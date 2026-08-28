@@ -1,5 +1,7 @@
 "use strict";
 
+const { EntitlementDecision } = require("./entitlementDecisions");
+
 // Normalise un enregistrement d'entitlement en un objet exploitable par l'UI,
 // avec rétrocompatibilité : starts_at / plan absents sur les anciennes lignes
 // sont exposés comme null (jamais une erreur).
@@ -37,13 +39,17 @@ class EntitlementService {
   //   erreur backend/repo     -> { ok: false, granted: false, code: "ENTITLEMENT_UNAVAILABLE" }
   async requireFeature({ guildId, feature }) {
     if (!this.repository) {
-      return { ok: false, granted: false, code: "ENTITLEMENT_UNAVAILABLE" };
+      return { ok: false, granted: false, code: EntitlementDecision.UNAVAILABLE };
     }
     try {
       const granted = await this.hasFeature({ guildId, feature });
-      return { ok: true, granted, code: granted ? "ENTITLEMENT_GRANTED" : "PREMIUM_REQUIRED" };
+      return {
+        ok: true,
+        granted,
+        code: granted ? EntitlementDecision.GRANTED : EntitlementDecision.PREMIUM_REQUIRED,
+      };
     } catch {
-      return { ok: false, granted: false, code: "ENTITLEMENT_UNAVAILABLE" };
+      return { ok: false, granted: false, code: EntitlementDecision.UNAVAILABLE };
     }
   }
 
@@ -105,11 +111,16 @@ class EntitlementService {
 // pour que le refus Premium soit COHÉRENT partout. Le traducteur `t` est
 // injecté par l'appelant. `unavailable` bascule sur le message « vérification
 // impossible » (erreur backend) au lieu de « Premium absent ».
-function premiumRequiredView(t, { unavailable = false } = {}) {
+function premiumRequiredView(t, {
+  decision = EntitlementDecision.PREMIUM_REQUIRED,
+  unavailable = false,
+  components = [],
+} = {}) {
+  const backendUnavailable = unavailable || decision === EntitlementDecision.UNAVAILABLE;
   return {
     title: t("errors.premiumRequiredTitle"),
-    content: unavailable ? t("errors.entitlementUnavailable") : t("errors.premiumRequired"),
-    components: [],
+    content: backendUnavailable ? t("errors.entitlementUnavailable") : t("errors.premiumRequired"),
+    components,
   };
 }
 

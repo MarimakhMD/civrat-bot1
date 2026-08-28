@@ -1,5 +1,9 @@
 "use strict";
 
+const {
+  EntitlementDecision,
+  premiumRequiredView,
+} = require("../../../core/entitlements");
 const { TicketConfigKey: Key, TicketComponentId: Id } = require("../configuration/ticketConstants");
 const { TicketPremiumConfigKey: PKey } = require("../configuration/ticketPremiumConstants");
 const { validateTicketPremiumUpdates } = require("../configuration/ticketPremiumValidation");
@@ -49,13 +53,13 @@ function backButton(t) {
   return { type: "button", customId: Id.PANEL, label: t("tickets.back"), style: "secondary" };
 }
 
-// Vue verrouillée : aucun contrôle Premium utilisable, uniquement le Retour.
-function premiumLockedView({ t }) {
-  return {
-    title: t("tickets.premiumLockedTitle"),
-    content: t("tickets.premiumLockedDescription"),
+// La fonctionnalité reste visible depuis Tickets. Sans accès, la vue centrale
+// explique Premium ou l'indisponibilité du contrôle et conserve le retour.
+function premiumLockedView({ t, decision = EntitlementDecision.PREMIUM_REQUIRED }) {
+  return premiumRequiredView(t, {
+    decision,
     components: [backButton(t)],
-  };
+  });
 }
 
 // Vue active : valeurs résolues (fallback Free affiché explicitement) +
@@ -94,37 +98,50 @@ function premiumPanelView({ t, premium, notice = null }) {
   };
 }
 
-async function isPremiumActive({ guildId, premiumConfigResolver }) {
-  if (!premiumConfigResolver || typeof premiumConfigResolver.isActive !== "function") return false;
-  return premiumConfigResolver.isActive(guildId);
+async function getPremiumDecision({ guildId, premiumConfigResolver }) {
+  if (!premiumConfigResolver || typeof premiumConfigResolver.checkAccess !== "function") {
+    return { ok: false, granted: false, code: EntitlementDecision.UNAVAILABLE };
+  }
+  return premiumConfigResolver.checkAccess(guildId);
 }
 
-async function renderLocked(context) {
-  return context.envelope.transport.update({ view: premiumLockedView({ t: context.t }) });
+async function requirePremium(context) {
+  const decision = await getPremiumDecision(context);
+  if (decision.granted) return decision;
+  await context.envelope.transport.update({
+    view: premiumLockedView({ t: context.t, decision: decision.code }),
+  });
+  return null;
 }
 
-async function resolvePremiumConfig(context) {
+async function resolvePremiumConfig(context, decision = null) {
   const config = await context.service.read(context.guildId);
-  return context.premiumConfigResolver.resolve({ guildId: context.guildId, config });
+  return context.premiumConfigResolver.resolve({ guildId: context.guildId, config, decision });
 }
 
-async function renderActive(context, notice = null, config = null) {
+async function renderActive(context, notice = null, config = null, decision = null) {
   const resolved = config || await context.service.read(context.guildId);
-  const premium = await context.premiumConfigResolver.resolve({ guildId: context.guildId, config: resolved });
+  const premium = await context.premiumConfigResolver.resolve({
+    guildId: context.guildId,
+    config: resolved,
+    decision,
+  });
   return context.envelope.transport.update({ view: premiumPanelView({ t: context.t, premium, notice }) });
 }
 
 // Entrée « ✨ Personnalisation Premium » depuis la section Tickets.
 async function openPremiumPanel(context) {
-  if (!(await isPremiumActive(context))) return renderLocked(context);
-  const premium = await resolvePremiumConfig(context);
+  const decision = await requirePremium(context);
+  if (!decision) return null;
+  const premium = await resolvePremiumConfig(context, decision);
   return context.envelope.transport.update({ view: premiumPanelView({ t: context.t, premium }) });
 }
 
 // Ouvre la modale d'édition du panneau (5 champs pré-remplis des valeurs résolues).
 async function openPremiumPanelModal(context) {
-  if (!(await isPremiumActive(context))) return renderLocked(context);
-  const premium = await resolvePremiumConfig(context);
+  const decision = await requirePremium(context);
+  if (!decision) return null;
+  const premium = await resolvePremiumConfig(context, decision);
   return context.envelope.transport.showModal({
     customId: Id.PREMIUM_EDIT_SUBMIT,
     title: context.t("tickets.premiumModalTitle"),
@@ -147,7 +164,8 @@ function normalizeModalValue(value) {
 // sans écrire (tout-ou-rien), sinon les clés sont persistées (champ vide =
 // null = retour au default Free pour cette clé) et la vue est rafraîchie.
 async function submitPremiumUpdates(context, updates, savedKey) {
-  if (!(await isPremiumActive(context))) return renderLocked(context);
+  const decision = await requirePremium(context);
+  if (!decision) return { saved: false, decision: null };
   try {
     validateTicketPremiumUpdates(updates);
   } catch (error) {
@@ -159,7 +177,7 @@ async function submitPremiumUpdates(context, updates, savedKey) {
     return { saved: false, error };
   }
   const config = await context.service.update(context.guildId, updates);
-  await renderActive(context, `✅ ${context.t(savedKey)}`, config);
+  await renderActive(context, `✅ ${context.t(savedKey)}`, config, decision);
   return { saved: true };
 }
 
@@ -172,8 +190,9 @@ async function submitPremiumPanel(context) {
 // Phase 10.3 — modale dédiée au message d'accueil du ticket (1 champ paragraph,
 // pré-rempli de la valeur résolue).
 async function openPremiumWelcomeModal(context) {
-  if (!(await isPremiumActive(context))) return renderLocked(context);
-  const premium = await resolvePremiumConfig(context);
+  const decision = await requirePremium(context);
+  if (!decision) return null;
+  const premium = await resolvePremiumConfig(context, decision);
   return context.envelope.transport.showModal({
     customId: Id.PREMIUM_EDIT_WELCOME_SUBMIT,
     title: context.t("tickets.premiumWelcomeModalTitle"),
@@ -190,8 +209,9 @@ async function submitPremiumWelcome(context) {
 // pré-rempli de la valeur résolue ; placeholder d'unicité imposé par la
 // validation, rejet sans écriture sinon).
 async function openPremiumFormatModal(context) {
-  if (!(await isPremiumActive(context))) return renderLocked(context);
-  const premium = await resolvePremiumConfig(context);
+  const decision = await requirePremium(context);
+  if (!decision) return null;
+  const premium = await resolvePremiumConfig(context, decision);
   return context.envelope.transport.showModal({
     customId: Id.PREMIUM_EDIT_FORMAT_SUBMIT,
     title: context.t("tickets.premiumNameFormatModalTitle"),
@@ -213,18 +233,20 @@ async function selectPremiumTranscript(context) {
 
 // Réinitialisation : toutes les clés de la sous-vue repassent à null → defaults Free.
 async function resetPremiumPanel(context) {
-  if (!(await isPremiumActive(context))) return renderLocked(context);
+  const decision = await requirePremium(context);
+  if (!decision) return { reset: false };
   const updates = Object.fromEntries(RESETTABLE_KEYS.map((key) => [key, null]));
   validateTicketPremiumUpdates(updates);
   const config = await context.service.update(context.guildId, updates);
-  await renderActive(context, `✅ ${context.t("tickets.premiumResetDone")}`, config);
+  await renderActive(context, `✅ ${context.t("tickets.premiumResetDone")}`, config, decision);
   return { reset: true };
 }
 
 // Aperçu fidèle du panneau : construit par le même TicketPanelService que
 // /ticketpanel, rendu en embed éphémère (couleur/image incluses).
 async function previewPremiumPanel(context) {
-  if (!(await isPremiumActive(context))) return renderLocked(context);
+  const decision = await requirePremium(context);
+  if (!decision) return null;
   const panelService = new TicketPanelService({ configService: context.service, premiumConfigResolver: context.premiumConfigResolver });
   const panel = await panelService.build(context.guildId, context.t);
   if (!panel.ready) {
@@ -251,9 +273,10 @@ async function previewPremiumPanel(context) {
 // TicketWelcomeService qu'à la création, membre = l'admin qui prévisualise,
 // rôle support = celui configuré (placeholder neutre si non configuré).
 async function previewPremiumWelcome(context) {
-  if (!(await isPremiumActive(context))) return renderLocked(context);
+  const decision = await requirePremium(context);
+  if (!decision) return null;
   const config = await context.service.read(context.guildId);
-  const premium = await context.premiumConfigResolver.resolve({ guildId: context.guildId, config });
+  const premium = await context.premiumConfigResolver.resolve({ guildId: context.guildId, config, decision });
   const member = context.envelope.discordMember || { id: context.userId };
   const supportRole = { id: config[Key.SUPPORT_ROLE_ID] || "0" };
   const welcome = new TicketWelcomeService().build({ t: context.t, member, supportRole, welcomeMessage: premium[PKey.WELCOME_MESSAGE] });

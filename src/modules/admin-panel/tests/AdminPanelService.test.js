@@ -172,6 +172,8 @@ test("getDashboardStats aggregates counts and global analytics", async () => {
   await f.service.activatePremium({ actorId: ADMIN_ID, guildId: GUILD_B, plan: EntitlementFeature.WELCOME_IMAGE });
   const stats = await f.service.getDashboardStats({ clientGuildCount: 5 });
   assert.equal(stats.knownServers, 5);
+  assert.equal(stats.premiumAvailable, true);
+  assert.equal(stats.analyticsAvailable, true);
   assert.equal(stats.premiumTotal, 2);
   assert.equal(stats.premiumActive, 2);
   assert.equal(stats.freeServers, 3);
@@ -207,6 +209,11 @@ test("repository failure fails closed (generic codes, no throw)", async () => {
   assert.equal(activation.code, "PREMIUM_UNAVAILABLE");
   const list = await service.listPremiumServers({});
   assert.equal(list.code, "PREMIUM_LIST_UNAVAILABLE");
+  const stats = await service.getDashboardStats({ clientGuildCount: 5 });
+  assert.equal(stats.premiumAvailable, false);
+  assert.equal(stats.premiumTotal, null);
+  assert.equal(stats.premiumActive, null);
+  assert.equal(stats.freeServers, null, "unknown Premium data must not fabricate Free counts");
 });
 
 test("unavailable repositories return unavailable (not thrown)", async () => {
@@ -218,6 +225,7 @@ test("unavailable repositories return unavailable (not thrown)", async () => {
   assert.equal(history.code, "HISTORY_UNAVAILABLE");
   const stats = await service.getDashboardStats({ clientGuildCount: null });
   assert.equal(stats.knownServers, null);
+  assert.equal(stats.analyticsAvailable, false);
   assert.equal(stats.analytics.messages, null);
 });
 

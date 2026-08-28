@@ -1,1 +1,54 @@
-{"guildSettings":{"title":"⚙️ Paramètres CIVRAT","currentLanguage":"Langue actuelle : {{language}}","languageButton":"Langue","languagePrompt":"Choisissez la langue du serveur.","languageUpdated":"La langue du serveur est maintenant {{language}}.","languages":{"fr":"Français","en":"Anglais"}}}
+{
+  "guildSettings": {
+    "title": "⚙️ Paramètres CIVRAT",
+    "currentLanguage": "Langue actuelle : {{language}}",
+    "languageButton": "Langue",
+    "languagePrompt": "Choisissez la langue du serveur.",
+    "languageUpdated": "La langue du serveur est maintenant {{language}}.",
+    "languages": {
+      "fr": "Français",
+      "en": "Anglais"
+    },
+    "homeDescription": "Configuration de CIVRAT. Langue actuelle : {{language}}. Choisissez une catégorie ; toutes les fonctions disponibles restent accessibles.",
+    "chooseCategory": "Choisissez une catégorie",
+    "categorySummary": "{{enabled}} fonction(s) active(s) sur {{total}}",
+    "categories": {
+      "general": "Général et rôles",
+      "protection": "Protection",
+      "welcome": "Accueil et départ",
+      "tickets": "Tickets",
+      "community": "Communauté",
+      "analytics": "Analyses et progression",
+      "logs": "Journaux"
+    },
+    "categoryDescriptions": {
+      "general": "Langue, rôles automatiques et salons vocaux temporaires.",
+      "protection": "AutoMod, sécurité anti-abus et vérification CAPTCHA.",
+      "welcome": "Messages d'accueil et de départ, avec options Premium visibles.",
+      "tickets": "Système de tickets et personnalisations Premium visibles.",
+      "community": "Giveaways et suggestions de la communauté.",
+      "analytics": "Analytiques, XP et suivi des invitations.",
+      "logs": "Configuration des journaux d'activité du serveur."
+    },
+    "stateLabel": "État",
+    "stateEnabled": "Activé",
+    "stateDisabled": "Désactivé",
+    "configurationLabel": "Configuration",
+    "configurationComplete": "Complète",
+    "configurationIncomplete": "Incomplète — ouvrez la fonction pour terminer",
+    "configurationNotRequired": "À compléter lors de l'activation",
+    "permissionLabel": "Permission requise",
+    "permissionManageGuild": "Gérer le serveur",
+    "premiumLabel": "Premium",
+    "premiumNotApplicable": "Aucune capacité Premium pour cette fonction",
+    "premiumGranted": "Accordé",
+    "premiumRequired": "Disponible avec CIVRAT Premium",
+    "premiumUnavailable": "Vérification temporairement indisponible",
+    "configurationUnavailable": "Le backend de configuration est indisponible. Les valeurs non confirmées ne sont pas présentées comme persistées.",
+    "configurationDefaults": "Aucune configuration persistée n'a été trouvée ; les valeurs par défaut sont affichées.",
+    "languagePlaceholder": "Langue du serveur",
+    "languageFrench": "Français",
+    "languageEnglish": "Anglais",
+    "backHome": "Retour aux catégories"
+  }
+}

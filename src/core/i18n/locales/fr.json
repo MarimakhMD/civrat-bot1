@@ -8,8 +8,8 @@
     "resourceNotFound": "La ressource demandée est introuvable.",
     "routeNotFound": "Cette action n’est plus disponible.",
     "validationFailed": "Certaines informations sont invalides. Vérifiez-les puis réessayez.",
-    "premiumRequiredTitle": "🔒 Fonctionnalité Premium",
-    "premiumRequired": "Cette fonctionnalité est réservée aux membres Premium de CIVRAT.",
-    "entitlementUnavailable": "Impossible de vérifier votre accès Premium pour le moment. Veuillez réessayer plus tard."
+    "premiumRequiredTitle": "🔒 Fonctionnalité CIVRAT Premium",
+    "premiumRequired": "Cette fonctionnalité nécessite CIVRAT Premium. Premium débloque les personnalisations avancées disponibles pour cette fonctionnalité. Pour obtenir ou vérifier votre accès, rejoignez le serveur support CIVRAT sur https://discord.gg/BA3aDFqtXr puis ouvrez un ticket auprès de l’équipe.",
+    "entitlementUnavailable": "Votre accès Premium ne peut pas être vérifié pour le moment. Aucun accès ni réglage n’a été modifié. Réessayez plus tard ; si le problème persiste, rejoignez https://discord.gg/BA3aDFqtXr et ouvrez un ticket auprès du support."
   }
 }

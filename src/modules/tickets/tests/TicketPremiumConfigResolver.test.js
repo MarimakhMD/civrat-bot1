@@ -2,7 +2,7 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { EntitlementFeature, EntitlementService } = require("../../../core/entitlements");
+const { EntitlementDecision, EntitlementFeature, EntitlementService } = require("../../../core/entitlements");
 const { TicketPremiumConfigResolver } = require("../services/TicketPremiumConfigResolver");
 const { TicketPremiumDefaults } = require("../configuration/ticketPremiumDefaults");
 const { TicketPremiumConfigKey: Key } = require("../configuration/ticketPremiumConstants");
@@ -44,6 +44,16 @@ test("resolution checks exactly the TICKET_PREMIUM feature for the right guild",
   const resolver = makeResolver({ record: activeRecord, calls });
   await resolver.resolve({ guildId: "guild-42", config: {} });
   assert.deepEqual(calls, [{ guildId: "guild-42", feature: EntitlementFeature.TICKET_PREMIUM }]);
+});
+
+test("checkAccess preserves granted, required, and unavailable decisions", async () => {
+  assert.equal((await makeResolver({ record: activeRecord }).checkAccess("guild")).code, EntitlementDecision.GRANTED);
+  assert.equal((await makeResolver({ record: null }).checkAccess("guild")).code, EntitlementDecision.PREMIUM_REQUIRED);
+  assert.equal(
+    (await makeResolver({ repositoryError: new Error("offline") }).checkAccess("guild")).code,
+    EntitlementDecision.UNAVAILABLE,
+  );
+  assert.equal((await new TicketPremiumConfigResolver({}).checkAccess("guild")).code, EntitlementDecision.UNAVAILABLE);
 });
 
 test("inactive entitlement falls back to Free and never leaks stored Premium values", async () => {
