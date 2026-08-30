@@ -71,6 +71,16 @@ class CivratIdentityService {
     return (await this.isOwner(userId)) || (await this.isAdmin(userId));
   }
 
+  async hasAuthenticatedOwnerAuthority({ actorId, sessionValidator }) {
+    if (!actorId || typeof sessionValidator !== "function") return false;
+    try {
+      if (!(await this.isOwner(actorId))) return false;
+      return (await sessionValidator(actorId)) === true;
+    } catch {
+      return false;
+    }
+  }
+
   async addAdmin({ actorId, targetId }) {
     if (!(await this.isOwner(actorId))) return this.refuse("OWNER_ONLY");
     if (!isDiscordId(targetId)) return this.refuse("INVALID_TARGET_ID");

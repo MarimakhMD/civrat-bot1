@@ -5,21 +5,21 @@
 // Registers the full command list (legacy adapters + modular commands exposed
 // by the runtime composition) through the Discord REST API.
 //
-// Target (see src/config/index.js):
-//   - DEPLOY_GUILD_ID set  -> guild-scoped deploy (instant propagation, useful
-//                             while testing). Endpoint: applicationGuildCommands.
-//   - DEPLOY_GUILD_ID unset -> global deploy (documented Discord propagation
-//                             delay). Endpoint: applicationCommands.
+// Targets (see src/config/index.js):
+//   - 22 normal commands -> global applicationCommands endpoint;
+//   - /admin only -> applicationGuildCommands for CIVRAT_ADMIN_GUILD_ID.
+// No CLI/environment override may move /admin to another guild.
 //
 // Safety: this module NEVER logs the bot token, the client/application id, the
 // guild id, or any command payload. It logs only non-secret facts: command
 // counts, the HTTP status, the Discord error code, and the endpoint template.
 //
 // Used in two ways:
-//   - standalone: `node deploy.js` / `npm run deploy` (sets a non-zero exit
-//     code when the deploy fails);
+//   - standalone: `node deploy.js` / `npm run deploy` deploys the production
+//     22+1 catalog, while `node deploy.js deploy <guildId>` updates one Guild
+//     endpoint with a target-safe catalog;
 //   - from index.js when DEPLOY_COMMANDS=1 (best-effort: the bot still starts
-//     even if the deploy fails).
+//     even if the production deploy fails).
 
 try {
   require("dotenv").config();
@@ -31,6 +31,10 @@ const { REST, Routes } = require("discord.js");
 const { config } = require("./src/config");
 const logger = require("./src/utils/logger");
 const commandHandler = require("./src/handlers/commandHandler");
+const {
+  CommandDeploymentScope,
+  resolveCommandDeploymentScope,
+} = require("./src/core/interactions");
 
 // Non-secret labels for the endpoints we call. Never built from URLs: the
 // actual ids are intentionally left out of every log line.
@@ -96,6 +100,21 @@ function validatePayload(body) {
   return issues;
 }
 
+function prepareDeploymentPlan(loaded) {
+  const plan = {
+    [CommandDeploymentScope.GLOBAL]: [],
+    [CommandDeploymentScope.CIVRAT_ADMIN_GUILD]: [],
+  };
+  for (const command of loaded.values()) {
+    const scope = resolveCommandDeploymentScope(command.deploymentScope);
+    plan[scope].push(command.data.toJSON());
+  }
+  return Object.freeze({
+    global: Object.freeze(plan[CommandDeploymentScope.GLOBAL]),
+    technical: Object.freeze(plan[CommandDeploymentScope.CIVRAT_ADMIN_GUILD]),
+  });
+}
+
 // Placeholder documenté dans .env.example : s'il est encore configuré, il ne
 // correspond à aucune vraie guild et ne doit jamais déclencher un clear.
 const LEGACY_GUILD_ID_PLACEHOLDER = "1234567890123456789";
@@ -132,11 +151,85 @@ async function clearLegacyGuildCommands(rest, clientId) {
   }
 }
 
-// Shared deployment routine. Returns { ok, sent, registered, status, code }.
-// `guildId` (optional) overrides config.deployGuildId, letting callers without
-// environment-variable support (e.g. start.js) target a guild-scoped deploy.
-// Never throws for Discord API failures: it reports them and returns ok=false.
-async function deployCommands({ commands = null, rest = null, guildId = null } = {}) {
+const EXPECTED_GLOBAL_COMMAND_NAMES = Object.freeze([
+  "analytics",
+  "analytics_invites",
+  "analytics_xp",
+  "automod",
+  "bannir",
+  "captcha",
+  "debannir",
+  "deverrouiller",
+  "expulser",
+  "giveaway",
+  "invites",
+  "mute",
+  "pseudo",
+  "settings",
+  "slowmode",
+  "suggest",
+  "supprimer",
+  "ticketpanel",
+  "unmute",
+  "uploadsticker",
+  "verrouiller",
+  "warn",
+]);
+
+function validateDeploymentPlan(plan) {
+  const issues = [];
+  const globalNames = plan.global.map(({ name }) => name).sort();
+  const expected = [...EXPECTED_GLOBAL_COMMAND_NAMES].sort();
+  if (JSON.stringify(globalNames) !== JSON.stringify(expected)) {
+    issues.push(`global command catalog mismatch (expected ${expected.length}, received ${globalNames.length})`);
+  }
+  const technicalNames = plan.technical.map(({ name }) => name);
+  if (technicalNames.length !== 1 || technicalNames[0] !== "admin") {
+    issues.push("technical command catalog must contain only /admin");
+  }
+  return issues;
+}
+
+async function putScope({ restClient, route, body, endpointLabel }) {
+  try {
+    await restClient.put(route, { body });
+  } catch (error) {
+    const detail = describeError(error);
+    if (detail.status === null && detail.code === null && detail.networkCode) {
+      logger.error(`Deployment failed — network error (${detail.networkCode}), endpoint ${endpointLabel}. No Discord response received.`);
+    } else {
+      logger.error(`Deployment failed — HTTP ${detail.status ?? "?"}, Discord code ${detail.code ?? "?"}, endpoint ${endpointLabel}.`);
+      logDiscordHint(detail.code, detail.status);
+    }
+    return { ok: false, registered: null, ...detail };
+  }
+
+  try {
+    const registered = await restClient.get(route);
+    const count = Array.isArray(registered) ? registered.length : null;
+    if (count !== null && count !== body.length) {
+      logger.warn(`Read-back mismatch on ${endpointLabel}: sent ${body.length}, Discord reports ${count}.`);
+    }
+    return { ok: true, registered: count };
+  } catch (error) {
+    const detail = describeError(error);
+    logger.warn(`Read-back failed on ${endpointLabel} — HTTP ${detail.status ?? "?"}, Discord code ${detail.code ?? "?"}. The PUT succeeded.`);
+    return { ok: true, registered: null };
+  }
+}
+
+// Without a target, deploys the production catalog through two explicit
+// scopes: 22 normal commands globally and /admin only in the configured
+// technical guild. A targeted deployment performs exactly one Guild PUT:
+// normal guilds receive the 22 normal commands, while the technical guild
+// receives /admin only. This keeps /admin impossible to redirect while
+// preserving an instant, reversible preview workflow for normal commands.
+async function deployCommands({ commands = null, rest = null, guildId = undefined } = {}) {
+  const targeted = guildId !== undefined;
+  if (targeted && !isSnowflake(String(guildId || ""))) {
+    logger.error("The explicit deployment target is invalid. Deployment aborted (no network call made).");
+    return { ok: false, sent: 0, registered: null, status: null, code: null };
+  }
   if (!config.token || config.token.startsWith("replace_with_")) {
     logger.error("DISCORD_TOKEN is missing or still a placeholder. Deployment aborted (no network call made).");
     return { ok: false, sent: 0, registered: null, status: null, code: null };
@@ -145,72 +238,109 @@ async function deployCommands({ commands = null, rest = null, guildId = null } =
     logger.error("CLIENT_ID is missing. Deployment aborted (no network call made).");
     return { ok: false, sent: 0, registered: null, status: null, code: null };
   }
-
-  const loaded = commands || commandHandler.loadCommands();
-  const body = Array.from(loaded.values()).map((command) => command.data.toJSON());
-
-  for (const issue of validatePayload(body)) {
-    logger.warn(`Payload warning: ${issue}`);
+  if (!isSnowflake(config.civratAdminGuildId)) {
+    logger.error("CIVRAT_ADMIN_GUILD_ID is invalid. Deployment aborted (no network call made).");
+    return { ok: false, sent: 0, registered: null, status: null, code: null };
   }
 
-  const targetGuildId = guildId || config.deployGuildId || null;
-  const endpointLabel = targetGuildId ? ENDPOINT_LABEL.guild : ENDPOINT_LABEL.global;
+  const loaded = commands || commandHandler.loadCommands();
+  let plan;
+  try {
+    plan = prepareDeploymentPlan(loaded);
+  } catch (error) {
+    logger.error("Command deployment scope validation failed.", { error: error?.message || String(error) });
+    return { ok: false, sent: 0, registered: null, status: null, code: null };
+  }
 
-  logger.info("Discord deployment started");
-  logger.info(`${body.length} commands prepared (${targetGuildId ? "guild-scoped" : "global"}).`);
+  const issues = [
+    ...validatePayload(plan.global).map((issue) => `global: ${issue}`),
+    ...validatePayload(plan.technical).map((issue) => `technical: ${issue}`),
+    ...validateDeploymentPlan(plan),
+  ];
+  if (issues.length > 0) {
+    for (const issue of issues) logger.error(`Payload error: ${issue}`);
+    logger.error("Deployment aborted before any network call.");
+    return { ok: false, sent: 0, registered: null, status: null, code: null };
+  }
 
   const restClient = rest || new REST({ version: "10" }).setToken(config.token);
 
-  // Historical guild-scoped cleanup only makes sense for a global deploy.
-  if (!targetGuildId) {
-    await clearLegacyGuildCommands(restClient, config.clientId);
+  if (targeted) {
+    const targetsTechnicalGuild = guildId === config.civratAdminGuildId;
+    const body = targetsTechnicalGuild ? plan.technical : plan.global;
+    const route = Routes.applicationGuildCommands(config.clientId, guildId);
+    const scopeLabel = targetsTechnicalGuild ? "technical /admin" : "normal-command preview";
+
+    logger.info(`Discord guild-scoped deployment started (${body.length} ${scopeLabel} command(s)).`);
+    const guildResult = await putScope({
+      restClient,
+      route,
+      body,
+      endpointLabel: ENDPOINT_LABEL.guild,
+    });
+    if (guildResult.ok) logger.success("Guild-scoped deployment successful.");
+    return {
+      ok: guildResult.ok,
+      mode: "guild",
+      scope: targetsTechnicalGuild ? "technical" : "normal",
+      sent: body.length,
+      registered: guildResult.registered,
+      global: null,
+      technical: targetsTechnicalGuild ? { sent: body.length, ...guildResult } : null,
+      guild: { sent: body.length, ...guildResult },
+    };
   }
 
-  const route = targetGuildId
-    ? Routes.applicationGuildCommands(config.clientId, targetGuildId)
-    : Routes.applicationCommands(config.clientId);
+  const globalRoute = Routes.applicationCommands(config.clientId);
+  const technicalRoute = Routes.applicationGuildCommands(config.clientId, config.civratAdminGuildId);
 
-  try {
-    await restClient.put(route, { body });
-  } catch (error) {
-    const detail = describeError(error);
-    if (detail.status === null && detail.code === null && detail.networkCode) {
-      logger.error(
-        `Deployment failed — network error (${detail.networkCode}), endpoint ${endpointLabel}. No Discord response received.`
-      );
-    } else {
-      logger.error(
-        `Deployment failed — HTTP ${detail.status ?? "?"}, Discord code ${detail.code ?? "?"}, endpoint ${endpointLabel}.`
-      );
-      logDiscordHint(detail.code, detail.status);
-    }
-    return { ok: false, sent: body.length, registered: null, ...detail };
+  logger.info("Discord deployment started (22 global commands + 1 technical command).");
+  await clearLegacyGuildCommands(restClient, config.clientId);
+
+  const globalResult = await putScope({
+    restClient,
+    route: globalRoute,
+    body: plan.global,
+    endpointLabel: ENDPOINT_LABEL.global,
+  });
+  if (!globalResult.ok) {
+    return {
+      ok: false,
+      mode: "production",
+      sent: plan.global.length,
+      registered: globalResult.registered,
+      global: globalResult,
+      technical: null,
+    };
   }
 
-  logger.success("Deployment successful");
-  logger.info(`${body.length} commands registered (${targetGuildId ? "guild-scoped" : "global"}).`);
-
-  // Post-deploy verification: read back the commands and compare the count.
-  try {
-    const registered = await restClient.get(route);
-    const count = Array.isArray(registered) ? registered.length : null;
-    logger.info(`Read-back: ${count ?? "?"} commands currently registered.`);
-    if (count !== null && count !== body.length) {
-      logger.warn(`Read-back mismatch: sent ${body.length}, Discord reports ${count}.`);
-    }
-    return { ok: true, sent: body.length, registered: count };
-  } catch (error) {
-    const detail = describeError(error);
-    logger.warn(
-      `Read-back failed — HTTP ${detail.status ?? "?"}, Discord code ${detail.code ?? "?"}. The deploy itself succeeded.`
-    );
-    return { ok: true, sent: body.length, registered: null };
-  }
+  const technicalResult = await putScope({
+    restClient,
+    route: technicalRoute,
+    body: plan.technical,
+    endpointLabel: ENDPOINT_LABEL.guild,
+  });
+  const ok = technicalResult.ok;
+  if (ok) logger.success("Deployment successful: global and technical catalogs updated.");
+  return {
+    ok,
+    mode: "production",
+    sent: plan.global.length + plan.technical.length,
+    registered: globalResult.registered !== null && technicalResult.registered !== null
+      ? globalResult.registered + technicalResult.registered
+      : null,
+    global: { sent: plan.global.length, ...globalResult },
+    technical: { sent: plan.technical.length, ...technicalResult },
+  };
 }
 
 // Read-only listing of registered commands (global or guild-scoped). Useful to
 // SEE exactly which commands are registered where before clearing anything.
 async function listCommands({ rest = null, guildId = null } = {}) {
+  if (guildId !== null && guildId !== undefined && !isSnowflake(String(guildId))) {
+    logger.error("The explicit list target is invalid. Listing aborted (no network call made).");
+    return { ok: false, commands: [] };
+  }
   if (!config.token || config.token.startsWith("replace_with_")) {
     logger.error("DISCORD_TOKEN is missing or still a placeholder. Listing aborted (no network call made).");
     return { ok: false, commands: [] };
@@ -246,7 +376,7 @@ async function listCommands({ rest = null, guildId = null } = {}) {
 
 // Explicit, targeted clear of GUILD-SCOPED commands on one guild. This only
 // affects `PUT /applications/{clientId}/guilds/{guildId}/commands` — the
-// GLOBAL commands (the 24) are NEVER touched. Requires a valid guild id.
+// GLOBAL commands (the 22) are NEVER touched. Requires a valid guild id.
 async function clearGuildCommands({ rest = null, guildId = null } = {}) {
   if (!isSnowflake(String(guildId || ""))) {
     logger.error("clear requires a valid guild id (Discord snowflake). Nothing was cleared.");
@@ -290,17 +420,56 @@ async function clearGuildCommands({ rest = null, guildId = null } = {}) {
 }
 
 // CLI: node deploy.js [deploy [guildId]] | [clear <guildId>] | [list [guildId]]
+// Parsing preserves whether a target was explicitly supplied. An invalid
+// explicit target must never collapse to the no-target production deploy.
 function parseCliArgs(argv) {
-  const [mode, arg] = argv;
-  if (mode === "list") return { mode: "list", guildId: isSnowflake(arg || "") ? arg : null };
-  if (mode === "clear") return { mode: "clear", guildId: isSnowflake(arg || "") ? arg : null };
-  if (mode === "deploy") return { mode: "deploy", guildId: isSnowflake(arg || "") ? arg : null };
-  // Backward compatibility: `node deploy.js <guildId>` still deploys guild-scoped.
-  return { mode: "deploy", guildId: isSnowflake(mode || "") ? mode : null };
+  const [mode, arg, ...extra] = argv;
+  if (extra.length > 0) return { mode: "invalid", guildId: null, targetProvided: true };
+
+  if (mode === undefined) {
+    return { mode: "deploy", guildId: null, targetProvided: false };
+  }
+  if (mode === "deploy") {
+    if (arg === undefined) return { mode: "deploy", guildId: null, targetProvided: false };
+    return {
+      mode: "deploy",
+      guildId: isSnowflake(arg) ? arg : null,
+      targetProvided: true,
+      invalidGuildId: !isSnowflake(arg),
+    };
+  }
+  if (mode === "list") {
+    if (arg === undefined) return { mode: "list", guildId: null, targetProvided: false };
+    return {
+      mode: "list",
+      guildId: isSnowflake(arg) ? arg : null,
+      targetProvided: true,
+      invalidGuildId: !isSnowflake(arg),
+    };
+  }
+  if (mode === "clear") {
+    return {
+      mode: "clear",
+      guildId: isSnowflake(arg || "") ? arg : null,
+      targetProvided: arg !== undefined,
+      invalidGuildId: !isSnowflake(arg || ""),
+    };
+  }
+  // Backward compatibility: `node deploy.js <guildId>` is a targeted deploy.
+  if (isSnowflake(mode) && arg === undefined) {
+    return { mode: "deploy", guildId: mode, targetProvided: true, invalidGuildId: false };
+  }
+  return { mode: "invalid", guildId: null, targetProvided: true, invalidGuildId: true };
 }
 
 async function main() {
-  const { mode, guildId } = parseCliArgs(process.argv.slice(2));
+  const parsed = parseCliArgs(process.argv.slice(2));
+  const { mode, guildId } = parsed;
+  if (mode === "invalid" || parsed.invalidGuildId) {
+    logger.error("Invalid command or explicit guild id. No Discord request was made.");
+    process.exitCode = 1;
+    return { ok: false, sent: 0, registered: null, status: null, code: null };
+  }
   if (mode === "clear") {
     const result = await clearGuildCommands({ guildId });
     if (!result.ok) process.exitCode = 1;
@@ -311,7 +480,9 @@ async function main() {
     if (!result.ok) process.exitCode = 1;
     return result;
   }
-  const result = await deployCommands({ guildId });
+  const result = parsed.targetProvided
+    ? await deployCommands({ guildId })
+    : await deployCommands();
   if (!result.ok) process.exitCode = 1;
   return result;
 }
@@ -323,4 +494,15 @@ if (require.main === module) {
   });
 }
 
-module.exports = { main, deployCommands, clearLegacyGuildCommands, clearGuildCommands, listCommands, isSnowflake };
+module.exports = {
+  main,
+  deployCommands,
+  prepareDeploymentPlan,
+  validateDeploymentPlan,
+  EXPECTED_GLOBAL_COMMAND_NAMES,
+  clearLegacyGuildCommands,
+  clearGuildCommands,
+  listCommands,
+  isSnowflake,
+  parseCliArgs,
+};

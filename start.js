@@ -7,8 +7,8 @@
 // restart, never automatically):
 //
 //   node start.js                 -> normal start (delegates to index.js), no deploy
-//   node start.js deploy          -> one-shot GLOBAL deploy + read-back, then start the bot
-//   node start.js deploy <guildId> -> one-shot GUILD-SCOPED deploy (instant propagation), then start the bot
+//   node start.js deploy          -> production deploy (22 global + technical /admin), then start
+//   node start.js deploy <guildId> -> one target-safe GUILD-SCOPED deploy, then start the bot
 //   node start.js clear <guildId> -> clear GUILD-SCOPED commands only on one guild, then start the bot
 //   node start.js list [guildId]  -> list registered commands (global or guild), then start the bot
 //
@@ -18,32 +18,38 @@
 
 const { deployCommands, clearGuildCommands, listCommands, isSnowflake } = require("./deploy");
 const { main } = require("./index");
+const logger = require("./src/utils/logger");
 
 const args = process.argv.slice(2);
 const mode = args[0] || "start";
-const rawGuildId = args[1] || null;
-const guildId = isSnowflake(rawGuildId || "") ? rawGuildId : null;
-
-if (rawGuildId && !guildId) {
-  console.log("[CIVRAT] Ignoring invalid guild id argument (not a snowflake).");
-}
+const targetProvided = args.length >= 2;
+const rawGuildId = targetProvided ? args[1] : null;
+const guildId = targetProvided && isSnowflake(rawGuildId) ? rawGuildId : null;
+const invalidGuildId = targetProvided && !guildId;
+const invalidInvocation = args.length > 2;
 
 (async () => {
   if (mode === "deploy") {
-    console.log(
-      guildId
-        ? "[CIVRAT] Deploy requested (guild-scoped) — one-shot deployment."
-        : "[CIVRAT] Deploy requested (global) — one-shot deployment."
-    );
-    const result = await deployCommands({ guildId });
-    console.log(
-      result.ok
-        ? `[CIVRAT] Deploy OK — ${result.registered ?? "?"} command(s) read back. Starting the bot…`
-        : "[CIVRAT] Deploy reported a failure — starting the bot anyway."
-    );
+    if (invalidGuildId || invalidInvocation) {
+      console.log("[CIVRAT] Deploy refused: invalid explicit guild target. No Discord request made — starting the bot anyway.");
+    } else {
+      console.log(
+        targetProvided
+          ? "[CIVRAT] Deploy requested (guild-scoped) — one-shot deployment."
+          : "[CIVRAT] Deploy requested (production 22+1) — one-shot deployment."
+      );
+      const result = targetProvided
+        ? await deployCommands({ guildId })
+        : await deployCommands();
+      console.log(
+        result.ok
+          ? `[CIVRAT] Deploy OK — ${result.registered ?? "?"} command(s) read back. Starting the bot…`
+          : "[CIVRAT] Deploy reported a failure — starting the bot anyway."
+      );
+    }
   } else if (mode === "clear") {
-    if (!guildId) {
-      console.log("[CIVRAT] 'clear' requires a guild id (node start.js clear <guildId>). Nothing cleared — starting the bot.");
+    if (!targetProvided || invalidGuildId || invalidInvocation) {
+      console.log("[CIVRAT] 'clear' requires one valid guild id. Nothing cleared — starting the bot.");
     } else {
       console.log("[CIVRAT] Clear requested (guild-scoped commands only; global commands untouched).");
       const result = await clearGuildCommands({ guildId });
@@ -54,15 +60,19 @@ if (rawGuildId && !guildId) {
       );
     }
   } else if (mode === "list") {
-    console.log(guildId ? "[CIVRAT] List requested (guild-scoped)." : "[CIVRAT] List requested (global).");
-    const result = await listCommands({ guildId });
-    console.log(`[CIVRAT] List done — ${result.ok ? (result.commands.length + " command(s)") : "failed"}. Starting the bot…`);
+    if (invalidGuildId || invalidInvocation) {
+      console.log("[CIVRAT] List refused: invalid explicit guild target. No Discord request made — starting the bot anyway.");
+    } else {
+      console.log(targetProvided ? "[CIVRAT] List requested (guild-scoped)." : "[CIVRAT] List requested (global).");
+      const result = await listCommands({ guildId });
+      console.log(`[CIVRAT] List done — ${result.ok ? (result.commands.length + " command(s)") : "failed"}. Starting the bot…`);
+    }
   } else if (mode !== "start") {
     console.log(`[CIVRAT] Unknown mode "${mode}" — starting normally (no deploy).`);
   }
 
   await main();
 })().catch((error) => {
-  console.error("[CIVRAT] Fatal startup failure:", error?.message || String(error));
+  logger.error("Fatal startup failure.", { error });
   process.exit(1);
 });

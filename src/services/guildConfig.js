@@ -1,117 +1,257 @@
 "use strict";
 
 const logger = require("../utils/logger");
+const {
+  ErrorCode,
+  BackendUnavailableError,
+  PersistenceError,
+  ValidationError,
+} = require("../core/errors");
+const {
+  SupabaseErrorCategory,
+  classifySupabaseError,
+  toPersistenceError,
+} = require("../adapters/supabase/supabaseErrorClassifier");
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
+const cache = new Map(); // guildId -> { config, expiresAt, found }
+let databaseProvider = () => require("../config/database");
 
-const cache = new Map(); // guildId -> { config, expiresAt }
-
-// Ne journalise JAMAIS de secret : masque toute éventuelle URL d'identification
-// (motif scheme://user:password@) par précaution, bien que Supabase ne renvoie
-// pas de credentials dans ses messages d'erreur.
-function sanitizeError(error) {
-  const message = String(error?.message || error || "unknown");
-  return message.replace(/([a-zA-Z][a-zA-Z0-9+.-]*:\/\/)[^/@\s]+@/g, "$1***@");
+function getDatabase() {
+  try {
+    const database = databaseProvider() || {};
+    return {
+      client: database.supabaseAdmin || database.supabase || null,
+      state: database.databaseState || null,
+    };
+  } catch {
+    return { client: null, state: null };
+  }
 }
 
-function getSupabase() {
+function cloneConfig(config) {
+  return config && typeof config === "object" && !Array.isArray(config) ? { ...config } : {};
+}
+
+function createState({ config = {}, available, found, source, reason = null }) {
+  return {
+    config: cloneConfig(config),
+    available: Boolean(available),
+    found: Boolean(found),
+    source,
+    reason,
+  };
+}
+
+function cachedUnavailableState(cached, reason) {
+  if (!cached) {
+    return createState({ config: {}, available: false, found: false, source: "unavailable", reason });
+  }
+  return createState({
+    config: cached.config,
+    available: false,
+    found: cached.found,
+    source: "stale-cache",
+    reason,
+  });
+}
+
+function safeErrorMetadata(classified, guildId, operation) {
+  return {
+    guildId,
+    operation,
+    classification: classified.category,
+    errorCode: classified.code,
+    httpStatus: classified.httpStatus,
+  };
+}
+
+function logPersistenceFailure(message, classified, guildId, operation) {
+  const level = classified.retryable ? "warn" : "error";
+  const writer = logger[level] || logger.error;
+  writer.call(logger, message, safeErrorMetadata(classified, guildId, operation));
+}
+
+async function getGuildConfigState(guildId) {
+  if (!guildId || typeof guildId !== "string") {
+    return createState({
+      config: {},
+      available: false,
+      found: false,
+      source: "invalid",
+      reason: "INVALID_GUILD_ID",
+    });
+  }
+
+  const now = Date.now();
+  const cached = cache.get(guildId);
+  if (cached && cached.expiresAt > now) {
+    return createState({
+      config: cached.config,
+      available: true,
+      found: cached.found,
+      source: "cache",
+      reason: null,
+    });
+  }
+
+  const { client } = getDatabase();
+  if (!client) return cachedUnavailableState(cached, ErrorCode.BACKEND_UNAVAILABLE);
+
   try {
-    const mod = require("../config/database");
-    return mod.supabase || mod.supabaseAdmin || null;
-  } catch {
-    return null;
+    const { data, error } = await client
+      .from("guild_configs")
+      .select("*")
+      .eq("guild_id", guildId)
+      .maybeSingle();
+
+    if (error) {
+      const classified = classifySupabaseError(error);
+      if (classified.category === SupabaseErrorCategory.NOT_FOUND) {
+        const empty = { config: {}, expiresAt: now + CACHE_TTL_MS, found: false };
+        cache.set(guildId, empty);
+        return createState({ config: {}, available: true, found: false, source: "database", reason: null });
+      }
+
+      logPersistenceFailure("Guild configuration read failed", classified, guildId, "read");
+      return cachedUnavailableState(cached, classified.category);
+    }
+
+    const found = Boolean(data && typeof data === "object" && !Array.isArray(data));
+    const config = found ? cloneConfig(data) : {};
+    cache.set(guildId, { config, expiresAt: now + CACHE_TTL_MS, found });
+    return createState({ config, available: true, found, source: "database", reason: null });
+  } catch (error) {
+    const classified = classifySupabaseError(error);
+    logPersistenceFailure("Guild configuration read failed", classified, guildId, "read");
+    return cachedUnavailableState(cached, classified.category);
   }
 }
 
 async function getGuildConfig(guildId) {
-  if (!guildId || typeof guildId !== "string") return {};
-  const cached = cache.get(guildId);
-  const now = Date.now();
-  if (cached && cached.expiresAt > now) {
-    return cached.config;
+  return (await getGuildConfigState(guildId)).config;
+}
+
+Object.defineProperty(getGuildConfig, "getState", {
+  value: getGuildConfigState,
+  enumerable: false,
+  configurable: false,
+  writable: false,
+});
+
+function validateUpdate(guildId, patch) {
+  if (!guildId || typeof guildId !== "string") {
+    throw new ValidationError("guildId must be a non-empty string", { resource: "guild_config" });
+  }
+  if (!patch || typeof patch !== "object" || Array.isArray(patch) || Object.keys(patch).length === 0) {
+    throw new ValidationError("patch must be a non-empty object", { resource: "guild_config" });
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, "guild_id")) {
+    throw new ValidationError("guild_id cannot be changed through a configuration patch", { resource: "guild_config" });
+  }
+}
+
+function cleanPatch(patch) {
+  return Object.fromEntries(Object.entries(patch).filter(([, value]) => value !== undefined));
+}
+
+async function updateGuildConfig(guildId, patch) {
+  validateUpdate(guildId, patch);
+  const persistedPatch = cleanPatch(patch);
+  if (Object.keys(persistedPatch).length === 0) {
+    throw new ValidationError("patch must contain at least one defined value", { resource: "guild_config" });
   }
 
-  const supabase = getSupabase();
-  if (!supabase) {
-    // Offline / tests / missing database.js → return valid cached or empty, no throw
-    if (cached && cached.expiresAt > now) return cached.config;
-    // Expired or no cache → treat as unknown guild → empty
-    return {};
+  const { client } = getDatabase();
+  if (!client) {
+    throw new BackendUnavailableError({ operation: "write", resource: "guild_config", source: "supabase" });
   }
 
   try {
-    const { data, error } = await supabase.from("guild_configs").select("*").eq("guild_id", guildId).maybeSingle();
-    if (error) throw error;
-    const config = data || {};
-    cache.set(guildId, { config, expiresAt: now + CACHE_TTL_MS });
+    const payload = { guild_id: guildId, ...persistedPatch, updated_at: new Date().toISOString() };
+    const { data, error } = await client
+      .from("guild_configs")
+      .upsert(payload, { onConflict: "guild_id" })
+      .select("*")
+      .maybeSingle();
+
+    if (error) {
+      const classified = classifySupabaseError(error);
+      logPersistenceFailure("Guild configuration write failed", classified, guildId, "write");
+      throw toPersistenceError(error, { operation: "write", resource: "guild_config" });
+    }
+
+    if (!data || typeof data !== "object" || Array.isArray(data)) {
+      throw new PersistenceError({
+        code: ErrorCode.PERSISTENCE_FAILED,
+        metadata: { operation: "write", resource: "guild_config", source: "supabase", reason: "NO_CONFIRMED_ROW" },
+      });
+    }
+
+    const config = cloneConfig(data);
+    cache.set(guildId, { config, expiresAt: Date.now() + CACHE_TTL_MS, found: true });
     return config;
   } catch (error) {
-    // Lecture tolérante : en cas d'erreur, on sert le cache ou {} (jamais de
-    // crash), mais on logue la vraie cause (table absente, connexion refusée…)
-    // pour que l'hébergement révèle pourquoi la config est indisponible.
-    logger.warn("guild_configs read failed (falling back to cache/empty)", {
-      guildId,
-      code: error?.code || error?.name || null,
-      error: sanitizeError(error),
-    });
-    if (cached && cached.expiresAt > now) return cached.config;
-    return {};
+    if (error instanceof BackendUnavailableError || error instanceof PersistenceError) throw error;
+    const classified = classifySupabaseError(error);
+    logPersistenceFailure("Guild configuration write failed", classified, guildId, "write");
+    throw toPersistenceError(error, { operation: "write", resource: "guild_config" });
   }
-}
-
-async function updateGuildConfig(guildId, updates) {
-  if (!guildId || typeof guildId !== "string") throw new Error("guildId required");
-  if (!updates || typeof updates !== "object" || Array.isArray(updates) || Object.keys(updates).length === 0) {
-    throw new Error("updates must be a non-empty object");
-  }
-
-  const supabase = getSupabase();
-  if (!supabase) {
-    // Offline: merge into cache and return
-    const current = (await getGuildConfig(guildId)) || {};
-    const merged = { ...current, ...updates };
-    cache.set(guildId, { config: merged, expiresAt: Date.now() + CACHE_TTL_MS });
-    return merged;
-  }
-
-  const { data, error } = await supabase
-    .from("guild_configs")
-    .upsert({ guild_id: guildId, ...updates }, { onConflict: "guild_id" })
-    .select()
-    .single();
-  if (error) {
-    // Écriture échouée : logue la vraie cause (code PostgREST/Postgres,
-    // ex. "42P01" table inexistante) puis propage une erreur typée pour que
-    // le resolver puisse la distinguer (SUPABASE_WRITE_FAILED vs autre).
-    logger.warn("guild_configs write failed", {
-      guildId,
-      code: error?.code || error?.name || "SUPABASE_WRITE_FAILED",
-      error: sanitizeError(error),
-    });
-    const wrapped = new Error(`guild_configs write failed: ${sanitizeError(error)}`);
-    wrapped.code = error?.code || "SUPABASE_WRITE_FAILED";
-    throw wrapped;
-  }
-  const config = data || { guild_id: guildId, ...updates };
-  cache.set(guildId, { config, expiresAt: Date.now() + CACHE_TTL_MS });
-  return config;
 }
 
 async function invalidateCache(guildId) {
-  if (!guildId) {
-    cache.clear();
-    return;
-  }
-  cache.delete(guildId);
+  if (guildId) cache.delete(guildId);
+  else cache.clear();
 }
 
-// Test helpers
-function _clearCache() {
-  cache.clear();
+async function getAllGuildConfigs() {
+  const { client } = getDatabase();
+  if (!client) {
+    throw new BackendUnavailableError({ operation: "read_all", resource: "guild_config", source: "supabase" });
+  }
+
+  try {
+    const { data, error } = await client.from("guild_configs").select("*");
+    if (error) throw error;
+    if (!Array.isArray(data)) {
+      throw new PersistenceError({
+        metadata: { operation: "read_all", resource: "guild_config", source: "supabase", reason: "INVALID_RESPONSE" },
+      });
+    }
+    return data.map(cloneConfig);
+  } catch (error) {
+    if (error instanceof BackendUnavailableError || error instanceof PersistenceError) throw error;
+    const classified = classifySupabaseError(error);
+    logPersistenceFailure("Guild configurations read failed", classified, null, "read_all");
+    throw toPersistenceError(error, { operation: "read_all", resource: "guild_config" });
+  }
 }
 
 function _getCache() {
   return cache;
 }
 
-module.exports = { getGuildConfig, updateGuildConfig, invalidateCache, _clearCache, _getCache, CACHE_TTL_MS };
+function _setCache(guildId, config, expiresAt = Date.now() + CACHE_TTL_MS, found = null) {
+  const normalized = cloneConfig(config);
+  cache.set(guildId, {
+    config: normalized,
+    expiresAt,
+    found: found === null ? Object.keys(normalized).length > 0 : Boolean(found),
+  });
+}
+
+function _setDatabaseProvider(provider = null) {
+  databaseProvider = typeof provider === "function" ? provider : () => require("../config/database");
+}
+
+module.exports = {
+  getGuildConfig,
+  getGuildConfigState,
+  updateGuildConfig,
+  invalidateCache,
+  getAllGuildConfigs,
+  _getCache,
+  _setCache,
+  _setDatabaseProvider,
+  CACHE_TTL_MS,
+};

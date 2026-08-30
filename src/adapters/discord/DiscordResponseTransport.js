@@ -1,73 +1,429 @@
 "use strict";
-const { ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, ChannelSelectMenuBuilder, ChannelType, RoleSelectMenuBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, EmbedBuilder } = require("discord.js");
-const styles = Object.freeze({ primary: ButtonStyle.Primary, secondary: ButtonStyle.Secondary, success: ButtonStyle.Success, danger: ButtonStyle.Danger });
 
-// Discord hard limits for message components (V1): at most 5 action rows per
-// message, at most 5 buttons per row, exactly 1 select menu per row.
+const {
+  ActionRowBuilder,
+  AttachmentBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  ChannelSelectMenuBuilder,
+  ChannelType,
+  EmbedBuilder,
+  ModalBuilder,
+  RoleSelectMenuBuilder,
+  StringSelectMenuBuilder,
+  TextInputBuilder,
+  TextInputStyle,
+} = require("discord.js");
+const {
+  InteractionAlreadyAcknowledgedError,
+} = require("../../core/errors");
+const {
+  DiscordErrorCategory,
+  classifyDiscordError,
+  toCivratError,
+} = require("./discordErrorClassifier");
+
 const MAX_ACTION_ROWS = 5;
 const MAX_BUTTONS_PER_ROW = 5;
+const MAX_COMPONENTS_PER_ROW = MAX_BUTTONS_PER_ROW;
 
-function buildButton(component) {
-  return new ButtonBuilder().setCustomId(component.customId).setLabel(component.label).setStyle(styles[component.style] || ButtonStyle.Secondary);
+const AcknowledgementState = Object.freeze({
+  PENDING: "pending",
+  DEFERRED_REPLY: "deferredReply",
+  DEFERRED_UPDATE: "deferredUpdate",
+  REPLIED: "replied",
+  MODAL: "modal",
+});
+
+const style = {
+  primary: ButtonStyle.Primary,
+  secondary: ButtonStyle.Secondary,
+  success: ButtonStyle.Success,
+  danger: ButtonStyle.Danger,
+  link: ButtonStyle.Link,
+};
+
+function normalizeComponentType(type) {
+  if (type === "select" || type === "stringSelect" || type === "string-select") return "stringSelect";
+  if (type === "channelSelect" || type === "channel-select") return "channelSelect";
+  if (type === "roleSelect" || type === "role-select") return "roleSelect";
+  return type;
 }
 
-function componentToRow(component) {
-  if (component.type === "button") return new ActionRowBuilder().addComponents(buildButton(component));
-  if (component.type === "role-select") return new ActionRowBuilder().addComponents(new RoleSelectMenuBuilder().setCustomId(component.customId).setPlaceholder(component.placeholder).setMinValues(component.minValues || 0).setMaxValues(component.maxValues || 1));
-  if (component.type === "channel-select") return new ActionRowBuilder().addComponents(new ChannelSelectMenuBuilder().setCustomId(component.customId).setPlaceholder(component.placeholder).setChannelTypes((component.channelTypes || [ChannelType.GuildText])));
-  if (component.type === "select") return new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId(component.customId).setPlaceholder(component.placeholder || component.customId).addOptions(component.options));
-  throw new Error(`Unsupported view component: ${component.type}`);
+function component(value) {
+  const type = normalizeComponentType(value.type);
+  if (type === "button") {
+    const button = new ButtonBuilder()
+      .setLabel(value.label)
+      .setStyle(style[value.style] || ButtonStyle.Secondary)
+      .setDisabled(Boolean(value.disabled));
+    if (value.url) button.setURL(value.url);
+    else button.setCustomId(value.customId);
+    if (value.emoji) button.setEmoji(value.emoji);
+    return button;
+  }
+  if (type === "stringSelect") {
+    return new StringSelectMenuBuilder()
+      .setCustomId(value.customId)
+      .setPlaceholder(value.placeholder || value.customId || "Select")
+      .setMinValues(value.minValues ?? 1)
+      .setMaxValues(value.maxValues ?? 1)
+      .setOptions((value.options || []).map((option) => ({
+        label: option.label,
+        value: option.value,
+        description: option.description,
+        emoji: option.emoji,
+        default: Boolean(option.default),
+      })));
+  }
+  if (type === "channelSelect") {
+    const select = new ChannelSelectMenuBuilder()
+      .setCustomId(value.customId)
+      .setPlaceholder(value.placeholder || value.customId || "Select")
+      .setMinValues(value.minValues ?? 0)
+      .setMaxValues(value.maxValues ?? 1);
+    select.setChannelTypes(value.channelTypes?.length ? value.channelTypes : [ChannelType.GuildText]);
+    return select;
+  }
+  if (type === "roleSelect") {
+    return new RoleSelectMenuBuilder()
+      .setCustomId(value.customId)
+      .setPlaceholder(value.placeholder || value.customId || "Select")
+      .setMinValues(value.minValues ?? 0)
+      .setMaxValues(value.maxValues ?? 1);
+  }
+  throw new TypeError(`Unsupported view component: ${value.type}`);
 }
 
-// Packs consecutive buttons into rows of up to 5 (a select menu always gets its
-// own row) and enforces the Discord limit of 5 action rows per message. Failing
-// loudly here is intentional: a local error replaces an opaque Discord
-// "Invalid Form Body" rejection and pinpoints the offending view.
-function toActionRows(components = []) {
-  const rows = [];
+function componentToRow(value) {
+  return new ActionRowBuilder().addComponents(component(value));
+}
+
+function rows(components = []) {
+  const result = [];
   let pendingButtons = [];
   const flushButtons = () => {
     while (pendingButtons.length) {
-      rows.push(new ActionRowBuilder().addComponents(...pendingButtons.splice(0, MAX_BUTTONS_PER_ROW).map(buildButton)));
+      result.push(new ActionRowBuilder().addComponents(
+        ...pendingButtons.splice(0, MAX_BUTTONS_PER_ROW).map(component)
+      ));
     }
     pendingButtons = [];
   };
-  for (const component of components) {
-    if (component.type === "button") { pendingButtons.push(component); continue; }
+
+  for (const value of components) {
+    if (normalizeComponentType(value.type) === "button") {
+      pendingButtons.push(value);
+      continue;
+    }
     flushButtons();
-    rows.push(componentToRow(component));
+    result.push(componentToRow(value));
   }
   flushButtons();
-  if (rows.length > MAX_ACTION_ROWS) {
-    throw new Error(`Discord views are limited to ${MAX_ACTION_ROWS} action rows per message (got ${rows.length}). Split the view into sub-views.`);
+
+  if (result.length > MAX_ACTION_ROWS) {
+    throw new Error(
+      `Discord views are limited to ${MAX_ACTION_ROWS} action rows per message (got ${result.length}). Split the view into sub-views.`
+    );
   }
-  return rows;
+  return result;
 }
 
-function payload(view, ephemeral = true) { return { content: [view.title, view.content].filter(Boolean).join("\n\n"), components: toActionRows(view.components || []), ephemeral }; }
+function renderView(view) {
+  const data = {};
+  if (view.title) data.content = view.content ? `${view.title}\n\n${view.content}` : view.title;
+  else if (view.content) data.content = view.content;
+  if (view.embed) {
+    const embed = new EmbedBuilder().setTitle(view.embed.title || view.title || "CIVRAT");
+    if (view.embed.description || view.content) embed.setDescription(view.embed.description || view.content);
+    if (view.embed.color) embed.setColor(view.embed.color);
+    if (view.embed.image) embed.setImage(view.embed.image);
+    if (Array.isArray(view.embed.fields) && view.embed.fields.length) embed.addFields(view.embed.fields);
+    data.embeds = [embed];
+  }
+  data.components = rows(view.components || []);
+  return data;
+}
+
+function payload(view, ephemeral = true) {
+  return { ...renderView(view), ephemeral };
+}
+
+function withoutEphemeral(data) {
+  const copy = { ...data };
+  delete copy.ephemeral;
+  return copy;
+}
+
+function inferInitialState(interaction) {
+  if (interaction?.replied) return AcknowledgementState.REPLIED;
+  if (!interaction?.deferred) return AcknowledgementState.PENDING;
+  const isComponent = interaction.isMessageComponent?.()
+    || interaction.isButton?.()
+    || interaction.isAnySelectMenu?.();
+  return isComponent ? AcknowledgementState.DEFERRED_UPDATE : AcknowledgementState.DEFERRED_REPLY;
+}
 
 class DiscordResponseTransport {
-  constructor(interaction) { this.interaction = interaction; }
-  // Déferrement explicite : à appeler au tout début d'une commande qui fait de
-  // l'I/O (Supabase/Mongo/Discord) avant de répondre, pour ne jamais dépasser
-  // les 3 s d'expiration de l'interaction (« l'application ne répond plus »).
-  // Idempotent : sans effet si l'interaction est déjà déférée ou répondue.
-  async deferReply({ ephemeral = true } = {}) { if (this.interaction.deferred || this.interaction.replied) return; if (typeof this.interaction.deferReply !== "function") return; await this.interaction.deferReply({ ephemeral }); }
-  async deferUpdate() { if (this.interaction.deferred || this.interaction.replied) return; if (typeof this.interaction.deferUpdate !== "function") return; await this.interaction.deferUpdate(); }
-  async reply({ view, ephemeral }) { const data = payload(view, ephemeral); if (this.interaction.replied || this.interaction.deferred) return this.interaction.followUp(data); return this.interaction.reply(data); }
-  async update({ view }) { const data = payload(view, true); delete data.ephemeral; if (this.interaction.deferred) return this.interaction.editReply(data); if (this.interaction.replied) return this.interaction.editReply(data); return this.interaction.update(data); }
-  async replyImagePreview({ image, content, ephemeral }) { const data = { content, files: [{ attachment: image.buffer, name: "welcome-preview.png" }], ephemeral }; if (this.interaction.replied || this.interaction.deferred) return this.interaction.followUp(data); return this.interaction.reply(data); }
-  async showModal(modal) { const builder = new ModalBuilder().setCustomId(modal.customId).setTitle(modal.title); for (const field of modal.fields) builder.addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId(field.id).setLabel(field.label).setStyle(field.style === "paragraph" ? TextInputStyle.Paragraph : TextInputStyle.Short).setValue(field.value || "").setRequired(field.required))); return this.interaction.showModal(builder); }
-  // Ajout Phase 10.2 (aperçu du panneau Tickets Premium) : réponse éphémère
-  // rendue en embed, avec les mêmes garanties de packing que payload().
-  async replyEmbed({ embed, components = [], ephemeral = true }) { const builder = new EmbedBuilder(); if (embed.title) builder.setTitle(embed.title); if (embed.description) builder.setDescription(embed.description); if (embed.color) builder.setColor(embed.color); if (embed.image) builder.setImage(embed.image); if (Array.isArray(embed.fields) && embed.fields.length) builder.addFields(embed.fields); const data = { embeds: [builder], components: toActionRows(components), ephemeral }; if (this.interaction.replied || this.interaction.deferred) return this.interaction.followUp(data); return this.interaction.reply(data); }
-  async sendTestWelcomeDm({ content }) { return this.interaction.user.send({ content }); }
-  // Contrat miroir de DiscordWelcomeGoodbyeTransport.sendChannelMessage, adossé
-  // à l'interaction : permet aux actions du panneau /settings (ex. « Tester
-  // Goodbye ») d'envoyer réellement dans le salon configuré.
-  async sendChannelMessage(channelId, payload) { const channel = this.interaction.guild.channels.cache.get(channelId); if (!channel?.isTextBased()) throw new Error("channel_unavailable"); const options = payload.embed ? { embeds: [new EmbedBuilder().setColor(payload.embed.color || "#5865f2").setDescription(payload.embed.description)] } : { content: payload.content }; if (Array.isArray(payload.files) && payload.files.length) options.files = payload.files; return channel.send(options); }
-  async sendTestWelcome({ channelId, content, embed }) { const channel = this.interaction.guild.channels.cache.get(channelId); if (!channel?.isTextBased()) throw new Error("welcome_channel_unavailable"); return channel.send(embed ? { embeds: [new EmbedBuilder().setColor(embed.color).setDescription(embed.description)] } : { content }); }
-  async replyError({ message, ephemeral }) { const data = { content: message, ephemeral }; if (this.interaction.replied || this.interaction.deferred) return this.interaction.followUp(data); return this.interaction.reply(data); }
+  constructor(interaction) {
+    if (!interaction) throw new TypeError("DiscordResponseTransport requires an interaction");
+    this.interaction = interaction;
+    this.state = inferInitialState(interaction);
+    this.queue = Promise.resolve();
+  }
+
+  supports(method) {
+    return typeof this.interaction?.[method] === "function";
+  }
+
+  isAcknowledged() {
+    this.syncState();
+    return this.state !== AcknowledgementState.PENDING;
+  }
+
+  acknowledgementState() {
+    this.syncState();
+    return this.state;
+  }
+
+  deferReply(options = { ephemeral: true }) {
+    return this.enqueue(async () => {
+      this.syncState();
+      if (this.state !== AcknowledgementState.PENDING) return this.reusedAcknowledgement();
+      if (!this.supports("deferReply")) return this.unsupportedAcknowledgement();
+      try {
+        const result = await this.invoke("deferReply", options, "deferReply");
+        this.state = AcknowledgementState.DEFERRED_REPLY;
+        return result;
+      } catch (error) {
+        return this.handleConcurrentAcknowledgement(error);
+      }
+    });
+  }
+
+  deferUpdate() {
+    return this.enqueue(async () => {
+      this.syncState();
+      if (this.state !== AcknowledgementState.PENDING) return this.reusedAcknowledgement();
+      if (!this.supports("deferUpdate")) return this.unsupportedAcknowledgement();
+      try {
+        const result = await this.invoke("deferUpdate", undefined, "deferUpdate");
+        this.state = AcknowledgementState.DEFERRED_UPDATE;
+        return result;
+      } catch (error) {
+        return this.handleConcurrentAcknowledgement(error);
+      }
+    });
+  }
+
+  reply({ view, ephemeral = true }) {
+    return this.enqueue(() => this.sendReply(payload(view, ephemeral), "reply"));
+  }
+
+  update({ view }) {
+    return this.enqueue(() => this.sendUpdate(renderView(view)));
+  }
+
+  replyError({ message }) {
+    return this.enqueue(() => this.sendReply({ content: message, ephemeral: true }, "replyError"));
+  }
+
+  replyImagePreview({ image = null, buffer = null, filename = null, title = null, content = "", ephemeral = true }) {
+    const attachment = buffer || image?.buffer || image;
+    const file = new AttachmentBuilder(attachment, { name: filename || image?.filename || "welcome-preview.png" });
+    const text = [title, content].filter(Boolean).join("\n\n");
+    return this.enqueue(() => this.sendReply({ content: text, files: [file], ephemeral }, "replyImagePreview"));
+  }
+
+  replyEmbed({ embed = {}, components = [], ephemeral = true }) {
+    const builder = new EmbedBuilder();
+    if (embed.title) builder.setTitle(embed.title);
+    if (embed.description) builder.setDescription(embed.description);
+    if (embed.color) builder.setColor(embed.color);
+    if (embed.image) builder.setImage(embed.image);
+    if (Array.isArray(embed.fields) && embed.fields.length) builder.addFields(embed.fields);
+    return this.enqueue(() => this.sendReply({ embeds: [builder], components: rows(components), ephemeral }, "replyEmbed"));
+  }
+
+  showModal({ customId, title, fields = [] }) {
+    return this.enqueue(async () => {
+      this.syncState();
+      if (this.state !== AcknowledgementState.PENDING) {
+        throw new InteractionAlreadyAcknowledgedError({ operation: "showModal", resource: "discord_interaction" });
+      }
+
+      const modal = new ModalBuilder().setCustomId(customId).setTitle(String(title).slice(0, 45));
+      modal.addComponents(fields.slice(0, MAX_ACTION_ROWS).map((field) => {
+        const input = new TextInputBuilder()
+          .setCustomId(field.id)
+          .setLabel(String(field.label).slice(0, 45))
+          .setStyle(field.style === "paragraph" ? TextInputStyle.Paragraph : TextInputStyle.Short)
+          .setRequired(field.required !== false);
+        if (field.value) input.setValue(String(field.value).slice(0, 4000));
+        if (field.placeholder) input.setPlaceholder(String(field.placeholder).slice(0, 100));
+        return new ActionRowBuilder().addComponents(input);
+      }));
+
+      try {
+        const result = await this.invoke("showModal", modal, "showModal");
+        this.state = AcknowledgementState.MODAL;
+        return result;
+      } catch (error) {
+        const classified = classifyDiscordError(error?.cause || error);
+        if (
+          error instanceof InteractionAlreadyAcknowledgedError
+          || classified.category === DiscordErrorCategory.INTERACTION_ALREADY_ACKNOWLEDGED
+        ) {
+          this.state = AcknowledgementState.REPLIED;
+        }
+        throw toCivratError(error, { operation: "showModal", resource: "discord_interaction" });
+      }
+    });
+  }
+
+  async sendTestWelcomeDm({ content }) {
+    return this.interaction.user.send({ content });
+  }
+
+  async sendTestWelcome({ channelId, content, embed }) {
+    const channel = this.interaction.guild?.channels?.cache?.get(channelId);
+    if (!channel?.isTextBased?.()) throw new Error("welcome_channel_unavailable");
+    if (!embed) return channel.send({ content });
+    const builder = new EmbedBuilder().setDescription(embed.description || content);
+    if (embed.color) builder.setColor(embed.color);
+    return channel.send({ embeds: [builder] });
+  }
+
+  async sendChannelMessage(channelId, { content, embed, files = [] }) {
+    const channel = this.interaction.guild?.channels?.cache?.get(channelId);
+    if (!channel?.isTextBased?.()) throw new Error("channel_unavailable");
+    const message = {};
+    if (embed) {
+      const builder = new EmbedBuilder().setDescription(embed.description || content || "");
+      builder.setColor(embed.color || "#5865F2");
+      message.embeds = [builder];
+    } else {
+      message.content = content;
+    }
+    if (files.length) message.files = files;
+    return channel.send(message);
+  }
+
+  enqueue(task) {
+    const execution = this.queue.then(task, task);
+    this.queue = execution.then(() => undefined, () => undefined);
+    return execution;
+  }
+
+  syncState() {
+    if (this.state !== AcknowledgementState.PENDING) return;
+    if (this.interaction.replied) {
+      this.state = AcknowledgementState.REPLIED;
+      return;
+    }
+    if (this.interaction.deferred) this.state = inferInitialState(this.interaction);
+  }
+
+  async sendReply(data, operation) {
+    this.syncState();
+
+    if (this.state === AcknowledgementState.PENDING) {
+      try {
+        const result = await this.invoke("reply", data, operation);
+        this.state = AcknowledgementState.REPLIED;
+        return result;
+      } catch (error) {
+        const classified = classifyDiscordError(error?.cause || error);
+        if (
+          !(error instanceof InteractionAlreadyAcknowledgedError)
+          && classified.category !== DiscordErrorCategory.INTERACTION_ALREADY_ACKNOWLEDGED
+        ) throw error;
+        this.state = AcknowledgementState.REPLIED;
+        return this.invoke("followUp", data, `${operation}.followUp`);
+      }
+    }
+
+    if (this.state === AcknowledgementState.DEFERRED_REPLY) {
+      if (this.supports("editReply")) {
+        const result = await this.invoke("editReply", withoutEphemeral(data), `${operation}.editReply`);
+        this.state = AcknowledgementState.REPLIED;
+        return result;
+      }
+      const result = await this.invoke("followUp", data, `${operation}.followUp`);
+      this.state = AcknowledgementState.REPLIED;
+      return result;
+    }
+
+    return this.invoke("followUp", data, `${operation}.followUp`);
+  }
+
+  async sendUpdate(data) {
+    this.syncState();
+
+    if (this.state === AcknowledgementState.PENDING) {
+      try {
+        const result = await this.invoke("update", data, "update");
+        this.state = AcknowledgementState.REPLIED;
+        return result;
+      } catch (error) {
+        const classified = classifyDiscordError(error?.cause || error);
+        if (
+          !(error instanceof InteractionAlreadyAcknowledgedError)
+          && classified.category !== DiscordErrorCategory.INTERACTION_ALREADY_ACKNOWLEDGED
+        ) throw error;
+        this.state = AcknowledgementState.REPLIED;
+        return this.invoke("editReply", data, "update.editReply");
+      }
+    }
+
+    const result = await this.invoke("editReply", data, "update.editReply");
+    this.state = AcknowledgementState.REPLIED;
+    return result;
+  }
+
+  async invoke(method, argument, operation) {
+    if (!this.supports(method)) {
+      throw new TypeError(`Discord interaction does not support ${method}`);
+    }
+    try {
+      return argument === undefined
+        ? await this.interaction[method]()
+        : await this.interaction[method](argument);
+    } catch (error) {
+      throw toCivratError(error, { operation, resource: "discord_interaction" });
+    }
+  }
+
+  handleConcurrentAcknowledgement(error) {
+    const classified = classifyDiscordError(error?.cause || error);
+    if (
+      error instanceof InteractionAlreadyAcknowledgedError
+      || classified.category === DiscordErrorCategory.INTERACTION_ALREADY_ACKNOWLEDGED
+    ) {
+      this.state = AcknowledgementState.REPLIED;
+      return this.reusedAcknowledgement();
+    }
+    throw error;
+  }
+
+  reusedAcknowledgement() {
+    return Object.freeze({ acknowledged: true, reused: true, state: this.state });
+  }
+
+  unsupportedAcknowledgement() {
+    return Object.freeze({ acknowledged: false, unsupported: true, state: this.state });
+  }
 }
 
-module.exports = { DiscordResponseTransport, payload, componentToRow, toActionRows, MAX_ACTION_ROWS, MAX_BUTTONS_PER_ROW };
+module.exports = {
+  DiscordResponseTransport,
+  AcknowledgementState,
+  payload,
+  renderView,
+  rows,
+  componentToRow,
+  toActionRows: rows,
+  MAX_ACTION_ROWS,
+  MAX_BUTTONS_PER_ROW,
+  MAX_COMPONENTS_PER_ROW,
+};

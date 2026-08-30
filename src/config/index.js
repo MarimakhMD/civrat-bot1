@@ -10,16 +10,25 @@ try {
   // dotenv is optional (production hosts inject real environment variables).
 }
 
+// Public Discord identifiers for CIVRAT's technical control plane. They are
+// deployment configuration, never credentials, and may be overridden without
+// changing source code.
+const DEFAULT_CIVRAT_ADMIN_CONFIG = Object.freeze({
+  guildId: "1320817768962064384",
+  channelId: "1542957356382552154",
+  roleId: "1542958959907053688",
+});
+
 const config = Object.freeze({
   token: process.env.DISCORD_TOKEN || null,
   clientId: process.env.CLIENT_ID || null,
   legacyGuildId: process.env.LEGACY_GUILD_ID || null,
+  civratAdminGuildId: process.env.CIVRAT_ADMIN_GUILD_ID || DEFAULT_CIVRAT_ADMIN_CONFIG.guildId,
+  civratAdminChannelId: process.env.CIVRAT_ADMIN_CHANNEL_ID || DEFAULT_CIVRAT_ADMIN_CONFIG.channelId,
+  civratAdminRoleId: process.env.CIVRAT_ADMIN_ROLE_ID || DEFAULT_CIVRAT_ADMIN_CONFIG.roleId,
   // Deploy opt-in at startup (see deploy.js). "1" (or "true") runs a one-shot
   // deploy before login; any other value means normal startup, no deploy.
   deployCommands: ["1", "true"].includes(String(process.env.DEPLOY_COMMANDS || "").toLowerCase()),
-  // Optional guild-scoped deploy target. When set, deploy.js registers to this
-  // guild (instant propagation) instead of globally. Public id, never logged.
-  deployGuildId: process.env.DEPLOY_GUILD_ID || null,
   mongoUri: process.env.MONGO_URI || null,
   mongoDbName: process.env.MONGO_DB_NAME || "civrat",
   // P20 Recovery — NOMS documentés uniquement. Les valeurs réelles vivent
@@ -32,8 +41,8 @@ const config = Object.freeze({
   smtpPort: process.env.SMTP_PORT || null,
   smtpUser: process.env.SMTP_USER || null,
   smtpPassword: process.env.SMTP_PASSWORD || null,
-  // P20 Owner Panel — même discipline : NOMS documentés, valeurs jamais
-  // ici. CIVRAT_OWNER_ID = Owner initial (un ID Discord, non un secret) ;
+  // Section Owner de /admin — même discipline. CIVRAT_OWNER_ID = Owner
+  // initial (un ID Discord, non un secret) ;
   // les deux codes sont des secrets env-only relus à la demande.
   civratOwnerId: process.env.CIVRAT_OWNER_ID || null,
   ownerPanelMasterCode: process.env.OWNER_PANEL_MASTER_CODE || null,

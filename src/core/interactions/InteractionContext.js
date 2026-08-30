@@ -1,39 +1,102 @@
 "use strict";
 
-const { resolveGuildLocale } = require("../i18n");
+const { BackendUnavailableError } = require("../errors");
 
-/**
- * Builds lazy, transport-neutral contexts for route handlers. The envelope is
- * produced by a future transport adapter and may represent a guild or a DM.
- */
 class InteractionContextFactory {
-  constructor({ guildConfigResolver = null, i18n, permissions, errorResponder, logger = null }) {
+  constructor({ configResolver = null, i18n, permissions, errorResponder }) {
     if (!i18n || !permissions || !errorResponder) {
-      throw new TypeError("InteractionContextFactory requires i18n, permissions, and errorResponder.");
+      throw new TypeError("InteractionContextFactory requires i18n, permissions and errorResponder");
     }
-    this.guildConfigResolver = guildConfigResolver;
+    this.configResolver = configResolver;
     this.i18n = i18n;
     this.permissions = permissions;
     this.errorResponder = errorResponder;
-    this.logger = logger;
   }
 
   async create(envelope) {
     const guildId = envelope.guildId || null;
-    const config = guildId && this.guildConfigResolver ? await this.guildConfigResolver.get(guildId) : null;
-    const locale = resolveGuildLocale(config?.language || envelope.locale);
+    const configuration = await this.resolveConfiguration(guildId);
+    return this.buildContext(envelope, configuration);
+  }
+
+  createErrorContext(envelope, error = null) {
+    return this.buildContext(envelope, {
+      config: {},
+      available: false,
+      found: false,
+      source: "error-context",
+      reason: typeof error?.code === "string" ? error.code : null,
+    });
+  }
+
+  async resolveConfiguration(guildId) {
+    if (!guildId || !this.configResolver) {
+      return {
+        config: {},
+        available: true,
+        found: false,
+        source: guildId ? "not-configured" : "not-applicable",
+        reason: null,
+      };
+    }
+
+    if (typeof this.configResolver.getState === "function") {
+      const state = await this.configResolver.getState(guildId);
+      if (!state.available && !state.found) {
+        throw new BackendUnavailableError({
+          operation: "read",
+          resource: "guild_config",
+          source: state.source,
+          reason: state.reason,
+        });
+      }
+      return state;
+    }
+
+    const config = await this.configResolver.get(guildId);
+    const normalized = config && typeof config === "object" && !Array.isArray(config) ? config : {};
+    return {
+      config: normalized,
+      available: true,
+      found: Object.keys(normalized).length > 0,
+      source: "resolver",
+      reason: null,
+    };
+  }
+
+  buildContext(envelope, configuration) {
+    const guildId = envelope.guildId || null;
+    const channelId = envelope.channelId || null;
+    const userId = envelope.userId || null;
+    const storedLocale = configuration.config?.language;
+    const discordLocale = typeof envelope.locale === "string"
+      ? envelope.locale.toLowerCase().split(/[-_]/)[0]
+      : null;
+    const locale = [storedLocale, discordLocale].find((value) => value === "en" || value === "fr") || "fr";
+    const frozenConfiguration = Object.freeze({
+      config: configuration.config || {},
+      available: Boolean(configuration.available),
+      found: Boolean(configuration.found),
+      source: configuration.source || "unknown",
+      reason: configuration.reason || null,
+    });
+    const translation = this.i18n.forLocale(locale);
 
     return Object.freeze({
       envelope,
       guildId,
-      userId: envelope.userId || null,
+      channelId,
+      userId,
       member: envelope.member || null,
-      config,
-      locale,
-      t: this.i18n.forLocale(locale),
+      config: frozenConfiguration.config,
+      configuration: frozenConfiguration,
+      t: translation,
       permissions: this.permissions,
-      respondError: (error) => this.errorResponder.respond({ error, context: { guildId, userId: envelope.userId || null, t: this.i18n.forLocale(locale) }, transport: envelope.transport }),
-      logger: this.logger,
+      respondError: (error) => this.errorResponder.respond({
+        error,
+        context: { guildId, channelId, userId, t: translation },
+        transport: envelope.transport,
+      }),
     });
   }
 }

@@ -1,8 +1,7 @@
 "use strict";
 
-// P17 — hygiène du chargeur de commandes après nettoyage ciblé :
-//  • le chargement reste strictement identique (2 fichiers legacy actifs +
-//    20 commandes modulaires = 22, aucune duplique) ;
+// Hygiène du chargeur de commandes après unification du panel :
+//  • 2 fichiers legacy actifs + 21 commandes modulaires = 23 ;
 //  • la garde anti-doublon warn/mute/unmute protège toujours le chargement
 //    modulaire (« Duplicate module command » non déclenchée) ;
 //  • les exports morts prouvés (registerCommands, getCommands) sont retirés ;
@@ -13,16 +12,14 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const commandHandler = require("../../src/handlers/commandHandler");
 
-// P20 : +recovery + ownerpanel => 2 fichiers legacy actifs +
-// 22 commandes modulaires = 24.
 const EXPECTED_COMMANDS = [
-  "analytics", "analytics_invites", "analytics_xp", "automod", "bannir",
+  "admin", "analytics", "analytics_invites", "analytics_xp", "automod", "bannir",
   "captcha", "debannir", "deverrouiller", "expulser", "giveaway", "invites",
-  "mute", "ownerpanel", "pseudo", "recovery", "settings", "slowmode", "suggest",
-  "supprimer", "ticketpanel", "unmute", "uploadsticker", "verrouiller", "warn",
+  "mute", "pseudo", "settings", "slowmode", "suggest", "supprimer", "ticketpanel",
+  "unmute", "uploadsticker", "verrouiller", "warn",
 ];
 
-test("loadCommands loads exactly the V1 command set, each name once", () => {
+test("loadCommands loads exactly 22 global commands plus /admin, each once", () => {
   const loaded = commandHandler.loadCommands();
   const names = [...loaded.keys()].sort();
   assert.deepEqual(names, EXPECTED_COMMANDS);

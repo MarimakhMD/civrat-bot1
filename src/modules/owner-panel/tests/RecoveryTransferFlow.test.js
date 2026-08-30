@@ -153,6 +153,10 @@ test("elevated user with the right code reaches explicit confirmation", async ()
   const sent = await reachRecoveryConfirmation(f);
   assert.equal(sent.updates.length, 1);
   assert.ok(sent.updates[0].view.content.includes(NEW_OWNER_ID), "final confirmation names the target");
+  assert.deepEqual(
+    sent.updates[0].view.components.map((component) => component.customId),
+    [Id.RECOVERY_CONFIRM, Id.RECOVERY_CANCEL],
+  );
   assert.equal(f.repository.calls.length, 0, "no mutation before confirmation");
 });
 
@@ -259,7 +263,7 @@ test("recovery mode view shows no identity data (opening only)", async () => {
   const view = sent.replies[0].view;
   assert.equal(view.content, en.ownerpanel.recoveryNotice);
   assert.ok(!view.content.includes(OWNER_ID) && !view.content.includes(ADMIN_ID), "no owner/admin ids leaked");
-  assert.deepEqual(view.components.map((c) => c.customId), [Id.RECOVERY_TRANSFER, Id.RECOVERY_MASTER]);
+  assert.deepEqual(view.components.map((c) => c.customId), [Id.RECOVERY_TRANSFER]);
   // Membre sans rien : toujours le refus générique (P20 intact).
   const nobody = makeContext({ userId: "999999999999999999" });
   await routes.openOwnerPanel(nobody.context, f.runtime);

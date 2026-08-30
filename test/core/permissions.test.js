@@ -19,10 +19,29 @@ test("permission service evaluates Discord-adapter capabilities", async () => {
   assert.equal((await service.evaluate(context([], true), { allOf: [PermissionName.GUILD_OWNER] })).granted, true);
 });
 
-test("permission service supports allOf, anyOf, and safe default owner denial", async () => {
+test("permission service supports allOf, anyOf, and safe default authority denial", async () => {
   const service = new PermissionService();
   const member = context([PermissionName.MANAGE_GUILD]);
   assert.equal((await service.evaluate(member, { allOf: [PermissionName.MANAGE_GUILD], anyOf: [PermissionName.ADMINISTRATOR, PermissionName.MANAGE_GUILD] })).granted, true);
   assert.equal((await service.evaluate(member, { allOf: [PermissionName.CIVRAT_OWNER] })).granted, false);
+  assert.equal((await service.evaluate(member, { allOf: [PermissionName.CIVRAT_ADMIN] })).granted, false);
   await assert.rejects(() => service.require(member, { allOf: [PermissionName.MANAGE_ROLES] }), AuthorizationError);
+});
+
+test("CIVRAT_ADMIN delegates the complete context to the injected authority", async () => {
+  const seen = [];
+  const service = new PermissionService({
+    civratAdminProvider: {
+      isAdmin: async (candidate) => {
+        seen.push(candidate);
+        return candidate.guildId === "guild" && candidate.channelId === "channel";
+      },
+    },
+  });
+  const candidate = {
+    ...context([]),
+    channelId: "channel",
+  };
+  assert.equal((await service.evaluate(candidate, { allOf: [PermissionName.CIVRAT_ADMIN] })).granted, true);
+  assert.deepEqual(seen, [candidate]);
 });

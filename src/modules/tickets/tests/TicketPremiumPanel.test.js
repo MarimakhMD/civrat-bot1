@@ -7,7 +7,7 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { EntitlementService } = require("../../../core/entitlements");
+const { EntitlementDecision, EntitlementService } = require("../../../core/entitlements");
 const { toActionRows } = require("../../../adapters/discord/DiscordResponseTransport");
 const { TicketPanelService } = require("../services/TicketPanelService");
 const { TicketPremiumConfigResolver } = require("../services/TicketPremiumConfigResolver");
@@ -37,12 +37,17 @@ const ACTIVE = { status: "active", ends_at: null };
 const EXPIRED = { status: "active", ends_at: "2020-01-01T00:00:00.000Z" };
 const INACTIVE = { status: "revoked", ends_at: null };
 
-function makeResolver(record) {
-  const repository = { findFeature: async () => record };
+function makeResolver(record, repositoryError = null) {
+  const repository = {
+    findFeature: async () => {
+      if (repositoryError) throw repositoryError;
+      return record;
+    },
+  };
   return new TicketPremiumConfigResolver({ entitlementService: new EntitlementService({ repository }) });
 }
 
-function makeContext({ config = { ...freeConfig }, record = ACTIVE, modalValues = null } = {}) {
+function makeContext({ config = { ...freeConfig }, record = ACTIVE, repositoryError = null, modalValues = null } = {}) {
   const state = { config, writes: [], views: [], replies: [], embeds: [], modals: [] };
   const service = {
     read: async () => state.config,
@@ -52,7 +57,7 @@ function makeContext({ config = { ...freeConfig }, record = ACTIVE, modalValues 
     guildId: "g",
     t: (key) => key,
     service,
-    premiumConfigResolver: makeResolver(record),
+    premiumConfigResolver: makeResolver(record, repositoryError),
     envelope: {
       modalValues,
       transport: {
@@ -136,13 +141,17 @@ test("tickets settings view exposes the Premium entry and stays within Discord l
   assert.ok(rows.length <= 5, `tickets view renders ${rows.length} rows`);
 });
 
-test("locked view exposes no usable Premium control, only Back", () => {
-  const view = premiumLockedView({ t: (key) => key });
-  assert.equal(view.components.length, 1);
-  assert.equal(view.components[0].customId, Id.PANEL);
-  const json = JSON.stringify(view.components);
+test("locked view explains the Premium decision and exposes only Back", () => {
+  const required = premiumLockedView({ t: (key) => key });
+  assert.equal(required.content, "errors.premiumRequired");
+  assert.equal(required.components.length, 1);
+  assert.equal(required.components[0].customId, Id.PANEL);
+  const json = JSON.stringify(required.components);
   assert.equal(json.includes(Id.PREMIUM_EDIT), false);
   assert.equal(json.includes(Id.PREMIUM_RESET), false);
+
+  const unavailable = premiumLockedView({ t: (key) => key, decision: EntitlementDecision.UNAVAILABLE });
+  assert.equal(unavailable.content, "errors.entitlementUnavailable");
 });
 
 test("active sub-view shows resolved state and its 8 controls within Discord limits", () => {
@@ -168,6 +177,15 @@ test("premium section renders the locked view when the entitlement is inactive",
   await openPremiumPanel(context);
   assert.equal(state.views.length, 1);
   assert.equal(state.views[0].components.length, 1);
+  assert.equal(state.views[0].components[0].customId, Id.PANEL);
+  assert.equal(state.writes.length, 0);
+});
+
+test("premium section distinguishes a backend outage from missing Premium", async () => {
+  const { context, state } = makeContext({ repositoryError: new Error("offline") });
+  await openPremiumPanel(context);
+  assert.equal(state.views.length, 1);
+  assert.equal(state.views[0].content, "errors.entitlementUnavailable");
   assert.equal(state.views[0].components[0].customId, Id.PANEL);
   assert.equal(state.writes.length, 0);
 });

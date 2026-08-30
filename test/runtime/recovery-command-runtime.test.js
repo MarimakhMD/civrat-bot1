@@ -27,14 +27,15 @@ test("recovery command and routes are registered public (no permission)", () => 
   assert.ok(registry.find({ kind: "modal", customId: Id.CODE_SUBMIT }));
 });
 
-test("full runtime composition exposes /recovery (22 modular commands, 24 total)", () => {
+test("full runtime keeps Recovery logic without exposing a /recovery command", () => {
   const { createGuildSettingsRuntime } = require("../../src/runtime/createGuildSettingsRuntime");
   const runtime = createGuildSettingsRuntime({
     legacyConfigService: { getGuildConfig: async () => ({}), updateGuildConfig: async () => ({}), invalidateCache: async () => {} },
   });
-  const names = runtime.getDiscordCommands().map((c) => c.data.name);
-  assert.ok(names.includes("recovery"));
-  assert.equal(names.length, 22, "20 modules historiques + recovery + ownerpanel");
+  const names = runtime.getDiscordCommands().map((command) => command.data.name);
+  assert.equal(names.includes("recovery"), false);
+  assert.ok(names.includes("admin"));
+  assert.equal(names.length, 21, "20 normal modular commands + /admin");
   assert.equal(new Set(names).size, names.length, "aucune duplique");
 });
 

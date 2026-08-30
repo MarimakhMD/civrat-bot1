@@ -1,6 +1,10 @@
 "use strict";
 
-const { OwnerPanelFieldId: Field, PendingActionType } = require("../configuration/ownerPanelConstants");
+const {
+  OwnerPanelComponentId: Id,
+  OwnerPanelFieldId: Field,
+  PendingActionType,
+} = require("../configuration/ownerPanelConstants");
 const { isDiscordId } = require("../services/CivratIdentityService");
 const views = require("./ownerPanelViews");
 
@@ -212,7 +216,14 @@ async function submitRecoveryTransfer(context, runtime) {
     return replyRefused(context);
   }
   runtime.panel.setPending(context.userId, { type: PendingActionType.RECOVERY_TRANSFER, targetId: newOwnerId });
-  return context.envelope.transport.update({ view: views.confirmView(context.t, { textKey: "ownerpanel.confirmTransfer", targetId: newOwnerId }) });
+  return context.envelope.transport.update({
+    view: views.confirmView(context.t, {
+      textKey: "ownerpanel.confirmTransfer",
+      targetId: newOwnerId,
+      confirmId: Id.RECOVERY_CONFIRM,
+      cancelId: Id.RECOVERY_CANCEL,
+    }),
+  });
 }
 
 // Confirmation finale du transfert par récupération. L'élévation doit être

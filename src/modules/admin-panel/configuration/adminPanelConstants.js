@@ -1,6 +1,9 @@
 "use strict";
 
-const { EntitlementFeature } = require("../../../core/entitlements");
+const {
+  EntitlementFeature,
+  TECHNICAL_PREMIUM_GUILD_ID,
+} = require("../../../core/entitlements");
 
 // CIVRAT Admin Panel — ids de composants, ids de champs et limites de
 // politique. AUCUNE valeur secrète ici (que des ids et des limites).
@@ -9,6 +12,10 @@ const AdminPanelComponentId = Object.freeze({
   REFRESH: "adminpanel:refresh",
   PREMIUM: "adminpanel:premium",
   SERVERS: "adminpanel:servers",
+  DIAGNOSTICS: "adminpanel:diagnostics",
+  CONFIGURATION: "adminpanel:configuration",
+  OWNER: "adminpanel:owner",
+  RECOVERY: "adminpanel:recovery",
   AUDIT: "adminpanel:audit",
   SEARCH: "adminpanel:search",
   SEARCH_SUBMIT: "adminpanel:search:submit",
@@ -55,4 +62,11 @@ const AdminPanelEntitlementStatus = Object.freeze({
   REVOKED: "revoked",
 });
 
-module.exports = { AdminPanelComponentId, AdminPanelFieldId, AdminPanelPolicy, ADMIN_PLANS, AdminPanelEntitlementStatus };
+module.exports = {
+  AdminPanelComponentId,
+  AdminPanelFieldId,
+  AdminPanelPolicy,
+  AdminPanelEntitlementStatus,
+  ADMIN_PLANS,
+  TECHNICAL_PREMIUM_GUILD_ID,
+};

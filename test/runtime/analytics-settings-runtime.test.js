@@ -29,6 +29,7 @@ const legacyInviteService = require("../../src/services/inviteService");
 const { MAX_ACTION_ROWS, MAX_BUTTONS_PER_ROW } = require("../../src/adapters/discord/DiscordResponseTransport");
 const { XPComponentId: XPId } = require("../../src/modules/xp/configuration/xpConstants");
 const { InviteComponentId: InviteId } = require("../../src/modules/invites/configuration/inviteConstants");
+const { SettingsComponentId } = require("../../src/modules/guild-settings/interactions/settingsComponents");
 
 function base(captured, extra = {}) {
   return {
@@ -60,6 +61,10 @@ function button(customId, captured) {
   return base(captured, { isButton: () => true, customId });
 }
 
+function stringSelect(customId, values, captured) {
+  return base(captured, { isStringSelectMenu: () => true, customId, values });
+}
+
 function channelSelect(customId, values, captured) {
   return base(captured, { isChannelSelectMenu: () => true, customId, values });
 }
@@ -76,14 +81,19 @@ function assertLimits(payload, label) {
 
 const runtime = createGuildSettingsRuntime({ legacyConfigService: { getGuildConfig: sharedStore.getGuildConfig, updateGuildConfig: guildConfigModule.updateGuildConfig, invalidateCache: async () => {} } });
 
-test("settings home exposes the XP and Invites sections within Discord limits", async () => {
+test("settings Analytics category exposes Analytics, XP, and Invites within Discord limits", async () => {
+  const home = {};
+  assert.equal(await runtime.tryHandle(command("settings", home)), true);
+  assertLimits(rendered(home), "settings home");
+  assert.ok(contains(rendered(home), SettingsComponentId.CATEGORY));
+
   const captured = {};
-  assert.equal(await runtime.tryHandle(command("settings", captured)), true);
+  assert.equal(await runtime.tryHandle(stringSelect(SettingsComponentId.CATEGORY, ["analytics"], captured)), true);
   const payload = rendered(captured);
-  assertLimits(payload, "settings home");
-  assert.ok(contains(payload, XPId.SECTION), "settings home misses the XP section");
-  assert.ok(contains(payload, InviteId.SECTION), "settings home misses the Invites section");
-  assert.ok(contains(payload, "civrat:v1:analytics:section"), "settings home lost the Analytics section");
+  assertLimits(payload, "settings analytics category");
+  assert.ok(contains(payload, XPId.SECTION), "Analytics category misses the XP section");
+  assert.ok(contains(payload, InviteId.SECTION), "Analytics category misses the Invites section");
+  assert.ok(contains(payload, "civrat:v1:analytics:section"), "Analytics category lost the Analytics section");
 });
 
 test("end-to-end: enabling Analytics then tracking events makes them visible in /analytics", async () => {
@@ -154,7 +164,7 @@ test("Invites settings section renders status, toggles invitations_enabled and g
   assert.ok(contains(rendered(toggled), "désactivées"));
   const backed = {};
   assert.equal(await runtime.tryHandle(button(InviteId.BACK, backed)), true);
-  assert.ok(contains(rendered(backed), InviteId.SECTION), "Back must render the composed settings home again");
+  assert.ok(contains(rendered(backed), SettingsComponentId.CATEGORY), "Back must render the categorized settings home again");
 });
 
 test("unconfigured guild keeps the historical behavior: tracking off, zeros, no crash", async () => {

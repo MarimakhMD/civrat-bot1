@@ -1,25 +1,46 @@
 "use strict";
 
-const { GuildConfigRepository } = require("./GuildConfigRepository");
-
-/**
- * Transitional adapter around the existing configuration service. Dependencies
- * are injected so the core does not import legacy code or persistence clients.
- */
-class LegacyGuildConfigRepository extends GuildConfigRepository {
-  constructor({ getConfig, updateConfig, invalidateConfig = async () => {} }) {
-    super();
-    if (typeof getConfig !== "function" || typeof updateConfig !== "function" || typeof invalidateConfig !== "function") {
-      throw new TypeError("LegacyGuildConfigRepository requires getConfig, updateConfig, and invalidateConfig functions.");
+class LegacyGuildConfigRepository {
+  constructor({ getConfig, getConfigState = null, updateConfig, invalidate = null, invalidateConfig = null }) {
+    if (typeof getConfig !== "function" || typeof updateConfig !== "function") {
+      throw new TypeError("LegacyGuildConfigRepository requires getConfig and updateConfig functions");
     }
     this.getConfig = getConfig;
+    this.getConfigState = typeof getConfigState === "function"
+      ? getConfigState
+      : typeof getConfig.getState === "function"
+        ? getConfig.getState
+        : null;
     this.updateConfig = updateConfig;
-    this.invalidateConfig = invalidateConfig;
+    const invalidator = typeof invalidate === "function" ? invalidate : invalidateConfig;
+    this.invalidateConfig = typeof invalidator === "function" ? invalidator : async () => {};
   }
 
-  async getByGuildId(guildId) { return this.getConfig(guildId); }
-  async updateByGuildId(guildId, updates) { return this.updateConfig(guildId, updates); }
-  async invalidate(guildId) { return this.invalidateConfig(guildId); }
+  async getByGuildId(guildId) {
+    return this.getConfig(guildId);
+  }
+
+  async getStateByGuildId(guildId) {
+    if (this.getConfigState) return this.getConfigState(guildId);
+
+    const config = await this.getConfig(guildId);
+    const normalized = config && typeof config === "object" && !Array.isArray(config) ? config : {};
+    return {
+      config: normalized,
+      available: true,
+      found: Object.keys(normalized).length > 0,
+      source: "legacy",
+      reason: null,
+    };
+  }
+
+  async updateByGuildId(guildId, patch) {
+    return this.updateConfig(guildId, patch);
+  }
+
+  async invalidate(guildId) {
+    return this.invalidateConfig(guildId);
+  }
 }
 
 module.exports = { LegacyGuildConfigRepository };
