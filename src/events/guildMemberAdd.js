@@ -3,7 +3,6 @@
 // ═══════════════════════════════════════════════════
 // FIX: Original had 3 separate listeners. Now merged into one.
 
-const { EmbedBuilder } = require("discord.js");
 let guildConfigService;
 try {
   guildConfigService = require("../services/guildConfig");
@@ -45,6 +44,13 @@ module.exports = {
       await require("../modules/analytics/runtime/getAnalyticsRuntime").getAnalyticsRuntime().trackMember(member);
     } catch {}
   },
+
+  // Phase 1 (C3) : export additionnel, strictement additif. `loadEvents`
+  // (index.js) n'exige que `name` et `execute`, tous deux inchangés ; cet
+  // export ouvre une couture de test sur le chemin réel
+  // guildMemberAdd → InviteService → statsRepository, qui n'était couvert
+  // par aucun test et a laissé passer le bug `result.inviter.id`.
+  handleInviteTracking,
 };
 
 async function handleInviteTracking(member, config) {
@@ -60,8 +66,13 @@ async function handleInviteTracking(member, config) {
     const result = inviteService.findUsedInvite(member.guild.id, newInvites);
 
     if (result?.inviter) {
-      await inviteService.addInvite(result.inviter.id, member.guild.id);
-      await inviteService.setInvitedBy(member.id, member.guild.id, result.inviter.id);
+      // Phase 1 (C3) : findUsedInvite() retourne `inviter` comme IDENTIFIANT
+      // (chaîne), pas comme objet. L'ancienne lecture `result.inviter.id`
+      // valait donc `undefined` : le compteur était incrémenté sur la clé
+      // "<guildId>:undefined" et `invitedBy` restait vide, ce qui rendait
+      // /invites nul pour tout le monde et le décrément au départ inopérant.
+      await inviteService.addInvite(result.inviter, member.guild.id);
+      await inviteService.setInvitedBy(member.id, member.guild.id, result.inviter);
     }
 
     return result;
@@ -77,34 +88,4 @@ async function handleInviteJoinLog(member, config, inviteResult) {
   await require("../modules/logs/runtime/getLogsRuntime").getLogsRuntime().handleInviteEvent({
     guild: member.guild, config, action: "invite_used", inviteCode: inviteResult.code,
   });
-}
-
-async function handleJoinLog(member, config, inviteResult) {
-  if (!config.logs_enabled) return;
-
-  const channelId = config.log_member_join_channel_id;
-  if (!channelId) return;
-
-  const channel = member.client.channels.cache.get(channelId);
-  if (!channel) return;
-
-  try {
-    const inviterStats = inviteResult?.inviter
-      ? await inviteService.getInviteStats(inviteResult.inviter.id, member.guild.id)
-      : null;
-
-    const embed = new EmbedBuilder()
-      .setColor("#57F287")
-      .setTitle("📥 MEMBER JOINED")
-      .setThumbnail(member.user.displayAvatarURL())
-      .setDescription(
-        `━━━━━━━━━━━━━━━━━━━━━━\n👤 **Membre** • ${member}\n🆔 **ID** • ${member.id}\n📆 **Compte créé** • <t:${Math.floor(member.user.createdTimestamp / 1000)}:R>\n🔗 **Invitation** • ${inviteResult?.code || "Inconnue"}\n🛡 **Invité par** • ${inviteResult?.inviter || "Inconnu"}\n📊 **Invitations du recruteur** • ${inviterStats?.current || 0}\n👥 **Membres** • ${member.guild.memberCount}\n━━━━━━━━━━━━━━━━━━━━━━`
-      )
-      .setFooter({ text: member.guild.name })
-      .setTimestamp();
-
-    channel.send({ embeds: [embed] });
-  } catch (err) {
-    logger.error(`Join log failed:`, err.message);
-  }
 }
