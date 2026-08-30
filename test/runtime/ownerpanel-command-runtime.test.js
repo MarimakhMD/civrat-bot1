@@ -79,15 +79,16 @@ test("recovery channel: elevated user sees the transfer modal with empty fields"
   assert.equal(denied.state.replies[0].view.content, fr.ownerpanel.refused);
 });
 
-test("full runtime composition exposes /ownerpanel (22 modular commands, 24 total)", () => {
+test("full runtime removes /ownerpanel and exposes its replacement /admin", () => {
   const { createGuildSettingsRuntime } = require("../../src/runtime/createGuildSettingsRuntime");
   const runtime = createGuildSettingsRuntime({
     legacyConfigService: { getGuildConfig: async () => ({}), updateGuildConfig: async () => ({}), invalidateCache: async () => {} },
   });
-  const names = runtime.getDiscordCommands().map((c) => c.data.name);
-  assert.ok(names.includes("ownerpanel"));
-  assert.ok(names.includes("recovery"));
-  assert.equal(names.length, 22, "20 modules historiques + recovery + ownerpanel");
+  const names = runtime.getDiscordCommands().map((command) => command.data.name);
+  assert.equal(names.includes("ownerpanel"), false);
+  assert.equal(names.includes("recovery"), false);
+  assert.ok(names.includes("admin"));
+  assert.equal(names.length, 21, "20 normal modular commands + /admin");
   assert.equal(new Set(names).size, names.length, "aucune duplique");
 });
 

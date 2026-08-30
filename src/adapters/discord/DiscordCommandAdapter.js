@@ -1,11 +1,13 @@
 "use strict";
 
 const { SlashCommandBuilder, InteractionContextType, ApplicationIntegrationType } = require("discord.js");
+const { resolveCommandDeploymentScope } = require("../../core/interactions");
 const { DiscordPermission } = require("./discordPermissionMap");
 
 // CIVRAT → Discord : contexte d'exposition d'une commande.
-// Convention V1 : une commande « normale » vit UNIQUEMENT en serveur (Guild).
-// Seules /ownerpanel et /recovery déclarent explicitement Guild + BotDM.
+// Convention : toutes les commandes actuelles vivent uniquement en serveur.
+// La restriction à une guilde précise est une portée de DÉPLOIEMENT distincte
+// des contextes Discord et reste portée par la définition neutre.
 const ContextName = Object.freeze({
   guild: InteractionContextType.Guild, // 0 — serveur uniquement
   botDm: InteractionContextType.BotDM, // 1 — DM avec le bot uniquement
@@ -79,7 +81,11 @@ function toDiscordCommand(definition, execute) {
   const permission = resolveDefaultMemberPermissions(definition);
   if (permission) builder.setDefaultMemberPermissions(permission);
 
-  return { data: builder, execute };
+  return {
+    data: builder,
+    execute,
+    deploymentScope: resolveCommandDeploymentScope(definition.deploymentScope),
+  };
 }
 
 module.exports = { toDiscordCommand };

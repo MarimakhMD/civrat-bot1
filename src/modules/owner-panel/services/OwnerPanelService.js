@@ -47,6 +47,16 @@ class OwnerPanelService {
     return this.state.hasActiveSession(userId, this.now());
   }
 
+  async authorizePremiumMutation({ actorId, identityService }) {
+    if (!identityService || typeof identityService.hasAuthenticatedOwnerAuthority !== "function") {
+      return false;
+    }
+    return identityService.hasAuthenticatedOwnerAuthority({
+      actorId,
+      sessionValidator: (userId) => this.authenticate(userId),
+    });
+  }
+
   // code : saisie utilisateur. Retourne { ok, code } — jamais de détail.
   // V1 — la durée de session dépend du rôle : Owner = 24 h, sinon (accès
   // lecture Master Code) = session courte. Les Admins CIVRAT ne passent PAS

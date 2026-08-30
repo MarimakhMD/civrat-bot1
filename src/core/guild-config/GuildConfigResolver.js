@@ -1,6 +1,11 @@
 "use strict";
 
-const { ConfigurationError, ValidationError } = require("../errors");
+const {
+  CivratError,
+  ErrorCode,
+  ConfigurationError,
+  ValidationError,
+} = require("../errors");
 const { resolveGuildLocale } = require("../i18n");
 
 /** Stable module-facing facade for guild configuration reads and invalidation. */
@@ -13,19 +18,48 @@ class GuildConfigResolver {
     this.logger = logger;
   }
 
-  async get(guildId) {
+  async getState(guildId) {
     assertGuildId(guildId);
+
     try {
-      const config = await this.repository.getByGuildId(guildId);
-      if (!config || typeof config !== "object") {
-        throw new ConfigurationError("CONFIGURATION_UNAVAILABLE", { guildId, reason: "empty_config" });
+      if (typeof this.repository.getStateByGuildId === "function") {
+        return this.normalizeState(await this.repository.getStateByGuildId(guildId));
       }
-      return config;
+
+      const config = await this.repository.getByGuildId(guildId);
+      if (!config || typeof config !== "object" || Array.isArray(config)) {
+        throw new ConfigurationError(ErrorCode.CONFIGURATION_UNAVAILABLE, {
+          operation: "read",
+          resource: "guild_config",
+          reason: "empty_config",
+        });
+      }
+      return {
+        config,
+        available: true,
+        found: Object.keys(config).length > 0,
+        source: "repository",
+        reason: null,
+      };
     } catch (error) {
-      if (error instanceof ConfigurationError) throw error;
-      this.logger?.error?.("Guild configuration resolution failed", { guildId, reason: error?.code || "unknown", error: error?.message || String(error) });
-      throw new ConfigurationError("CONFIGURATION_UNAVAILABLE", { guildId, reason: error?.code || "unknown" }, error);
+      if (error instanceof CivratError) throw error;
+      this.logger?.error?.("Guild configuration resolution failed", {
+        guildId,
+        operation: "read",
+        errorType: error?.name || typeof error,
+        errorCode: safeCode(error?.code),
+      });
+      throw new ConfigurationError(
+        "Unable to read guild configuration",
+        { operation: "read", resource: "guild_config" },
+        error
+      );
     }
+  }
+
+  async get(guildId) {
+    const state = await this.getState(guildId);
+    return state.config;
   }
 
   async getLanguage(guildId) {
@@ -33,25 +67,47 @@ class GuildConfigResolver {
     return resolveGuildLocale(config.language);
   }
 
-  /** Stable module-facing write path. It invalidates the targeted guild after a successful update. */
   async update(guildId, updates) {
     assertGuildId(guildId);
     assertUpdates(updates);
     if (typeof this.repository.updateByGuildId !== "function") {
-      throw new ConfigurationError("CONFIGURATION_UNAVAILABLE", { guildId, reason: "repository_write_unsupported" });
+      throw new ConfigurationError(ErrorCode.CONFIGURATION_UNAVAILABLE, {
+        operation: "write",
+        resource: "guild_config",
+        reason: "repository_write_unsupported",
+      });
     }
+
     try {
-      const config = await this.repository.updateByGuildId(guildId, updates);
-      if (!config || typeof config !== "object") {
-        throw new ConfigurationError("CONFIGURATION_UNAVAILABLE", { guildId, reason: "empty_updated_config" });
+      const updated = await this.repository.updateByGuildId(guildId, updates);
+      if (!updated || typeof updated !== "object" || Array.isArray(updated)) {
+        throw new ConfigurationError(ErrorCode.CONFIGURATION_UNAVAILABLE, {
+          operation: "write",
+          resource: "guild_config",
+          reason: "empty_updated_config",
+        });
       }
       await this.invalidate(guildId);
-      this.logger?.info?.("Guild configuration updated", { guildId, keys: Object.keys(updates) });
-      return config;
+      this.logger?.info?.("Guild configuration updated", {
+        guildId,
+        operation: "write",
+        keyCount: Object.keys(updates).length,
+      });
+      return updated;
     } catch (error) {
-      if (error instanceof ConfigurationError) throw error;
-      this.logger?.error?.("Guild configuration update failed", { guildId, keys: Object.keys(updates), reason: error?.code || "unknown", error: error?.message || String(error) });
-      throw new ConfigurationError("CONFIGURATION_UNAVAILABLE", { guildId, reason: error?.code || "unknown" }, error);
+      if (error instanceof CivratError) throw error;
+      this.logger?.error?.("Guild configuration update failed", {
+        guildId,
+        operation: "write",
+        keyCount: Object.keys(updates).length,
+        errorType: error?.name || typeof error,
+        errorCode: safeCode(error?.code),
+      });
+      throw new ConfigurationError(
+        "Unable to update guild configuration",
+        { operation: "write", resource: "guild_config" },
+        error
+      );
     }
   }
 
@@ -60,6 +116,29 @@ class GuildConfigResolver {
     await this.repository.invalidate?.(guildId);
     this.logger?.debug?.("Guild configuration invalidated", { guildId });
   }
+
+  normalizeState(state) {
+    if (!state || typeof state !== "object" || Array.isArray(state)) {
+      throw new ConfigurationError(ErrorCode.CONFIGURATION_UNAVAILABLE, {
+        operation: "read",
+        resource: "guild_config",
+        reason: "INVALID_STATE",
+      });
+    }
+
+    return {
+      config: normalizeConfig(state.config),
+      available: Boolean(state.available),
+      found: Boolean(state.found),
+      source: typeof state.source === "string" ? state.source : "repository",
+      reason: typeof state.reason === "string" ? state.reason : null,
+    };
+  }
+}
+
+
+function normalizeConfig(config) {
+  return config && typeof config === "object" && !Array.isArray(config) ? config : {};
 }
 
 function assertGuildId(guildId) {
@@ -72,6 +151,10 @@ function assertUpdates(updates) {
   if (!updates || typeof updates !== "object" || Array.isArray(updates) || Object.keys(updates).length === 0) {
     throw new ValidationError({ field: "updates", reason: "non_empty_object_required" });
   }
+}
+
+function safeCode(value) {
+  return typeof value === "string" || typeof value === "number" ? value : null;
 }
 
 module.exports = { GuildConfigResolver, assertGuildId, assertUpdates };

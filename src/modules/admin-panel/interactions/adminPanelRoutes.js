@@ -1,34 +1,29 @@
 "use strict";
 
-const { EntitlementFeature } = require("../../../core/entitlements");
+const {
+  EntitlementFeature,
+  PremiumMutationAuthority,
+  PremiumMutationOperation,
+} = require("../../../core/entitlements");
 const { AdminPanelComponentId: Id, AdminPanelFieldId: Field, AdminPanelPolicy } = require("../configuration/adminPanelConstants");
+const { OwnerPanelFieldId } = require("../../owner-panel/configuration/ownerPanelConstants");
+const { RecoveryFieldId } = require("../../recovery/configuration/recoveryConstants");
+const ownerViews = require("../../owner-panel/interactions/ownerPanelViews");
+const recoveryViews = require("../../recovery/interactions/recoveryViews");
 const views = require("./adminPanelViews");
 
-// CIVRAT Admin Panel — routes opérationnelles (Premium / Serveurs / Stats /
-// Audit). Modèle d'accès (jamais déroger) :
-//   1. chaque handler re-vérifie l'accès en direct : Admin CIVRAT (statut
-//      persistant, sans session ni code) OU Owner authentifié (session 24 h) ;
-//   2. tout le reste reçoit le refus générique éphémère (aucune fuite oracle) ;
-//   3. aucune mutation d'identité ici : ADD_ADMIN / REMOVE_ADMIN / TRANSFER /
-//      Recovery restent des routes Owner-only du module owner-panel.
-// Aucun secret ne transite par ces routes (que des ids, plans, dates, raisons).
-
-function suffixAfter(customId, prefix) {
-  return typeof customId === "string" && customId.startsWith(prefix) ? customId.slice(prefix.length) : null;
-}
+// Toutes les routes revalident la garde technique guilde + salon + rôle, même
+// si le router applique déjà CIVRAT_ADMIN. La section Owner exige en plus
+// l'identité Owner existante et une session créée par comparaison env-only du
+// Master Code. Tous les refus utilisent une réponse générique éphémère.
 
 async function isOwner(context, runtime) {
   return runtime.identity.isOwner(context.userId);
 }
 
-async function isAdmin(context, runtime) {
-  return runtime.identity.isAdmin(context.userId);
-}
-
 async function requireOperationalAccess(context, runtime) {
-  const userId = context.userId;
-  if (await isAdmin(context, runtime)) return true;
-  if ((await isOwner(context, runtime)) && runtime.panel.authenticate(userId)) return true;
+  const granted = await runtime.technicalAdminProvider?.isAdmin?.(context);
+  if (granted) return true;
   await context.envelope.transport.reply({ view: views.refusedView(context.t), ephemeral: true });
   return false;
 }
@@ -56,25 +51,80 @@ function readField(context, fieldId) {
   return typeof value === "string" ? value.trim() : "";
 }
 
+async function getPremiumMutationAuthority(context, runtime) {
+  try {
+    if (typeof runtime.getPremiumMutationAuthority === "function") {
+      return await runtime.getPremiumMutationAuthority(context.userId);
+    }
+    const ownerAuthorized = await runtime.panel?.authorizePremiumMutation?.({
+      actorId: context.userId,
+      identityService: runtime.identity,
+    });
+    return ownerAuthorized ? PremiumMutationAuthority.OWNER : PremiumMutationAuthority.ADMIN;
+  } catch {
+    return PremiumMutationAuthority.ADMIN;
+  }
+}
+
+async function addPremiumMutationAccess(context, runtime, server, plan = null) {
+  const feature = plan || pickPlan(server?.status || []);
+  const authority = await getPremiumMutationAuthority(context, runtime);
+  const access = await runtime.admin.getPremiumMutationAccess({
+    actorId: context.userId,
+    guildId: server.guildId,
+    plan: feature,
+    operation: PremiumMutationOperation.ACTIVATE,
+    authority,
+  });
+  return { ...server, premiumMutationAccess: access };
+}
+
+async function requirePremiumMutationAccess(context, runtime, guildId, plan, operation) {
+  const authority = await getPremiumMutationAuthority(context, runtime);
+  const access = await runtime.admin.getPremiumMutationAccess({
+    actorId: context.userId,
+    guildId,
+    plan,
+    operation,
+    authority,
+  });
+  return { access, authority };
+}
+
 // ---------- Dashboard ----------
-async function openDashboard(context, runtime) {
-  if (!(await requireOperationalAccess(context, runtime))) return null;
-  const [stats, recent] = await Promise.all([
+async function dashboardData(context, runtime) {
+  const [stats, recent, viewerIsOwner] = await Promise.all([
     runtime.admin.getDashboardStats({ clientGuildCount: clientGuildCount(context) }),
     runtime.admin.getRecentActions({ limit: 5 }),
+    isOwner(context, runtime),
   ]);
-  await context.envelope.transport.reply({ view: views.dashboardView(context.t, stats, recent), ephemeral: true });
-  return { stats };
+  return {
+    stats,
+    recent,
+    viewerIsOwner,
+    ownerAuthenticated: viewerIsOwner && runtime.panel.authenticate(context.userId),
+  };
+}
+
+function dashboard(context, data) {
+  return views.dashboardView(context.t, data.stats, data.recent, {
+    viewerIsOwner: data.viewerIsOwner,
+    ownerAuthenticated: data.ownerAuthenticated,
+  });
+}
+
+async function openDashboard(context, runtime) {
+  if (!(await requireOperationalAccess(context, runtime))) return null;
+  const data = await dashboardData(context, runtime);
+  await context.envelope.transport.reply({ view: dashboard(context, data), ephemeral: true });
+  return { stats: data.stats };
 }
 
 async function refresh(context, runtime) {
   if (!(await requireOperationalAccess(context, runtime))) return null;
-  const [stats, recent] = await Promise.all([
-    runtime.admin.getDashboardStats({ clientGuildCount: clientGuildCount(context) }),
-    runtime.admin.getRecentActions({ limit: 5 }),
-  ]);
-  await context.envelope.transport.update({ view: views.dashboardView(context.t, stats, recent) });
-  return { stats };
+  const data = await dashboardData(context, runtime);
+  await context.envelope.transport.update({ view: dashboard(context, data) });
+  return { stats: data.stats };
 }
 
 // ---------- Premium ----------
@@ -87,8 +137,23 @@ async function openPremium(context, runtime, page = 0) {
 
 async function openServers(context, runtime) {
   if (!(await requireOperationalAccess(context, runtime))) return null;
-  await context.envelope.transport.reply({ view: views.serversView(context.t), ephemeral: true });
-  return null;
+  const installed = runtime.system.listInstalledGuilds(context.envelope.discordClient || null);
+  await context.envelope.transport.reply({ view: views.serversView(context.t, installed), ephemeral: true });
+  return installed;
+}
+
+async function openDiagnostics(context, runtime) {
+  if (!(await requireOperationalAccess(context, runtime))) return null;
+  const diagnostics = await runtime.system.getDiagnostics(context.envelope.discordClient || null);
+  await context.envelope.transport.reply({ view: views.diagnosticsView(context.t, diagnostics), ephemeral: true });
+  return diagnostics;
+}
+
+async function openConfiguration(context, runtime) {
+  if (!(await requireOperationalAccess(context, runtime))) return null;
+  const configuration = await runtime.system.getTechnicalConfiguration();
+  await context.envelope.transport.reply({ view: views.configurationView(context.t, configuration), ephemeral: true });
+  return configuration;
 }
 
 async function openSearch(context, runtime) {
@@ -102,6 +167,7 @@ async function submitSearch(context, runtime) {
   const guildId = readField(context, Field.GUILD_ID);
   const info = await runtime.admin.getServerInfo(guildId, { guildNameResolver: guildNameResolver(context) });
   if (!info.ok) return replyRefused(context);
+  info.server = await addPremiumMutationAccess(context, runtime, info.server);
   await context.envelope.transport.reply({ view: views.serverView(context.t, info.server), ephemeral: true });
   return info;
 }
@@ -111,6 +177,7 @@ async function selectPremiumServer(context, runtime) {
   const guildId = context.envelope.values?.[0] || null;
   const info = await runtime.admin.getServerInfo(guildId, { guildNameResolver: guildNameResolver(context) });
   if (!info.ok) return replyRefused(context);
+  info.server = await addPremiumMutationAccess(context, runtime, info.server);
   await context.envelope.transport.update({ view: views.serverView(context.t, info.server) });
   return info;
 }
@@ -118,6 +185,16 @@ async function selectPremiumServer(context, runtime) {
 // ---------- Activation ----------
 async function openActivate(context, runtime, guildId = "") {
   if (!(await requireOperationalAccess(context, runtime))) return null;
+  if (guildId) {
+    const { access } = await requirePremiumMutationAccess(
+      context,
+      runtime,
+      guildId,
+      EntitlementFeature.TICKET_PREMIUM,
+      PremiumMutationOperation.ACTIVATE,
+    );
+    if (!access.allowed) return replyRefused(context);
+  }
   await context.envelope.transport.showModal(views.activateModal(context.t, { guildId }));
   return null;
 }
@@ -128,7 +205,22 @@ async function submitActivate(context, runtime) {
   const plan = readField(context, Field.PLAN) || EntitlementFeature.TICKET_PREMIUM;
   const expiresRaw = readField(context, Field.EXPIRES_IN_DAYS);
   const expiresInDays = expiresRaw === "" ? null : Number(expiresRaw);
-  const result = await runtime.admin.activatePremium({ actorId: context.userId, guildId, plan, expiresInDays, reason: null });
+  const { access, authority } = await requirePremiumMutationAccess(
+    context,
+    runtime,
+    guildId,
+    plan,
+    PremiumMutationOperation.ACTIVATE,
+  );
+  if (!access.allowed) return replyRefused(context);
+  const result = await runtime.admin.activatePremium({
+    actorId: context.userId,
+    guildId,
+    plan,
+    expiresInDays,
+    reason: null,
+    authority,
+  });
   if (!result.ok) return replyRefused(context);
   await context.envelope.transport.reply({ view: views.resultView(context.t, "adminpanel.premiumActivated"), ephemeral: true });
   return result;
@@ -138,8 +230,21 @@ async function submitActivate(context, runtime) {
 async function openDeactivate(context, runtime, guildId, kind) {
   if (!(await requireOperationalAccess(context, runtime))) return null;
   const info = await runtime.admin.getServerInfo(guildId, { guildNameResolver: guildNameResolver(context) });
-  const plan = pickPlan(info.ok ? info.server.status : []);
-  await context.envelope.transport.showModal(views.deactivateModal(context.t, { guildId, plan, titleKey: kind === "revoke" ? "adminpanel.revokePremium" : "adminpanel.removePremium" }));
+  if (!info.ok) return replyRefused(context);
+  const plan = pickPlan(info.server.status);
+  const { access } = await requirePremiumMutationAccess(
+    context,
+    runtime,
+    guildId,
+    plan,
+    PremiumMutationOperation.SET_STATUS,
+  );
+  if (!access.allowed) return replyRefused(context);
+  await context.envelope.transport.showModal(views.deactivateModal(context.t, {
+    guildId,
+    plan,
+    titleKey: kind === "revoke" ? "adminpanel.revokePremium" : "adminpanel.removePremium",
+  }));
   return null;
 }
 
@@ -148,9 +253,18 @@ async function submitDeactivate(context, runtime, kind) {
   const guildId = readField(context, Field.GUILD_ID);
   const plan = readField(context, Field.PLAN);
   const reason = readField(context, Field.REASON) || null;
+  const { access, authority } = await requirePremiumMutationAccess(
+    context,
+    runtime,
+    guildId,
+    plan,
+    PremiumMutationOperation.SET_STATUS,
+  );
+  if (!access.allowed) return replyRefused(context);
+  const input = { actorId: context.userId, guildId, plan, reason, authority };
   const result = kind === "revoke"
-    ? await runtime.admin.revokePremiumForAbuse({ actorId: context.userId, guildId, plan, reason })
-    : await runtime.admin.removePremium({ actorId: context.userId, guildId, plan, reason });
+    ? await runtime.admin.revokePremiumForAbuse(input)
+    : await runtime.admin.removePremium(input);
   if (!result.ok) return replyRefused(context);
   await context.envelope.transport.reply({ view: views.resultView(context.t, kind === "revoke" ? "adminpanel.premiumRevoked" : "adminpanel.premiumRemoved"), ephemeral: true });
   return result;
@@ -192,8 +306,79 @@ async function submitAuditFilter(context, runtime) {
   return openAudit(context, runtime, 0, guildId);
 }
 
+// ---------- Owner (véritable Owner uniquement) ----------
+async function buildOwnerView(context, runtime) {
+  const [ownerId, adminIds] = await Promise.all([
+    runtime.identity.getOwnerId(),
+    runtime.identity.listAdminIds(),
+  ]);
+  return ownerViews.panelView(context.t, {
+    viewerIsOwner: true,
+    ownerId,
+    adminIds,
+  });
+}
+
+async function openOwner(context, runtime) {
+  if (!(await requireOperationalAccess(context, runtime))) return null;
+  if (!(await isOwner(context, runtime))) return replyRefused(context);
+  if (!runtime.panel.authenticate(context.userId)) {
+    return context.envelope.transport.showModal(ownerViews.masterModal(context.t));
+  }
+  return context.envelope.transport.update({ view: await buildOwnerView(context, runtime) });
+}
+
+async function submitOwnerMaster(context, runtime) {
+  if (!(await requireOperationalAccess(context, runtime))) return null;
+  if (!(await isOwner(context, runtime))) return replyRefused(context);
+  const result = runtime.panel.tryAuthenticate(
+    context.userId,
+    readField(context, OwnerPanelFieldId.MASTER),
+    { isOwner: true },
+  );
+  if (!result.ok) return replyRefused(context);
+  return context.envelope.transport.reply({ view: await buildOwnerView(context, runtime), ephemeral: true });
+}
+
+// ---------- Recovery intégrée (double facteur existant) ----------
+async function openRecovery(context, runtime) {
+  if (!(await requireOperationalAccess(context, runtime))) return null;
+  return context.envelope.transport.showModal(recoveryViews.masterModal(context.t));
+}
+
+async function submitRecoveryMaster(context, runtime) {
+  if (!(await requireOperationalAccess(context, runtime))) return null;
+  await runtime.recoveryServiceFactory(context).requestRecovery({
+    guildId: context.guildId,
+    userId: context.userId,
+    masterCode: readField(context, RecoveryFieldId.MASTER),
+  });
+  return context.envelope.transport.reply({ view: recoveryViews.enterCodeReplyView(context.t), ephemeral: true });
+}
+
+async function openRecoveryCode(context, runtime) {
+  if (!(await requireOperationalAccess(context, runtime))) return null;
+  return context.envelope.transport.showModal(recoveryViews.codeModal(context.t));
+}
+
+async function submitRecoveryCode(context, runtime) {
+  if (!(await requireOperationalAccess(context, runtime))) return null;
+  const result = await runtime.recoveryServiceFactory(context).verifyRecovery({
+    guildId: context.guildId,
+    userId: context.userId,
+    code: readField(context, RecoveryFieldId.TEMP_CODE),
+  });
+  const view = result.recovered
+    ? ownerViews.recoveryView(context.t)
+    : recoveryViews.resultReplyView(context.t, "recovery.codeRefused");
+  await context.envelope.transport.reply({ view, ephemeral: true });
+  return result;
+}
+
 async function back(context, runtime) {
-  return openDashboard(context, runtime);
+  if (!(await requireOperationalAccess(context, runtime))) return null;
+  const data = await dashboardData(context, runtime);
+  return context.envelope.transport.update({ view: dashboard(context, data) });
 }
 
 module.exports = {
@@ -201,6 +386,8 @@ module.exports = {
   refresh,
   openPremium,
   openServers,
+  openDiagnostics,
+  openConfiguration,
   openSearch,
   submitSearch,
   selectPremiumServer,
@@ -212,7 +399,15 @@ module.exports = {
   openAudit,
   openAuditFilter,
   submitAuditFilter,
+  openOwner,
+  submitOwnerMaster,
+  openRecovery,
+  submitRecoveryMaster,
+  openRecoveryCode,
+  submitRecoveryCode,
   back,
   pickPlan,
   requireOperationalAccess,
+  getPremiumMutationAuthority,
+  requirePremiumMutationAccess,
 };

@@ -4,16 +4,18 @@ const { GuildConfigResolver, LegacyGuildConfigRepository } = require("../core/gu
 const { dictionaries: coreDictionaries, I18nService, validateTranslationParity } = require("../core/i18n");
 const { InteractionContextFactory, InteractionRegistry, InteractionRouter } = require("../core/interactions");
 const { PermissionService } = require("../core/permissions");
+const { TechnicalAdminProvider } = require("../modules/admin-panel/services/TechnicalAdminProvider");
+const { AdminSystemService } = require("../modules/admin-panel/services/AdminSystemService");
 const { DiscordInteractionAdapter, toDiscordCommand } = require("../adapters/discord");
 const { TicketConfigService, TicketService, TicketWelcomeService, TicketTranscriptService, registerTickets } = require("../modules/tickets");
 const { TicketPremiumConfigResolver } = require("../modules/tickets/services/TicketPremiumConfigResolver");
-const { EntitlementService } = require("../core/entitlements");
-const { SupabaseEntitlementRepository } = require("../adapters/supabase");
+const { getEntitlementService } = require("./getEntitlementService");
 const { SupabaseTicketRepository } = require("../modules/tickets/persistence/SupabaseTicketRepository");
 const { SupabaseTicketCounterRepository } = require("../modules/tickets/persistence/SupabaseTicketCounterRepository");
 const { TicketChannelNamingService } = require("../modules/tickets/services/TicketChannelNamingService");
 const { DiscordTicketTransport } = require("../adapters/discord/DiscordTicketTransport");
 const { getLogsRuntime } = require("../modules/logs/runtime/getLogsRuntime");
+const { config } = require("../config");
 const { supabase } = require("../config/database");
 const ticketEn = require("../modules/tickets/translations/en.json");
 const ticketFr = require("../modules/tickets/translations/fr.json");
@@ -40,7 +42,7 @@ const { WelcomeTemplateRegistry } = require("../modules/welcome-goodbye/renderin
 const { WelcomeResourceCache } = require("../modules/welcome-goodbye/rendering/WelcomeResourceCache");
 const imageTheme = require("../modules/welcome-goodbye/image/themes/civrat-default/theme");
 const { WelcomeAdminLogService } = require("../modules/welcome-goodbye/services/WelcomeAdminLogService");
-const { createWelcomeGoodbyeSettingsSection } = require("../modules/welcome-goodbye/interactions/welcomeGoodbyeSection");
+const { returnSettingsHome } = require("../modules/guild-settings/interactions/openSettingsPanel");
 const en = require("../modules/guild-settings/translations/en.json");
 const fr = require("../modules/guild-settings/translations/fr.json");
 const welcomeEn = require("../modules/welcome-goodbye/translations/en.json");
@@ -76,11 +78,9 @@ const { InviteConfigService } = require("../modules/invites/services/InviteConfi
 const { registerInvites } = require("../modules/invites/register");
 const invitesEn = require("../modules/invites/translations/en.json");
 const invitesFr = require("../modules/invites/translations/fr.json");
-const { registerRecovery } = require("../modules/recovery/register");
 const { getRecoveryRuntime } = require("../modules/recovery/runtime/getRecoveryRuntime");
 const recoveryEn = require("../modules/recovery/translations/en.json");
 const recoveryFr = require("../modules/recovery/translations/fr.json");
-const { registerOwnerPanel } = require("../modules/owner-panel/register");
 const { CivratIdentityOwnerProvider } = require("../modules/owner-panel/services/CivratIdentityOwnerProvider");
 const { getOwnerPanelRuntime } = require("../modules/owner-panel/runtime/getOwnerPanelRuntime");
 const ownerPanelEn = require("../modules/owner-panel/translations/en.json");
@@ -103,25 +103,62 @@ function createGuildSettingsRuntime({ legacyConfigService, logger = null }) {
   // (Owner CIVRAT = env initial puis persistance PostgreSQL) est injecté ici,
   // point de composition prévu par le core. Fail-closed (erreur => false).
   const civratOwnerProvider = new CivratIdentityOwnerProvider({ identityServiceFactory: () => getOwnerPanelRuntime().identity, logger });
-  const permissions = new PermissionService({ civratOwnerProvider, logger }); const errorResponder = new ErrorResponder({ logger });
+  const technicalAdminProvider = new TechnicalAdminProvider({
+    guildId: config.civratAdminGuildId,
+    channelId: config.civratAdminChannelId,
+    roleId: config.civratAdminRoleId,
+    logger,
+  });
+  const permissions = new PermissionService({
+    civratAdminProvider: technicalAdminProvider,
+    civratOwnerProvider,
+    logger,
+  });
+  const errorResponder = new ErrorResponder({ logger });
   const contextFactory = new InteractionContextFactory({ guildConfigResolver, i18n, permissions, errorResponder, logger });
   const registry = new InteractionRegistry(); const router = new InteractionRouter({ registry, contextFactory, logger });
-  const settings = new GuildSettingsService({ guildConfigResolver, logger });
-  const settingsSections = [createWelcomeGoodbyeSettingsSection, (t) => ({type:"button",customId:"civrat:v1:autorole:section",label:t("autorole.section"),style:"secondary"}), (t) => ({type:"button",customId:"civrat:v1:automod:section",label:t("automod.section"),style:"secondary"}), (t) => ({type:"button",customId:"civrat:v1:security:section",label:t("security.section"),style:"secondary"}), (t) => ({type:"button",customId:"civrat:v1:tempvoice:section",label:t("tempvoice.section"),style:"secondary"}), (t) => ({type:"button",customId:"civrat:v1:giveaway:section",label:t("giveaway.section"),style:"secondary"}), (t) => ({type:"button",customId:"civrat:v1:suggestion:section",label:t("suggestion.section"),style:"secondary"}), (t) => ({type:"button",customId:"civrat:v1:tickets:panel",label:t("tickets.section"),style:"secondary"}), (t) => ({type:"button",customId:"civrat:v1:captcha:section",label:t("captcha.section"),style:"secondary"}), (t) => ({type:"button",customId:"civrat:v1:logs:section",label:t("logs.section"),style:"secondary"}), (t) => ({type:"button",customId:"civrat:v1:analytics:section",label:t("analytics.section"),style:"secondary"}), (t) => ({type:"button",customId:"civrat:v1:xp:section",label:t("xp.section"),style:"secondary"}), (t) => ({type:"button",customId:"civrat:v1:invites:section",label:t("invites.section"),style:"secondary"})];
-  const registration = registerGuildSettings({ registry, settings, i18n, settingsSections });
+  const entitlementService = getEntitlementService();
+  const configurationReader = typeof legacyConfigService.getGuildConfigState === "function"
+    ? legacyConfigService.getGuildConfigState
+    : async (guildId) => {
+      const config = await legacyConfigService.getGuildConfig(guildId);
+      return { config, available: true, found: Boolean(config && Object.keys(config).length), source: "legacy" };
+    };
+  const settings = new GuildSettingsService({
+    guildConfigResolver,
+    configurationReader,
+    entitlementService,
+    logger,
+  });
+  const settingsHome = async (context) => returnSettingsHome({ ...context, settings });
+  const adminSystem = new AdminSystemService({
+    technicalConfig: {
+      guildId: config.civratAdminGuildId,
+      channelId: config.civratAdminChannelId,
+      roleId: config.civratAdminRoleId,
+    },
+    configurationReader,
+    entitlementService,
+    logger,
+  });
+  const ownerRuntime = getOwnerPanelRuntime();
+  const adminRuntime = Object.freeze({
+    ...ownerRuntime,
+    technicalAdminProvider,
+    system: adminSystem,
+    recoveryServiceFactory: () => getRecoveryRuntime().serviceFactory(),
+  });
+  const registration = registerGuildSettings({ registry, settings, i18n });
   const moderationRegistration = registerModeration({ registry });
   const channelModerationRegistration = registerChannelModeration({ registry });
   const welcomeTemplateRegistry = new WelcomeTemplateRegistry(); welcomeTemplateRegistry.discover();
   const imagePipeline = new WelcomeImagePipeline({ renderer: new WelcomeImageRenderer({ resourceCache: new WelcomeResourceCache() }), theme: imageTheme });
   registerAutoRole({ registry, service: new AutoRoleService({ guildConfigResolver }) });
-  registerLogs({ registry, service: new LogsConfigService({ guildConfigResolver }), settingsHome: async (context) => context.envelope.transport.update({ view: require("../modules/guild-settings/interactions/openSettingsPanel").settingsView(context.t, await settings.getLanguage(context.guildId), settingsSections) }) });
+  registerLogs({ registry, service: new LogsConfigService({ guildConfigResolver }), settingsHome });
   const captchaConfigService = new CaptchaConfigService({ guildConfigResolver });
   const ticketConfigService = new TicketConfigService({ guildConfigResolver });
-  // Phase 10.1 — fondations Ticket Premium : l'entitlement est lu via Supabase
-  // et injecté dans un resolver en couches (defaults Free, overrides Premium
-  // uniquement si TICKET_PREMIUM actif). Aucune route ni aucun cycle de vie
-  // Ticket Free n'est modifié ; la consommation arrive en 10.2+.
-  const entitlementService = new EntitlementService({ repository: new SupabaseEntitlementRepository({ supabase }) });
+  // Le resolver Tickets et tous les autres consommateurs Premium partagent le
+  // même EntitlementService runtime ; aucun cache ou repository parallèle.
   const ticketPremiumConfigResolver = new TicketPremiumConfigResolver({ entitlementService, logger });
   registerTickets({
     registry,
@@ -140,7 +177,7 @@ function createGuildSettingsRuntime({ legacyConfigService, logger = null }) {
       ticketLog: (event) => getLogsRuntime().handleTicketEvent({ guild: context.envelope.discordMember.guild, ...event }),
       transport: new DiscordTicketTransport({ guild: context.envelope.discordMember?.guild }),
     }),
-    settingsHome: async (context) => context.envelope.transport.update({ view: require("../modules/guild-settings/interactions/openSettingsPanel").settingsView(context.t, await settings.getLanguage(context.guildId), settingsSections) }),
+    settingsHome,
   });
   registerCaptcha({
     registry,
@@ -152,12 +189,12 @@ function createGuildSettingsRuntime({ legacyConfigService, logger = null }) {
         member: context.envelope.discordMember,
       }),
     }),
-    settingsHome: async (context) => context.envelope.transport.update({ view: require("../modules/guild-settings/interactions/openSettingsPanel").settingsView(context.t, await settings.getLanguage(context.guildId), settingsSections) }),
+    settingsHome,
   });
   registerWelcomeGoodbye({
     imagePipeline,
     templateRegistry: welcomeTemplateRegistry,
-    settingsHome: async (context) => context.envelope.transport.update({ view: require("../modules/guild-settings/interactions/openSettingsPanel").settingsView(context.t, await settings.getLanguage(context.guildId), settingsSections) }),
+    settingsHome,
     registry,
     service: new WelcomeGoodbyeService({ guildConfigResolver }),
     adminLogService: new WelcomeAdminLogService({ logger }),
@@ -168,36 +205,47 @@ function createGuildSettingsRuntime({ legacyConfigService, logger = null }) {
 
   });
   const autoModConfigService = new AutoModConfigService({ guildConfigResolver });
-  const autoModRegistration = registerAutoMod({ registry, service: autoModConfigService, settingsHome: async (context) => context.envelope.transport.update({ view: require("../modules/guild-settings/interactions/openSettingsPanel").settingsView(context.t, await settings.getLanguage(context.guildId), settingsSections) }) });
+  const autoModRegistration = registerAutoMod({ registry, service: autoModConfigService, settingsHome });
   const securityConfigService = new SecurityConfigService({ guildConfigResolver });
-  registerSecurity({ registry, service: securityConfigService, settingsHome: async (context) => context.envelope.transport.update({ view: require("../modules/guild-settings/interactions/openSettingsPanel").settingsView(context.t, await settings.getLanguage(context.guildId), settingsSections) }) });
+  registerSecurity({ registry, service: securityConfigService, settingsHome });
   const stickerRegistration = registerSticker({ registry });
   const giveawayConfigService = new GiveawayConfigService({ guildConfigResolver });
-  const giveawayRegistration = registerGiveaways({ registry, configService: giveawayConfigService, supabase, logsRuntimeFactory: () => getLogsRuntime(), settingsHome: async (context) => context.envelope.transport.update({ view: require("../modules/guild-settings/interactions/openSettingsPanel").settingsView(context.t, await settings.getLanguage(context.guildId), settingsSections) }) });
+  const giveawayRegistration = registerGiveaways({ registry, configService: giveawayConfigService, supabase, logsRuntimeFactory: () => getLogsRuntime(), settingsHome });
   const suggestionConfigService = new SuggestionConfigService({ guildConfigResolver });
-  const suggestionRegistration = registerSuggestions({ registry, configService: suggestionConfigService, supabase, logsRuntimeFactory: () => getLogsRuntime(), settingsHome: async (context) => context.envelope.transport.update({ view: require("../modules/guild-settings/interactions/openSettingsPanel").settingsView(context.t, await settings.getLanguage(context.guildId), settingsSections) }) });
+  const suggestionRegistration = registerSuggestions({ registry, configService: suggestionConfigService, supabase, logsRuntimeFactory: () => getLogsRuntime(), settingsHome });
   const tempVoiceConfigService = new TempVoiceConfigService({ guildConfigResolver });
-  registerTempVoice({ registry, service: tempVoiceConfigService, settingsHome: async (context) => context.envelope.transport.update({ view: require("../modules/guild-settings/interactions/openSettingsPanel").settingsView(context.t, await settings.getLanguage(context.guildId), settingsSections) }) });
+  registerTempVoice({ registry, service: tempVoiceConfigService, settingsHome });
   // Phase 11 — fin des instances Analytics disjointes : la composition lit et
   // écrit via le runtime Analytics partagé (mêmes repositories que les
   // événements messageCreate/guildMemberAdd). Plus aucune instance privée.
   const analyticsRuntime = getAnalyticsRuntime();
-  const analyticsRegistration = registerAnalytics({ registry, configService: analyticsRuntime._configService, analyticsService: analyticsRuntime._service, settingsHome: async (context) => context.envelope.transport.update({ view: require("../modules/guild-settings/interactions/openSettingsPanel").settingsView(context.t, await settings.getLanguage(context.guildId), settingsSections) }) });
+  const analyticsRegistration = registerAnalytics({ registry, configService: analyticsRuntime._configService, analyticsService: analyticsRuntime._service, settingsHome });
   // Phase 11 — XP et Invites rejoignent /settings et les commandes publiques.
-  registerXPSettings({ registry, configService: new XPConfigService({ guildConfigResolver }), settingsHome: async (context) => context.envelope.transport.update({ view: require("../modules/guild-settings/interactions/openSettingsPanel").settingsView(context.t, await settings.getLanguage(context.guildId), settingsSections) }) });
-  const invitesRegistration = registerInvites({ registry, configService: new InviteConfigService({ guildConfigResolver }), inviteService: legacyInviteService, settingsHome: async (context) => context.envelope.transport.update({ view: require("../modules/guild-settings/interactions/openSettingsPanel").settingsView(context.t, await settings.getLanguage(context.guildId), settingsSections) }) });
-  // P20 — récupération propriétaire : commande publique, double facteur
-  // (Master Code env-only + code e-mail à usage unique). Aucune permission
-  // requise par conception ; aucune surface d'administration n'en dépend.
-  const recoveryRegistration = registerRecovery({ registry, serviceFactory: () => getRecoveryRuntime().serviceFactory() });
-  // P20 — Owner Panel CIVRAT : ouverture contrôlée dynamiquement (Owner /
-  // Admins CIVRAT / élévation Recovery), contenu sous Master Code, actions
-  // réservées à CIVRAT_OWNER (vérifiées par le router sur chaque route).
-  const ownerPanelRegistration = registerOwnerPanel({ registry, runtimeFactory: getOwnerPanelRuntime });
-  // Admin Panel opérationnel : mêmes routes de composition, garde d'accès
-  // re-vérifiée dans chaque handler (Admin persistant OU Owner authentifié).
-  registerAdminPanel({ registry, runtimeFactory: getOwnerPanelRuntime });
+  registerXPSettings({ registry, configService: new XPConfigService({ guildConfigResolver }), settingsHome });
+  const invitesRegistration = registerInvites({ registry, configService: new InviteConfigService({ guildConfigResolver }), inviteService: legacyInviteService, settingsHome });
+  // Le registre Admin réutilise les routes Owner/Recovery utiles, mais expose
+  // une seule commande technique : /admin.
+  const adminRegistration = registerAdminPanel({ registry, runtimeFactory: () => adminRuntime });
   const discord = new DiscordInteractionAdapter({ router, registry });
-  return Object.freeze({ tryHandle: (interaction) => discord.tryHandle(interaction), getDiscordCommands: () => [...registration.commands, ...moderationRegistration.commands, ...channelModerationRegistration.commands, ...autoModRegistration.commands, ...stickerRegistration.commands, ...giveawayRegistration.commands, ...suggestionRegistration.commands, ...analyticsRegistration.commands, ...invitesRegistration.commands, ...recoveryRegistration.commands, ...ownerPanelRegistration.commands].map((definition) => toDiscordCommand(definition, async (interaction) => discord.tryHandle(interaction))), registry, ticketPremiumResolver: ticketPremiumConfigResolver });
+  const commandDefinitions = [
+    ...registration.commands,
+    ...moderationRegistration.commands,
+    ...channelModerationRegistration.commands,
+    ...autoModRegistration.commands,
+    ...stickerRegistration.commands,
+    ...giveawayRegistration.commands,
+    ...suggestionRegistration.commands,
+    ...analyticsRegistration.commands,
+    ...invitesRegistration.commands,
+    ...adminRegistration.commands,
+  ];
+  return Object.freeze({
+    tryHandle: (interaction) => discord.tryHandle(interaction),
+    getDiscordCommands: () => commandDefinitions.map((definition) => (
+      toDiscordCommand(definition, async (interaction) => discord.tryHandle(interaction))
+    )),
+    registry,
+    ticketPremiumResolver: ticketPremiumConfigResolver,
+  });
 }
 module.exports = { createGuildSettingsRuntime };

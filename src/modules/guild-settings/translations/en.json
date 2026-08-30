@@ -1,1 +1,54 @@
-{"guildSettings":{"title":"⚙️ CIVRAT Settings","currentLanguage":"Current language: {{language}}","languageButton":"Language","languagePrompt":"Choose the server language.","languageUpdated":"The server language is now {{language}}.","languages":{"fr":"French","en":"English"}}}
+{
+  "guildSettings": {
+    "title": "⚙️ CIVRAT Settings",
+    "currentLanguage": "Current language: {{language}}",
+    "languageButton": "Language",
+    "languagePrompt": "Choose the server language.",
+    "languageUpdated": "The server language is now {{language}}.",
+    "languages": {
+      "fr": "French",
+      "en": "English"
+    },
+    "homeDescription": "Configure CIVRAT. Current language: {{language}}. Choose a category; every available feature remains accessible.",
+    "chooseCategory": "Choose a category",
+    "categorySummary": "{{enabled}} of {{total}} feature(s) enabled",
+    "categories": {
+      "general": "General and roles",
+      "protection": "Protection",
+      "welcome": "Welcome and goodbye",
+      "tickets": "Tickets",
+      "community": "Community",
+      "analytics": "Analytics and progression",
+      "logs": "Logs"
+    },
+    "categoryDescriptions": {
+      "general": "Language, automatic roles, and temporary voice channels.",
+      "protection": "AutoMod, abuse protection, and CAPTCHA verification.",
+      "welcome": "Welcome and goodbye messages, with visible Premium options.",
+      "tickets": "Ticket system and visible Premium customizations.",
+      "community": "Giveaways and community suggestions.",
+      "analytics": "Analytics, XP, and invite tracking.",
+      "logs": "Server activity log configuration."
+    },
+    "stateLabel": "Status",
+    "stateEnabled": "Enabled",
+    "stateDisabled": "Disabled",
+    "configurationLabel": "Configuration",
+    "configurationComplete": "Complete",
+    "configurationIncomplete": "Incomplete — open the feature to finish setup",
+    "configurationNotRequired": "Complete this when enabling the feature",
+    "permissionLabel": "Required permission",
+    "permissionManageGuild": "Manage Server",
+    "premiumLabel": "Premium",
+    "premiumNotApplicable": "No Premium capability for this feature",
+    "premiumGranted": "Granted",
+    "premiumRequired": "Available with CIVRAT Premium",
+    "premiumUnavailable": "Verification temporarily unavailable",
+    "configurationUnavailable": "The configuration backend is unavailable. Unconfirmed values are not presented as persisted.",
+    "configurationDefaults": "No persisted configuration was found; default values are shown.",
+    "languagePlaceholder": "Server language",
+    "languageFrench": "French",
+    "languageEnglish": "English",
+    "backHome": "Back to categories"
+  }
+}

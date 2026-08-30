@@ -10,6 +10,7 @@ function fmtDate(value, t) {
 }
 
 function statusLabel(server, t) {
+  if (server.permanent) return t("adminpanel.statusPermanent");
   if (server.active) return t("adminpanel.statusActive");
   if (server.expired) return t("adminpanel.statusExpired");
   if (server.status === "revoked") return t("adminpanel.statusRevoked");
@@ -32,13 +33,13 @@ function navButton(customId, label, style = "secondary") {
 }
 
 // ---------- Dashboard ----------
-function dashboardView(t, stats, recentActions) {
+function dashboardView(t, stats, recentActions, { viewerIsOwner = false, ownerAuthenticated = false } = {}) {
   const line = (label, value) => `${label}: ${value === null || value === undefined ? t("adminpanel.notAvailable") : value}`;
   const recent = recentActions.length
     ? recentActions.map((entry) => `- \`${String(entry.created_at || "").slice(0, 19).replace("T", " ")}\` ${entry.action}${entry.guild_id ? ` → \`${entry.guild_id}\`` : ""}`).join("\n")
     : t("adminpanel.noRecentActions");
   const content = [
-    t("adminpanel.dashboardTitle"),
+    t("adminpanel.dashboardDescription"),
     line(t("adminpanel.statKnownServers"), stats.knownServers),
     line(t("adminpanel.statPremiumServers"), stats.premiumTotal),
     line(t("adminpanel.statFreeServers"), stats.freeServers),
@@ -47,19 +48,24 @@ function dashboardView(t, stats, recentActions) {
     line(t("adminpanel.statPremiumInactive"), stats.premiumInactive),
     line(t("adminpanel.statMessages"), stats.analytics.messages),
     line(t("adminpanel.statMembers"), stats.analytics.members),
+    !stats.premiumAvailable ? `⚠️ ${t("adminpanel.premiumUnavailable")}` : null,
+    !stats.analyticsAvailable ? `⚠️ ${t("adminpanel.analyticsUnavailable")}` : null,
     "",
     `${t("adminpanel.recentActions")}\n${recent}`,
-  ].join("\n");
-  return {
-    title: t("adminpanel.dashboardTitle"),
-    content,
-    components: [
-      navButton(Id.PREMIUM, t("adminpanel.navPremium"), "primary"),
-      navButton(Id.SERVERS, t("adminpanel.navServers")),
-      navButton(Id.AUDIT, t("adminpanel.navAudit")),
-      navButton(Id.REFRESH, t("adminpanel.refresh")),
-    ],
-  };
+  ].filter((entry) => entry !== null).join("\n");
+  const components = [
+    navButton(Id.SERVERS, t("adminpanel.navServers"), "primary"),
+    navButton(Id.DIAGNOSTICS, t("adminpanel.navDiagnostics")),
+    navButton(Id.CONFIGURATION, t("adminpanel.navConfiguration")),
+    navButton(Id.PREMIUM, t("adminpanel.navPremium")),
+    navButton(Id.AUDIT, t("adminpanel.navAudit")),
+    navButton(Id.RECOVERY, t("adminpanel.navRecovery")),
+    navButton(Id.REFRESH, t("adminpanel.refresh")),
+  ];
+  if (viewerIsOwner) {
+    components.push(navButton(Id.OWNER, t(ownerAuthenticated ? "adminpanel.navOwnerOpen" : "adminpanel.navOwnerUnlock"), "danger"));
+  }
+  return { title: t("adminpanel.dashboardTitle"), content, components };
 }
 
 // ---------- Premium ----------
@@ -67,12 +73,14 @@ function premiumView(t, list) {
   const items = list.items.map((server) => `- ${guildLabel(server, t)} — ${server.plan || t("adminpanel.notAvailable")} — ${statusLabel(server, t)} — ${fmtDate(server.endsAt, t)}`);
   const content = [
     t("adminpanel.premiumTitle"),
-    `${t("adminpanel.premiumTotal")}: ${list.total}`,
-    `${t("adminpanel.premiumPage")}: ${list.page + 1}`,
+    list.ok ? `${t("adminpanel.premiumTotal")}: ${list.total}` : `⚠️ ${t("adminpanel.premiumUnavailable")}`,
+    list.ok ? `${t("adminpanel.premiumPage")}: ${list.page + 1}` : null,
+    list.ok && items.length === 0 ? t("adminpanel.noPremium") : null,
     ...items,
-  ].join("\n");
-  const components = [
-    {
+  ].filter(Boolean).join("\n");
+  const components = [];
+  if (list.items.length > 0) {
+    components.push({
       type: "select",
       customId: Id.PREMIUM_SELECT,
       placeholder: t("adminpanel.premiumSelectPlaceholder"),
@@ -81,21 +89,38 @@ function premiumView(t, list) {
         value: server.guildId,
         description: truncate(`${server.plan || ""} · ${statusLabel(server, t)}`, 100),
       })),
-    },
+    });
+  }
+  components.push(
     navButton(Id.SEARCH, t("adminpanel.search"), "primary"),
     navButton(Id.ACTIVATE, t("adminpanel.activate"), "success"),
     navButton(Id.BACK, t("adminpanel.back")),
-    navButton(`${Id.PREMIUM_PREV_PREFIX}${list.page}`, t("adminpanel.prev")),
-    navButton(`${Id.PREMIUM_NEXT_PREFIX}${list.page}`, t("adminpanel.next")),
-  ];
+  );
+  if (list.ok) {
+    components.push(
+      navButton(`${Id.PREMIUM_PREV_PREFIX}${list.page}`, t("adminpanel.prev")),
+      navButton(`${Id.PREMIUM_NEXT_PREFIX}${list.page}`, t("adminpanel.next")),
+    );
+  }
   return { title: t("adminpanel.premiumTitle"), content, components };
 }
 
-// ---------- Serveurs (recherche) ----------
-function serversView(t) {
+// ---------- Installations / diagnostics / configuration ----------
+function serversView(t, installed) {
+  const entries = installed.guilds.slice(0, 10).map((guild) => (
+    `- \`${guild.id}\` — ${truncate(guild.name || t("adminpanel.notAvailable"), 50)} — ${guild.memberCount ?? t("adminpanel.notAvailable")} ${t("adminpanel.members")}`
+  ));
+  const content = installed.available
+    ? [
+        t("adminpanel.serversHint"),
+        `${t("adminpanel.statKnownServers")}: ${installed.total}`,
+        ...(entries.length ? entries : [t("adminpanel.noInstalledServers")]),
+        installed.guilds.length > entries.length ? t("adminpanel.installedServersTruncated") : null,
+      ].filter(Boolean).join("\n")
+    : `⚠️ ${t("adminpanel.installationsUnavailable")}`;
   return {
     title: t("adminpanel.serversTitle"),
-    content: t("adminpanel.serversHint"),
+    content,
     components: [
       navButton(Id.SEARCH, t("adminpanel.search"), "primary"),
       navButton(Id.PREMIUM, t("adminpanel.navPremium")),
@@ -104,35 +129,92 @@ function serversView(t) {
   };
 }
 
+function availability(t, value) {
+  return t(value ? "adminpanel.available" : "adminpanel.unavailable");
+}
+
+function diagnosticsView(t, diagnostics) {
+  const content = [
+    `${t("adminpanel.runtimeUptime")}: ${diagnostics.runtime.uptimeSeconds}s`,
+    `${t("adminpanel.discordStatus")}: ${availability(t, diagnostics.discord.available)}`,
+    `${t("adminpanel.discordReady")}: ${diagnostics.discord.ready === null ? t("adminpanel.notAvailable") : availability(t, diagnostics.discord.ready)}`,
+    `${t("adminpanel.statKnownServers")}: ${diagnostics.discord.installedGuilds ?? t("adminpanel.notAvailable")}`,
+    `${t("adminpanel.configurationBackend")}: ${availability(t, diagnostics.configuration.available)} (${diagnostics.configuration.source})`,
+    `${t("adminpanel.entitlementsBackend")}: ${availability(t, diagnostics.entitlements.available)}`,
+    `${t("adminpanel.entitlementRecords")}: ${diagnostics.entitlements.records ?? t("adminpanel.notAvailable")}`,
+  ].join("\n");
+  return {
+    title: t("adminpanel.diagnosticsTitle"),
+    content,
+    components: [navButton(Id.BACK, t("adminpanel.back"))],
+  };
+}
+
+function configurationView(t, snapshot) {
+  const featureLines = snapshot.guild.features.map(({ id, state }) => (
+    `- ${id}: ${state.enabled ? t("adminpanel.enabled") : t("adminpanel.disabled")}${state.enabled && !state.configured ? ` — ${t("adminpanel.incomplete")}` : ""}`
+  ));
+  const content = [
+    `${t("adminpanel.technicalGuild")}: \`${snapshot.technical.guildId}\``,
+    `${t("adminpanel.technicalChannel")}: <#${snapshot.technical.channelId}> (\`${snapshot.technical.channelId}\`)`,
+    `${t("adminpanel.technicalRole")}: <@&${snapshot.technical.roleId}> (\`${snapshot.technical.roleId}\`)`,
+    `${t("adminpanel.configurationBackend")}: ${availability(t, snapshot.guild.available)} (${snapshot.guild.source})`,
+    `${t("adminpanel.configurationFound")}: ${snapshot.guild.found ? t("adminpanel.yes") : t("adminpanel.no")}`,
+    `${t("adminpanel.configurationLanguage")}: ${snapshot.guild.language || t("adminpanel.notAvailable")}`,
+    "",
+    t("adminpanel.featureStates"),
+    ...featureLines,
+  ].join("\n");
+  return {
+    title: t("adminpanel.configurationTitle"),
+    content,
+    components: [navButton(Id.BACK, t("adminpanel.back"))],
+  };
+}
+
 // ---------- Détail serveur ----------
 function serverView(t, server) {
-  const features = server.status && server.status.length
-    ? server.status.map((s) => `- ${s.feature} (${s.plan || t("adminpanel.notAvailable")}): ${statusLabel(s, t)} — ${t("adminpanel.startsAt")} ${fmtDate(s.startsAt, t)} — ${t("adminpanel.endsAt")} ${fmtDate(s.endsAt, t)}`).join("\n")
-    : t("adminpanel.noPremium");
+  const features = server.statusUnavailable
+    ? `⚠️ ${t("adminpanel.premiumUnavailable")}`
+    : server.status && server.status.length
+      ? server.status.map((status) => `- ${status.feature} (${status.plan || t("adminpanel.notAvailable")}): ${statusLabel(status, t)} — ${t("adminpanel.startsAt")} ${fmtDate(status.startsAt, t)} — ${t("adminpanel.endsAt")} ${status.permanent ? t("adminpanel.neverExpires") : fmtDate(status.endsAt, t)}`).join("\n")
+      : t("adminpanel.noPremium");
   const history = server.history.length
-    ? server.history.slice(0, 3).map((h) => `- ${String(h.created_at || "").slice(0, 19).replace("T", " ")} ${h.action} (${h.new_status || "?"})`).join("\n")
+    ? server.history.slice(0, 3).map((entry) => `- ${String(entry.created_at || "").slice(0, 19).replace("T", " ")} ${entry.action} (${entry.new_status || "?"})`).join("\n")
     : t("adminpanel.noHistory");
   const analytics = server.analytics
     ? `${t("adminpanel.statMessages")}: ${server.analytics.messages ?? t("adminpanel.notAvailable")} · ${t("adminpanel.statMembers")}: ${server.analytics.members ?? t("adminpanel.notAvailable")}`
     : t("adminpanel.noAnalytics");
+  const protectedPremium = Boolean(server.premiumProtection?.protected);
+  const canMutatePremium = !protectedPremium || server.premiumMutationAccess?.allowed === true;
+  const protectionNotice = protectedPremium
+    ? `🔒 ${t(canMutatePremium ? "adminpanel.technicalPremiumOwnerWritable" : "adminpanel.technicalPremiumReadOnly")}`
+    : null;
   const content = [
     t("adminpanel.serverTitle", { id: server.guildId }),
     `${t("adminpanel.serverName")}: ${server.name || t("adminpanel.notAvailable")}`,
+    protectionNotice,
     t("adminpanel.premiumFeatures"),
     features,
     analytics,
     `${t("adminpanel.history")}\n${history}`,
-  ].join("\n");
-  return {
-    title: t("adminpanel.serverTitle", { id: server.guildId }),
-    content,
-    components: [
+  ].filter(Boolean).join("\n");
+  const components = [];
+  if (canMutatePremium) {
+    components.push(
       navButton(`${Id.ACTIVATE_PREFIX}${server.guildId}`, t("adminpanel.activate"), "success"),
       navButton(`${Id.REMOVE_PREFIX}${server.guildId}`, t("adminpanel.removePremium"), "danger"),
       navButton(`${Id.REVOKE_PREFIX}${server.guildId}`, t("adminpanel.revokePremium"), "danger"),
-      navButton(`${Id.HISTORY_PREFIX}${server.guildId}`, t("adminpanel.history")),
-      navButton(Id.BACK, t("adminpanel.back")),
-    ],
+    );
+  }
+  components.push(
+    navButton(`${Id.HISTORY_PREFIX}${server.guildId}`, t("adminpanel.history")),
+    navButton(Id.BACK, t("adminpanel.back")),
+  );
+  return {
+    title: t("adminpanel.serverTitle", { id: server.guildId }),
+    content,
+    components,
   };
 }
 
@@ -228,6 +310,8 @@ module.exports = {
   dashboardView,
   premiumView,
   serversView,
+  diagnosticsView,
+  configurationView,
   serverView,
   historyView,
   auditView,

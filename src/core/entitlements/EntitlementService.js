@@ -1,13 +1,19 @@
 "use strict";
 
-// Normalise un enregistrement d'entitlement en un objet exploitable par l'UI,
-// avec rétrocompatibilité : starts_at / plan absents sur les anciennes lignes
-// sont exposés comme null (jamais une erreur).
+const { EntitlementDecision } = require("./entitlementDecisions");
+const {
+  PremiumMutationAuthority,
+  PremiumMutationOperation,
+  PremiumMutationPolicy,
+} = require("./PremiumMutationPolicy");
+const { EntitlementFeatureList } = require("./entitlementFeatures");
+
 function describeRecord(record, now = new Date()) {
-  const status = record?.status ?? null;
-  const endsAt = record?.ends_at ?? null;
-  const active = status === "active" && (!endsAt || new Date(endsAt) > now);
-  const expired = status === "active" && Boolean(endsAt) && new Date(endsAt) <= now;
+  const permanent = Boolean(record?.permanent);
+  const status = permanent ? "active" : record?.status ?? null;
+  const endsAt = permanent ? null : record?.ends_at ?? null;
+  const active = permanent || (status === "active" && (!endsAt || new Date(endsAt) > now));
+  const expired = !permanent && status === "active" && Boolean(endsAt) && new Date(endsAt) <= now;
   return {
     feature: record?.feature_key ?? null,
     status,
@@ -16,73 +22,138 @@ function describeRecord(record, now = new Date()) {
     endsAt,
     active,
     expired,
+    permanent,
+    protected: Boolean(record?.protected),
+    source: record?.source ?? null,
   };
 }
 
 class EntitlementService {
-  constructor({ repository, now = () => new Date() }) {
+  constructor({ repository, now = () => new Date(), mutationPolicy = null }) {
     this.repository = repository;
     this.now = now;
+    Object.defineProperty(this, "mutationPolicy", {
+      value: mutationPolicy || new PremiumMutationPolicy(),
+      enumerable: false,
+      configurable: false,
+      writable: false,
+    });
+  }
+
+  configurePremiumOwnerAuthorization(ownerAuthorization) {
+    this.mutationPolicy.configureOwnerAuthorization(ownerAuthorization);
+    return this;
+  }
+
+  isTechnicalPremiumGuild(guildId) {
+    return this.mutationPolicy.isTechnicalGuild(guildId);
+  }
+
+  getPremiumProtection(guildId) {
+    return this.mutationPolicy.describeProtection(guildId);
+  }
+
+  async getMutationAccess({
+    guildId,
+    feature = null,
+    operation = PremiumMutationOperation.ACTIVATE,
+    actorId = null,
+    authority = PremiumMutationAuthority.ADMIN,
+  }) {
+    return this.mutationPolicy.evaluateMutation({ guildId, feature, operation, actorId, authority });
   }
 
   async hasFeature({ guildId, feature }) {
+    if (this.mutationPolicy.isPermanentPremiumGuild(guildId)) return true;
     const record = await this.repository.findFeature(guildId, feature);
     return Boolean(record && record.status === "active" && (!record.ends_at || new Date(record.ends_at) > this.now()));
   }
 
-  // Gate centralisée et fail-closed, consommée par les modules pour refuser
-  // proprement l'accès Premium. Elle distingue EXPLICITEMENT les causes :
-  //   granted                 -> { ok: true,  granted: true,  code: "ENTITLEMENT_GRANTED" }
-  //   Premium absent          -> { ok: true,  granted: false, code: "PREMIUM_REQUIRED" }
-  //   erreur backend/repo     -> { ok: false, granted: false, code: "ENTITLEMENT_UNAVAILABLE" }
   async requireFeature({ guildId, feature }) {
+    if (this.mutationPolicy.isPermanentPremiumGuild(guildId)) {
+      return { ok: true, granted: true, code: EntitlementDecision.GRANTED };
+    }
     if (!this.repository) {
-      return { ok: false, granted: false, code: "ENTITLEMENT_UNAVAILABLE" };
+      return { ok: false, granted: false, code: EntitlementDecision.UNAVAILABLE };
     }
     try {
       const granted = await this.hasFeature({ guildId, feature });
-      return { ok: true, granted, code: granted ? "ENTITLEMENT_GRANTED" : "PREMIUM_REQUIRED" };
+      return {
+        ok: true,
+        granted,
+        code: granted ? EntitlementDecision.GRANTED : EntitlementDecision.PREMIUM_REQUIRED,
+      };
     } catch {
-      return { ok: false, granted: false, code: "ENTITLEMENT_UNAVAILABLE" };
+      return { ok: false, granted: false, code: EntitlementDecision.UNAVAILABLE };
     }
   }
 
   async findFeature(guildId, feature) {
+    if (this.mutationPolicy.isPermanentPremiumGuild(guildId)) {
+      return this.mutationPolicy.permanentRecord(feature);
+    }
     return this.repository.findFeature(guildId, feature);
   }
 
-  // Statut complet d'une guilde : toutes ses lignes d'entitlement normalisées.
   async getGuildStatus(guildId) {
+    if (this.mutationPolicy.isPermanentPremiumGuild(guildId)) {
+      return EntitlementFeatureList.map((feature) => (
+        describeRecord(this.mutationPolicy.permanentRecord(feature), this.now())
+      ));
+    }
     const rows = await this.repository.listFeatures(guildId);
     return rows.map((row) => describeRecord(row, this.now()));
   }
 
   async listPremiumServers() {
     const rows = await this.repository.listAll();
-    return rows.map((row) => ({
-      guildId: row.guild_id,
-      ...describeRecord(row, this.now()),
-    }));
+    const servers = rows
+      .filter((row) => !this.mutationPolicy.isTechnicalGuild(row?.guild_id))
+      .map((row) => ({
+        guildId: row.guild_id,
+        ...describeRecord(row, this.now()),
+      }));
+
+    const representativeFeature = EntitlementFeatureList[0] || "PREMIUM";
+    servers.push({
+      guildId: this.mutationPolicy.technicalGuildId,
+      ...describeRecord(this.mutationPolicy.permanentRecord(representativeFeature), this.now()),
+    });
+    return servers;
   }
 
   async countActive(feature = null) {
     const servers = await this.listPremiumServers();
-    return servers.filter((s) => s.active && (!feature || s.feature === feature)).length;
+    return servers.filter((server) => server.active && (!feature || server.feature === feature)).length;
   }
 
   async countExpired(feature = null) {
     const servers = await this.listPremiumServers();
-    return servers.filter((s) => s.expired && (!feature || s.feature === feature)).length;
+    return servers.filter((server) => server.expired && (!feature || server.feature === feature)).length;
   }
 
   async countInactive(feature = null) {
     const servers = await this.listPremiumServers();
-    return servers.filter((s) => s.status && s.status !== "active" && (!feature || s.feature === feature)).length;
+    return servers.filter((server) => server.status && server.status !== "active" && (!feature || server.feature === feature)).length;
   }
 
-  // Activation (upsert). starts_at par défaut = maintenant ; ends_at null =
-  // sans expiration ; plan par défaut = feature_key (rétrocompatible).
-  async grantPremium({ guildId, feature, plan = null, endsAt = null, startsAt = null }) {
+  async grantPremium({
+    guildId,
+    feature,
+    plan = null,
+    endsAt = null,
+    startsAt = null,
+    actorId = null,
+    authority = PremiumMutationAuthority.ADMIN,
+  }) {
+    const permit = await this.mutationPolicy.authorizeMutation({
+      guildId,
+      feature,
+      operation: PremiumMutationOperation.ACTIVATE,
+      actorId,
+      authority,
+    });
+
     await this.repository.activate({
       guild_id: guildId,
       feature_key: feature,
@@ -90,26 +161,40 @@ class EntitlementService {
       starts_at: startsAt || new Date(this.now()).toISOString(),
       ends_at: endsAt || null,
       plan: plan || feature,
-    });
-    return this.repository.findFeature(guildId, feature);
+    }, permit);
+    return this.findFeature(guildId, feature);
   }
 
-  // Désactivation NON destructrice : conserve la ligne, ne change que le statut.
-  async revokePremium({ guildId, feature, status = "revoked" }) {
-    await this.repository.setStatus(guildId, feature, status);
-    return this.repository.findFeature(guildId, feature);
+  async revokePremium({
+    guildId,
+    feature,
+    status = "revoked",
+    actorId = null,
+    authority = PremiumMutationAuthority.ADMIN,
+  }) {
+    const permit = await this.mutationPolicy.authorizeMutation({
+      guildId,
+      feature,
+      operation: PremiumMutationOperation.SET_STATUS,
+      actorId,
+      authority,
+    });
+
+    await this.repository.setStatus(guildId, feature, status, permit);
+    return this.findFeature(guildId, feature);
   }
 }
 
-// Vue transport-agnostique « Premium requis », partagée par tous les modules
-// pour que le refus Premium soit COHÉRENT partout. Le traducteur `t` est
-// injecté par l'appelant. `unavailable` bascule sur le message « vérification
-// impossible » (erreur backend) au lieu de « Premium absent ».
-function premiumRequiredView(t, { unavailable = false } = {}) {
+function premiumRequiredView(t, {
+  decision = EntitlementDecision.PREMIUM_REQUIRED,
+  unavailable = false,
+  components = [],
+} = {}) {
+  const backendUnavailable = unavailable || decision === EntitlementDecision.UNAVAILABLE;
   return {
     title: t("errors.premiumRequiredTitle"),
-    content: unavailable ? t("errors.entitlementUnavailable") : t("errors.premiumRequired"),
-    components: [],
+    content: backendUnavailable ? t("errors.entitlementUnavailable") : t("errors.premiumRequired"),
+    components,
   };
 }
 

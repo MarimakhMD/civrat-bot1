@@ -15,6 +15,8 @@ const { MAX_ACTION_ROWS, MAX_BUTTONS_PER_ROW } = require("../../src/adapters/dis
 const { WelcomeGoodbyeComponentId: Id, WelcomeGoodbyeConfigKey: Key } = require("../../src/modules/welcome-goodbye/configuration/welcomeGoodbyeConstants");
 const { openGoodbyeEmbedColorModal } = require("../../src/modules/welcome-goodbye/interactions/goodbyeEmbedColorModal");
 const { openWelcomeEmbedColorModal } = require("../../src/modules/welcome-goodbye/interactions/welcomeEmbedColorModal");
+const { SETTINGS_CATALOG } = require("../../src/modules/guild-settings/configuration/settingsCatalog");
+const { SettingsComponentId } = require("../../src/modules/guild-settings/interactions/settingsComponents");
 
 const SECTION_IDS = [
   "civrat:v1:welcome-goodbye:section",
@@ -28,12 +30,16 @@ const SECTION_IDS = [
   "civrat:v1:captcha:section",
   "civrat:v1:logs:section",
   "civrat:v1:analytics:section",
+  "civrat:v1:xp:section",
+  "civrat:v1:invites:section",
 ];
 
 function legacyConfig(updates) {
+  const config = { language: "fr" };
   return {
-    getGuildConfig: async () => ({ language: "fr" }),
-    updateGuildConfig: async (_id, update) => { updates.push(update); return update; },
+    getGuildConfig: async () => config,
+    getGuildConfigState: async () => ({ config, available: true, found: true, source: "database" }),
+    updateGuildConfig: async (_id, update) => { updates.push(update); Object.assign(config, update); return config; },
     invalidateCache: async () => {},
   };
 }
@@ -48,8 +54,10 @@ function base(interaction, captured) {
     isRoleSelectMenu: () => false,
     isModalSubmit: () => false,
     guildId: "g",
+    channelId: "channel",
+    locale: "fr",
     user: { id: "u" },
-    member: { id: "u", permissions: { has: () => true } },
+    member: { id: "u", permissions: { has: () => true }, roles: { cache: { has: () => false } } },
     reply: async (payload) => { captured.reply = payload; },
     followUp: async () => {},
     update: async (payload) => { captured.update = payload; },
@@ -58,6 +66,7 @@ function base(interaction, captured) {
 
 function command(name, captured) { const interaction = base({}, captured); interaction.isChatInputCommand = () => true; interaction.commandName = name; return interaction; }
 function button(customId, captured) { const interaction = base({}, captured); interaction.isButton = () => true; interaction.customId = customId; return interaction; }
+function select(customId, values, captured) { const interaction = base({}, captured); interaction.isStringSelectMenu = () => true; interaction.customId = customId; interaction.values = values; return interaction; }
 function modal(customId, fields, captured) {
   const interaction = base({}, captured);
   interaction.isModalSubmit = () => true;
@@ -86,6 +95,19 @@ test("the /settings home stays within Discord component limits", async () => {
   const captured = {};
   assert.equal(await runtime.tryHandle(command("settings", captured)), true);
   assertDiscordLimits(captured.reply, "settings home");
+});
+
+test("every settings category view stays within Discord component limits", async () => {
+  const runtime = createGuildSettingsRuntime({ legacyConfigService: legacyConfig([]) });
+  for (const category of SETTINGS_CATALOG) {
+    const captured = {};
+    assert.equal(
+      await runtime.tryHandle(select(SettingsComponentId.CATEGORY, [category.id], captured)),
+      true,
+      `category ${category.id} not routed`,
+    );
+    assertDiscordLimits(captured.update, `settings category ${category.id}`);
+  }
 });
 
 test("every settings section view stays within Discord component limits", async () => {

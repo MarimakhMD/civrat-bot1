@@ -1,11 +1,8 @@
 "use strict";
 
-// V1 — exposition Discord des commandes (P1→P4).
-// 22 commandes « normales » = Guild uniquement ; /ownerpanel et /recovery =
-// Guild + BotDM (avec Administrator par défaut en serveur). Aucune commande
-// supprimée : 24 commandes au total. Offline intégral : composition runtime
-// simulée (mêmes fixtures que ownerpanel/recovery-command-runtime) + lecture
-// des deux commandes legacy (/captcha, /ticketpanel).
+// Exposition Discord finale : 22 commandes normales Guild-only et /admin
+// Guild-only déployée uniquement dans la guilde technique. /ownerpanel et
+// /recovery ne sont plus des commandes concurrentes. Offline intégral.
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
@@ -32,19 +29,21 @@ function makeRuntime() {
 
 function allCommands() {
   const runtime = makeRuntime();
-  const modular = runtime.getDiscordCommands().map((c) => c.data.toJSON());
+  const modularDefinitions = runtime.getDiscordCommands();
+  const modular = modularDefinitions.map((command) => command.data.toJSON());
   // Commandes legacy chargées hors composition (captcha, ticketpanel).
   const legacy = [
     require("../../src/commands/captcha").data.toJSON(),
     require("../../src/commands/ticketpanel").data.toJSON(),
   ];
-  return { modular, legacy, all: [...modular, ...legacy] };
+  return { modularDefinitions, modular, legacy, all: [...modular, ...legacy] };
 }
 
-test("the full command set is exactly 24 commands (no command removed)", () => {
+test("the full command set is exactly 22 normal commands plus /admin", () => {
   const { all } = allCommands();
-  assert.equal(all.length, 24, "24 commands expected");
-  assert.equal(new Set(all.map((c) => c.name)).size, 24, "no duplicate");
+  assert.equal(all.length, 23, "23 commands expected");
+  assert.equal(new Set(all.map((command) => command.name)).size, 23, "no duplicate");
+  assert.equal(all.some(({ name }) => name === "ownerpanel" || name === "recovery"), false);
 });
 
 test("the 22 normal commands are guild-only (contexts = [0])", () => {
@@ -58,22 +57,15 @@ test("the 22 normal commands are guild-only (contexts = [0])", () => {
   }
 });
 
-test("/ownerpanel and /recovery are guild + bot DM with no Discord permission default (handler-guarded)", () => {
-  const { all } = allCommands();
-  for (const name of ["ownerpanel", "recovery"]) {
-    const command = all.find((c) => c.name === name);
-    assert.ok(command, `/${name} must exist`);
-    assert.deepEqual(command.contexts, [0, 1], `/${name} must be Guild + BotDM`);
-    assert.deepEqual(command.integration_types, [0, 1], `/${name} must allow user install (DM)`);
-    // Aucun default_member_permissions : une permission de type Administrator
-    // n'est pas évaluable en DM (pas de membre/rôle) et masquerait la commande.
-    // La commande est donc visible en DM ET en serveur ; l'autorisation réelle
-    // (Owner/Admin CIVRAT) est appliquée dans le handler, jamais exposée ici.
-    assert.ok(
-      command.default_member_permissions === undefined || command.default_member_permissions === null,
-      `/${name} must not carry a Discord permission default (it would hide it in DM)`
-    );
-  }
+test("/admin is Guild Install-only and carries the technical deployment scope", () => {
+  const { all, modularDefinitions } = allCommands();
+  const command = all.find(({ name }) => name === "admin");
+  assert.ok(command, "/admin must exist");
+  assert.deepEqual(command.contexts, [0]);
+  assert.deepEqual(command.integration_types, [0]);
+  assert.ok(!(command.contexts || []).includes(1), "/admin must not be available in DM");
+  const definition = modularDefinitions.find(({ data }) => data.name === "admin");
+  assert.equal(definition.deploymentScope, "civrat-admin-guild");
 });
 
 test("/settings is strictly guild-only", () => {
@@ -111,8 +103,8 @@ test("all 11 moderation commands are still present", () => {
   }
 });
 
-test("the 22 modular commands are unique and unchanged in count", () => {
+test("the 21 modular commands are unique (plus two legacy commands)", () => {
   const { modular } = allCommands();
-  assert.equal(modular.length, 22, "22 modular commands expected");
-  assert.equal(new Set(modular.map((c) => c.name)).size, 22, "no duplicate modular command");
+  assert.equal(modular.length, 21, "21 modular commands expected");
+  assert.equal(new Set(modular.map((command) => command.name)).size, 21, "no duplicate modular command");
 });

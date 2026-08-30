@@ -1,9 +1,7 @@
 "use strict";
 
 const guildConfigService = require("../../../services/guildConfig");
-const { supabase } = require("../../../config/database");
-const { EntitlementService } = require("../../../core/entitlements");
-const { SupabaseEntitlementRepository } = require("../../../adapters/supabase");
+const { getEntitlementService } = require("../../../runtime/getEntitlementService");
 const { I18nService } = require("../../../core/i18n");
 const { TicketConfigService } = require("../services/TicketConfigService");
 const { TicketPremiumConfigResolver } = require("../services/TicketPremiumConfigResolver");
@@ -27,7 +25,7 @@ function getTicketPanelRuntime() {
         },
       }),
       premiumConfigResolver: new TicketPremiumConfigResolver({
-        entitlementService: new EntitlementService({ repository: new SupabaseEntitlementRepository({ supabase }) }),
+        entitlementService: getEntitlementService(),
       }),
       // P17 : traducteur i18n du module Tickets — même convention que le
       // runtime /settings (I18nService + dictionnaires du module). La locale

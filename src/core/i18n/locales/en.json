@@ -1,15 +1,25 @@
 {
   "errors": {
-    "authorizationDenied": "You do not have permission to perform this action.",
-    "configurationInvalid": "The server configuration is invalid.",
-    "configurationUnavailable": "The server configuration is temporarily unavailable.",
     "internal": "An unexpected error occurred. Please try again later.",
+    "authorizationDenied": "You do not have permission to perform this action.",
+    "configurationUnavailable": "The server configuration is temporarily unavailable.",
+    "configurationInvalid": "The server configuration is invalid.",
     "interactionUnsupported": "This interaction is not supported.",
+    "backendUnavailable": "The service is temporarily unavailable. No change was saved. Please try again later.",
+    "persistenceFailed": "The change could not be saved. No success was recorded. Please try again later.",
+    "persistenceConflict": "This setting changed at the same time elsewhere. Reload it and try again.",
+    "persistenceSchemaMismatch": "This setting is not available on the configured backend. No change was saved.",
+    "persistencePermissionDenied": "The backend refused this change. No change was saved.",
     "resourceNotFound": "The requested resource could not be found.",
     "routeNotFound": "This action is no longer available.",
     "validationFailed": "Some information is invalid. Please review it and try again.",
-    "premiumRequiredTitle": "🔒 Premium Feature",
-    "premiumRequired": "This feature is reserved for CIVRAT Premium members.",
-    "entitlementUnavailable": "Could not verify your Premium access right now. Please try again later."
+    "interactionExpired": "This Discord interaction has expired. Please run the action again.",
+    "interactionAlreadyAcknowledged": "This Discord interaction was already handled.",
+    "discordPermissionDenied": "Discord refused this action because the bot lacks access or permissions.",
+    "discordResourceNotFound": "The Discord resource used by this action no longer exists.",
+    "discordUnavailable": "Discord is temporarily unavailable. Please try again later.",
+    "premiumRequiredTitle": "🔒 CIVRAT Premium feature",
+    "premiumRequired": "This feature requires CIVRAT Premium. Premium unlocks the advanced customizations available for this feature. To get or verify your access, join the CIVRAT support server at https://discord.gg/BA3aDFqtXr and open a ticket with the team.",
+    "entitlementUnavailable": "Your Premium access cannot be verified right now. No access or configuration was changed. Please try again later; if the issue persists, join https://discord.gg/BA3aDFqtXr and open a support ticket."
   }
 }

@@ -5,8 +5,8 @@ const { CivratIdentityService } = require("../services/CivratIdentityService");
 const { OwnerPanelService } = require("../services/OwnerPanelService");
 const { SupabaseCivratIdentityRepository } = require("../persistence/SupabaseCivratIdentityRepository");
 const { getRecoveryRuntime } = require("../../recovery/runtime/getRecoveryRuntime");
-const { EntitlementService } = require("../../../core/entitlements");
-const { SupabaseEntitlementRepository } = require("../../../adapters/supabase");
+const { PremiumMutationAuthority } = require("../../../core/entitlements");
+const { getEntitlementService } = require("../../../runtime/getEntitlementService");
 const { SupabasePremiumHistoryRepository } = require("../../admin-panel/persistence/SupabasePremiumHistoryRepository");
 const { SupabaseAdminAuditRepository } = require("../../admin-panel/persistence/SupabaseAdminAuditRepository");
 const { AdminPanelService } = require("../../admin-panel/services/AdminPanelService");
@@ -48,9 +48,10 @@ function getOwnerPanelRuntime() {
     });
     const panel = new OwnerPanelService({ state, env });
 
-    // Admin Panel opérationnel : entitlement (core) + historique + audit +
-    // lecteur analytics partagé. Offline => repositories null (fail-closed).
-    const entitlementService = new EntitlementService({ repository: new SupabaseEntitlementRepository({ supabase }) });
+    // Admin Panel opérationnel : le singleton EntitlementService résout en
+    // interne ce runtime pour revérifier le véritable Owner + sa session à
+    // chaque mutation du serveur technique.
+    const entitlementService = getEntitlementService();
     const historyRepository = supabase ? new SupabasePremiumHistoryRepository({ supabase }) : null;
     const auditRepository = supabase ? new SupabaseAdminAuditRepository({ supabase }) : null;
     let analyticsReader = null;
@@ -67,6 +68,11 @@ function getOwnerPanelRuntime() {
       state,
       admin,
       hasRecoveryElevation: (userId) => getRecoveryRuntime().hasActiveElevation(userId),
+      getPremiumMutationAuthority: async (actorId) => (
+        await panel.authorizePremiumMutation({ actorId, identityService: identity })
+          ? PremiumMutationAuthority.OWNER
+          : PremiumMutationAuthority.ADMIN
+      ),
       adminPanel: { openDashboard: (context) => adminPanelRoutes.openDashboard(context, runtime) },
     });
   }

@@ -1,6 +1,7 @@
 "use strict";
 
 const { AuthorizationError, ValidationError } = require("../errors");
+const { DisabledCivratAdminProvider } = require("./DisabledCivratAdminProvider");
 const { DisabledCivratOwnerProvider } = require("./DisabledCivratOwnerProvider");
 const { PermissionName } = require("./permissionNames");
 
@@ -9,7 +10,12 @@ const { PermissionName } = require("./permissionNames");
  * only needs a `has(permissionName)` capability and an optional `isGuildOwner`.
  */
 class PermissionService {
-  constructor({ civratOwnerProvider = new DisabledCivratOwnerProvider(), logger = null } = {}) {
+  constructor({
+    civratAdminProvider = new DisabledCivratAdminProvider(),
+    civratOwnerProvider = new DisabledCivratOwnerProvider(),
+    logger = null,
+  } = {}) {
+    this.civratAdminProvider = civratAdminProvider;
     this.civratOwnerProvider = civratOwnerProvider;
     this.logger = logger;
   }
@@ -39,6 +45,9 @@ class PermissionService {
   }
 
   async #has(context, permission) {
+    if (permission === PermissionName.CIVRAT_ADMIN) {
+      return this.civratAdminProvider.isAdmin(context);
+    }
     if (permission === PermissionName.CIVRAT_OWNER) {
       return Boolean(context.userId) && this.civratOwnerProvider.isOwner(context.userId);
     }
