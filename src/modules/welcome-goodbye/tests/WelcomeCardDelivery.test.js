@@ -6,6 +6,17 @@ const { WelcomeTemplateRenderer, defaultPlaceholderProviders } = require("../ser
 const { WelcomeTemplateRegistry } = require("../rendering/WelcomeTemplateRegistry");
 const { WelcomeImageRenderer } = require("../image/rendering/WelcomeImageRenderer");
 const { WelcomeImagePipeline } = require("../image/pipeline/WelcomeImagePipeline");
+const { EntitlementDecision } = require("../../../core/entitlements");
+
+// Phase 2 (P6) — la carte Welcome est désormais gardée par l'entitlement
+// WELCOME_IMAGE au niveau de la LIVRAISON. Ces tests portent sur le RENDU de
+// la carte (pipeline, templates, placeholders) : ils injectent donc un
+// entitlement accordé pour continuer à tester exactement ce qu'ils testaient.
+// Le comportement de refus est couvert par test/runtime/
+// welcome-card-entitlement.test.js.
+const GRANTED = Object.freeze({
+  requireFeature: async () => ({ ok: true, granted: true, code: EntitlementDecision.GRANTED }),
+});
 
 const member = {
   guildId: "guild",
@@ -30,6 +41,7 @@ function createDelivery({ failPipeline = false } = {}) {
     renderer: new WelcomeTemplateRenderer({ providers: defaultPlaceholderProviders() }),
     imagePipeline: pipeline,
     templateRegistry: registry,
+    entitlementService: GRANTED,
   });
 }
 
@@ -67,6 +79,7 @@ test("card subtitle keeps every documented placeholder working on the card", asy
     renderer: new WelcomeTemplateRenderer({ providers: defaultPlaceholderProviders() }),
     imagePipeline: pipeline,
     templateRegistry: registry,
+    entitlementService: GRANTED,
   });
   await delivery.welcome(member, welcomeConfig({
     welcome_message: "{user} {mention} {username} {displayname} {userid} {server} {membercount} {joindate}",
@@ -84,6 +97,7 @@ test("an unknown configured template falls back to template-1", async () => {
     renderer: new WelcomeTemplateRenderer({ providers: defaultPlaceholderProviders() }),
     imagePipeline: { generate: async (request, template) => { requests.push(template); return { buffer: Buffer.from("png"), contentType: "image/png" }; } },
     templateRegistry: registry,
+    entitlementService: GRANTED,
   });
   await delivery.welcome(member, welcomeConfig({ welcome_template_id: "template-does-not-exist" }), { sendChannelMessage: async () => {} });
   assert.equal(requests[0].id, "template-1");
@@ -96,12 +110,36 @@ test("card generation failure never blocks the text delivery", async () => {
     imagePipeline: { generate: async () => { throw new Error("render exploded"); } },
     templateRegistry: (() => { const registry = new WelcomeTemplateRegistry(); registry.discover(); return registry; })(),
     logService: { failure: (event) => events.push(event), delivery: (event) => events.push(event) },
+    entitlementService: GRANTED,
   });
   const sent = [];
   await delivery.welcome(member, welcomeConfig(), { sendChannelMessage: async (...args) => sent.push(args) });
   assert.equal(sent.length, 1, "text welcome still sent");
   assert.equal(sent[0][1].files, undefined, "no attachment when the card fails");
   assert.ok(events.some((event) => event.type === "DELIVERY_UNAVAILABLE"));
+});
+
+// Phase 2 (P6) — non-régression du fail-closed : c'est précisément la
+// configuration de ce fichier avant le correctif (pipeline + templates
+// présents, AUCUN service d'entitlement). Elle ne doit plus produire de carte.
+test("without any entitlement service the card is not generated (fail-closed)", async () => {
+  const events = [];
+  const registry = new WelcomeTemplateRegistry(); registry.discover();
+  let pipelineCalls = 0;
+  const delivery = new WelcomeDeliveryService({
+    renderer: new WelcomeTemplateRenderer({ providers: defaultPlaceholderProviders() }),
+    imagePipeline: { generate: async () => { pipelineCalls += 1; return { buffer: Buffer.from("png"), contentType: "image/png" }; } },
+    templateRegistry: registry,
+    logService: { failure: (event) => events.push(event), delivery: (event) => events.push(event) },
+  });
+  const sent = [];
+  await delivery.welcome(member, welcomeConfig(), { sendChannelMessage: async (...args) => sent.push(args) });
+  assert.equal(sent.length, 1, "the text welcome is still delivered");
+  assert.equal(sent[0][1].files, undefined, "no Premium card without an entitlement");
+  assert.equal(pipelineCalls, 0, "the pipeline must not even be reached");
+  const skipped = events.filter((event) => event.type === "WELCOME_CARD_SKIPPED");
+  assert.equal(skipped.length, 1);
+  assert.equal(skipped[0].reason, EntitlementDecision.UNAVAILABLE, "absence of a backend is reported as unavailable");
 });
 
 test("goodbye delivery never attaches a card (non-regression)", async () => {
