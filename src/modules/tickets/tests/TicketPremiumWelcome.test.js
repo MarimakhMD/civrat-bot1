@@ -16,6 +16,8 @@ const { TicketPremiumConfigResolver } = require("../services/TicketPremiumConfig
 const { TicketPlaceholderRenderer } = require("../services/TicketPlaceholderRenderer");
 const { TicketPremiumConfigKey: PKey } = require("../configuration/ticketPremiumConstants");
 const { TicketComponentId: Id } = require("../configuration/ticketConstants");
+const { InMemoryTicketCounterRepository } = require("../persistence/InMemoryTicketCounterRepository");
+const { TicketChannelNamingService } = require("../services/TicketChannelNamingService");
 const {
   openPremiumWelcomeModal,
   submitPremiumWelcome,
@@ -75,6 +77,9 @@ test("ticket placeholders follow the product convention (unknown tokens preserve
 function createTicketService({ config, record }) {
   const sent = { welcome: null };
   const service = new TicketService({
+    // C9 : nommage obligatoire (plus de repli ticket-<userId>).
+    counterRepository: new InMemoryTicketCounterRepository(),
+    channelNamingService: new TicketChannelNamingService(),
     configService: { read: async () => config },
     repository: { findOpen: async () => null, create: async (r) => ({ id: "t1", ...r }) },
     welcomeService: new TicketWelcomeService(),
@@ -122,6 +127,9 @@ test("active Premium sends the custom welcome message with resolved placeholders
 function closeTicketService({ config, record }) {
   const calls = { deliver: [] };
   const service = new TicketService({
+    // C9 : nommage obligatoire (plus de repli ticket-<userId>).
+    counterRepository: new InMemoryTicketCounterRepository(),
+    channelNamingService: new TicketChannelNamingService(),
     configService: { read: async () => config },
     repository: {
       findByChannel: async () => ({ guild_id: "g", user_id: "u", status: "open", closed: false }),

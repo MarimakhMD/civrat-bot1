@@ -35,8 +35,8 @@ class TicketService {
   // Phase 10.4 : nom Premium du salon. Fail-closed à chaque étape : sans
   // entitlement, sans format valide, sans compteur disponible ou avec un
   // rendu invalide => null => le nommage Free atomique prend le relais
-  // (resolveFreeChannelName), puis repli transport ticket-<userId> si le
-  // compteur est indisponible.
+  // (resolveFreeChannelName). C9 : si les deux échouent, createTicket
+  // retourne TICKET_NAME_UNAVAILABLE — aucun repli ticket-<userId> (§12).
   // Note concurrence : le numéro est réservé avant la création Discord ; si
   // celle-ci échoue ensuite, le trou de séquence est assumé (documenté
   // docs/architecture/phase-10-4-ticket-counter.md).
@@ -59,8 +59,8 @@ class TicketService {
   // Nommage Free atomique : ticket-001, ticket-002… via le compteur unique
   // de la guilde (la même source que le placeholder Premium {number} — Free
   // et Premium partagent un seul compteur). Fail-closed à chaque étape :
-  // compteur absent/en échec ou rendu invalide => null => l'appelant garde
-  // le repli ticket-<userId> du transport, sans jamais bloquer la création.
+  // compteur absent/en échec ou rendu invalide => null. C9 : le transport ne
+  // fournit plus de repli, createTicket retourne alors TICKET_NAME_UNAVAILABLE.
   async resolveFreeChannelName(guildId) {
     if (!guildId || !this.counterRepository || !this.channelNamingService) return null;
     let number;
@@ -138,7 +138,7 @@ class TicketService {
 
     // Nommage : format Premium personnalisé d'abord ; sinon nommage Free
     // atomique (ticket-001 via le compteur unique). Toute erreur de
-    // résolution => null => repli transport ticket-<userId> (fail-closed).
+    // résolution => null.
     let channelName = null;
     try {
       channelName = await this.resolvePremiumChannelName({ guildId, config, member: ticketMember, supportRole });
@@ -147,9 +147,20 @@ class TicketService {
       channelName = null;
     }
 
+    // C9 — §12 : AUCUN repli ticket-<userId>. Sans nom on s'arrête AVANT tout
+    // appel Discord : aucun salon orphelin, aucun nommage interdit, et
+    // l'utilisateur reçoit un code explicite au lieu d'un faux succès.
+    // Contrôle de présence uniquement (pas isValidTicketChannelName, dont la
+    // limite 89 est plus stricte que la sanitisation à 100 de
+    // TicketChannelNamingService.build et rejetterait des formats Premium
+    // valides) — la forme est déjà garantie par build().
+    if (typeof channelName !== "string" || channelName.trim() === "") {
+      return result(false, "TICKET_NAME_UNAVAILABLE");
+    }
+
     let channel;
     try {
-      channel = await this.transport.createTicketChannel({ category, member, supportRole, name: channelName || undefined });
+      channel = await this.transport.createTicketChannel({ category, member, supportRole, name: channelName });
     } catch (_error) {
       return result(false, "TICKET_CHANNEL_CREATION_FAILED");
     }

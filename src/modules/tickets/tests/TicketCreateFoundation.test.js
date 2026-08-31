@@ -8,12 +8,17 @@ const { TicketComponentId: Id } = require("../configuration/ticketConstants");
 const { TicketService } = require("../services/TicketService");
 const { SupabaseTicketRepository } = require("../persistence/SupabaseTicketRepository");
 const { handleTicketCreate } = require("../interactions/ticketCreateRoute");
+const { InMemoryTicketCounterRepository } = require("../persistence/InMemoryTicketCounterRepository");
+const { TicketChannelNamingService } = require("../services/TicketChannelNamingService");
 
 function createService({ config, openTicket = null, createError = null, category = { id: "category" }, supportRole = { id: "support" } } = {}) {
   let createdRecord = null;
   let channelCreates = 0;
   const deleted = [];
   const service = new TicketService({
+    // C9 : nommage obligatoire (plus de repli ticket-<userId>).
+    counterRepository: new InMemoryTicketCounterRepository(),
+    channelNamingService: new TicketChannelNamingService(),
     configService: { read: async () => config },
     repository: {
       findOpen: async () => openTicket,

@@ -48,11 +48,15 @@ class DiscordTicketTransport {
     return this.guild.members.me || null;
   }
 
+  // C9 — §12 : AUCUN repli ticket-<userId>. Le nom est résolu en amont par
+  // TicketService (format Premium {number} ou nommage Free atomique
+  // ticket-001 via la RPC increment_ticket_counter). Sans nom valide on lève
+  // AVANT tout appel Discord : pas de salon orphelin, pas de nommage
+  // interdit, et l'appelant retourne TICKET_NAME_UNAVAILABLE.
   async createTicketChannel({ category, member, name = null }) {
+    if (typeof name !== "string" || name.trim() === "") throw new Error("ticket_name_unavailable");
     return this.guild.channels.create({
-      // Phase 10.4 : name = nom Premium résolu par TicketService ; absent =>
-      // nommage Free historique ticket-<userId>, strictement inchangé.
-      name: name || `ticket-${member.id}`,
+      name,
       type: ChannelType.GuildText,
       parent: category.id,
     });
