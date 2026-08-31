@@ -73,3 +73,47 @@ test("getStats respects disabled", async () => {
   assert.equal(stats.enabled, false);
   assert.equal(stats.messages, 0);
 });
+
+// --- P10 — propagation du drapeau de troncature à travers le service --------
+// Le dépôt renvoie membersTruncated ; AnalyticsService fait { enabled, ...stats }
+// et doit donc le propager tel quel jusqu'à la vue. Aucun chiffre plafonné ne
+// peut être présenté comme exact.
+
+test("P10 — getStats propagates membersTruncated from the repository", async () => {
+  const truncatedRepo = { getStats: async () => ({ messages: 48213, members: 5000, total: 53213, membersTruncated: true }) };
+  const svc = new AnalyticsService({ configService: configService(true), analyticsRepository: truncatedRepo });
+  const stats = await svc.getStats("g");
+  assert.equal(stats.enabled, true);
+  assert.equal(stats.messages, 48213);
+  assert.equal(stats.members, 5000);
+  assert.equal(stats.total, 53213);
+  assert.equal(stats.membersTruncated, true, "le drapeau doit traverser le service");
+});
+
+test("P10 — getStats keeps membersTruncated false when the repository says so", async () => {
+  const exactRepo = { getStats: async () => ({ messages: 12, members: 3, total: 15, membersTruncated: false }) };
+  const svc = new AnalyticsService({ configService: configService(true), analyticsRepository: exactRepo });
+  const stats = await svc.getStats("g");
+  assert.equal(stats.membersTruncated, false);
+});
+
+test("P10 — disabled analytics returns no truncation flag (falsy => no '+' in the UI)", async () => {
+  const repo = new InMemoryAnalyticsRepository();
+  const svc = new AnalyticsService({ configService: configService(false), analyticsRepository: repo });
+  const stats = await svc.getStats("g");
+  assert.equal(stats.enabled, false);
+  assert.equal(stats.members, 0);
+  assert.ok(!stats.membersTruncated, "absent ou faux : la vue n'affichera pas '+'");
+});
+
+test("P10 — InMemory parity: same keys as the Supabase repository, flags always false", async () => {
+  const repo = new InMemoryAnalyticsRepository();
+  await repo.track("g", { type: "message", userId: "u1" });
+  await repo.track("g", { type: "member", userId: "u1" });
+  const stats = await repo.getStats("g");
+  assert.deepEqual(Object.keys(stats).sort(), ["members", "membersTruncated", "messages", "total"]);
+  assert.equal(stats.membersTruncated, false);
+  const global = await repo.getGlobalStats();
+  assert.deepEqual(Object.keys(global).sort(), ["members", "messages", "servers", "truncated"]);
+  assert.equal(global.truncated, false);
+});
