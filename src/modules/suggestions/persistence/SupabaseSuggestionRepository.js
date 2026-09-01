@@ -1,17 +1,24 @@
 "use strict";
 
 /**
- * C2 — Dépôt Suggestions aligné sur le schéma Supabase RÉEL.
+ * Dépôt Suggestions aligné sur le schéma Supabase RÉEL.
  *
- * Colonnes réelles de public.suggestions (9, vérifiées) :
+ * public.suggestions (9 colonnes vérifiées) :
  *   id bigint · guild_id text NOT NULL · user_id text NOT NULL
  *   content text NOT NULL · status text DEFAULT 'pending'
  *   upvotes integer DEFAULT 0 · downvotes integer DEFAULT 0
  *   created_at timestamptz DEFAULT now() · updated_at timestamptz DEFAULT now()
  *
+ * public.suggestion_votes (4 colonnes, créée par M4) :
+ *   suggestion_id bigint NOT NULL · user_id text NOT NULL
+ *   value smallint NOT NULL CHECK (value in (1, -1))
+ *   created_at timestamptz NOT NULL DEFAULT now()
+ *   PRIMARY KEY (suggestion_id, user_id) — une seule ligne par couple
+ *   Aucune FK vers suggestions, par décision : une FK installerait des
+ *   triggers d'intégrité référentielle sur suggestions.
+ *
  * Il n'existe AUCUNE colonne channel_id ni message_id, et aucune colonne
- * author_id / up_votes / down_votes. Le code écrit donc uniquement les 9
- * colonnes ci-dessus ; aucune colonne n'est créée ni renommée en base.
+ * author_id / up_votes / down_votes.
  *
  * Le message Discord n'est PAS stocké : les boutons portent l'id de base
  * (suggestion_up:<id>), et l'édition/suppression du message se fait sur le
@@ -21,16 +28,20 @@
 /** Code d'erreur PostgREST « relation inexistante ». */
 const UNDEFINED_TABLE = "42P01";
 
+/** Code d'erreur PostgreSQL « violation de contrainte d'unicité ». */
+const UNIQUE_VIOLATION = "23505";
+
 /**
- * Erreur typée signalant que public.suggestion_votes n'existe pas encore.
+ * Erreur typée signalant que public.suggestion_votes est inaccessible.
  *
- * Cette table relève de la migration M4, non exécutée. Sans ce typage, le
- * service ne pouvait renvoyer que SUGGESTION_VOTE_FAILED, ce qui confondait
- * « table absente » et « échec réel du vote ».
+ * La table existe depuis M4, mais ce garde-fou est CONSERVÉ : il distingue
+ * toujours « table absente ou inaccessible » d'un échec réel du vote. Sans
+ * lui, le service ne renverrait que SUGGESTION_VOTE_FAILED et une régression
+ * de schéma redeviendrait invisible.
  */
 class SuggestionVotesUnavailableError extends Error {
   constructor(cause) {
-    super("public.suggestion_votes is unavailable (migration M4 not applied)");
+    super("public.suggestion_votes is unavailable");
     this.name = "SuggestionVotesUnavailableError";
     this.code = "SUGGESTION_VOTES_UNAVAILABLE";
     this.cause = cause;
@@ -52,6 +63,21 @@ function isUndefinedTable(error) {
   if (!error) return false;
   if (error.code) return error.code === UNDEFINED_TABLE;
   return /relation "[^"]*" does not exist/i.test(String(error.message || ""));
+}
+
+/**
+ * Normalise la valeur d'un vote en nombre.
+ *
+ * `value` est un smallint : PostgREST le sérialise normalement en nombre JSON,
+ * mais le code comparait `existing.value === value` de façon STRICTE. Si le
+ * pilote renvoyait "1" au lieu de 1, la comparaison échouait silencieusement
+ * et chaque vote était traité comme un changement de sens — les compteurs
+ * dérivaient sans aucune erreur visible. La conversion explicite supprime ce
+ * risque quel que soit le type renvoyé.
+ */
+function toVoteValue(raw) {
+  const value = Number(raw);
+  return Number.isFinite(value) ? value : NaN;
 }
 
 class SupabaseSuggestionRepository {
@@ -92,10 +118,11 @@ class SupabaseSuggestionRepository {
   /**
    * Enregistre ou met à jour un vote, puis resynchronise les compteurs.
    *
-   * ⚠️ LIMITATION CONNUE, assumée : la resynchronisation des compteurs est
-   * lecture-modification-écriture, donc non atomique. Deux votes simultanés
-   * peuvent en perdre un. La correction exige une fonction RPC d'incrément
-   * atomique, donc une migration — hors périmètre de C2 (code-only).
+   * Anti-double-vote : la PK composite (suggestion_id, user_id) rend un second
+   * insert impossible en base. Le code traduit le 23505 en `alreadyVoted` au
+   * lieu de lever — sans cela, deux clics simultanés du même membre faisaient
+   * échouer le second avec une erreur Postgres brute remontée en
+   * SUGGESTION_VOTE_FAILED.
    */
   async vote(id, userId, value) {
     let existing;
@@ -111,7 +138,8 @@ class SupabaseSuggestionRepository {
     }
 
     if (existing) {
-      if (existing.value === value) return { alreadyVoted: true, vote: existing };
+      // Comparaison sur des NOMBRES : voir toVoteValue.
+      if (toVoteValue(existing.value) === value) return { alreadyVoted: true, vote: existing };
 
       const { data, error } = await this.supabase
         .from("suggestion_votes").update({ value })
@@ -121,11 +149,7 @@ class SupabaseSuggestionRepository {
         throw error;
       }
 
-      await this.#applyCounts(id, (upvotes, downvotes) => {
-        if (value === 1 && existing.value === -1) return { upvotes: upvotes + 1, downvotes: downvotes - 1 };
-        if (value === -1 && existing.value === 1) return { upvotes: upvotes - 1, downvotes: downvotes + 1 };
-        return { upvotes, downvotes };
-      });
+      await this.#syncCounts(id);
       return { alreadyVoted: false, vote: data };
     }
 
@@ -134,25 +158,59 @@ class SupabaseSuggestionRepository {
       .select().single();
     if (error) {
       if (isUndefinedTable(error)) throw new SuggestionVotesUnavailableError(error);
+      // Insert concurrent : un autre vote du même membre a gagné la course.
+      // Ce n'est pas un échec — le gagnant synchronise les compteurs.
+      if (error.code === UNIQUE_VIOLATION) return { alreadyVoted: true };
       throw error;
     }
 
-    await this.#applyCounts(id, (upvotes, downvotes) => ({
-      upvotes: upvotes + (value === 1 ? 1 : 0),
-      downvotes: downvotes + (value === -1 ? 1 : 0),
-    }));
+    await this.#syncCounts(id);
     return { alreadyVoted: false, vote: data };
   }
 
-  /** Lit les compteurs réels (`upvotes`/`downvotes`), applique `mutate`, réécrit. */
-  async #applyCounts(id, mutate) {
-    const { data: row, error } = await this.supabase
-      .from("suggestions").select("upvotes, downvotes").eq("id", id).single();
+  /**
+   * Compte EXACT les votes d'une valeur donnée.
+   *
+   * Requête HEAD + Prefer: count=exact (technique éprouvée en P10 sur
+   * analytics_events) : le total arrive dans l'en-tête Content-Range et
+   * AUCUNE ligne n'est transférée. Insensible à db-max-rows.
+   */
+  async #countVotes(suggestionId, value) {
+    const { count, error } = await this.supabase
+      .from("suggestion_votes")
+      .select("value", { count: "exact", head: true })
+      .eq("suggestion_id", suggestionId)
+      .eq("value", value);
+    if (error) {
+      if (isUndefinedTable(error)) throw new SuggestionVotesUnavailableError(error);
+      throw error;
+    }
+    const total = Number(count);
+    return Number.isFinite(total) && total >= 0 ? total : 0;
+  }
+
+  /**
+   * Resynchronise suggestions.upvotes / downvotes par RECALCUL.
+   *
+   * ⚠️ L'ancienne implémentation faisait lecture-modification-écriture
+   * (`select upvotes, downvotes` → +1 en JS → `update`). Deux votes
+   * simultanés lisaient la même valeur et réécrivaient le même résultat :
+   * un vote était perdu DÉFINITIVEMENT, sans aucune erreur.
+   *
+   * Le recalcul depuis suggestion_votes est idempotent et auto-correcteur :
+   * deux exécutions concurrentes calculent la même valeur juste, la ligne de
+   * vote étant déjà commise. Aucune dérive permanente n'est possible.
+   *
+   * Aucun RPC n'est nécessaire — c'était l'alternative plus lourde, écartée.
+   */
+  async #syncCounts(suggestionId) {
+    const [upvotes, downvotes] = await Promise.all([
+      this.#countVotes(suggestionId, 1),
+      this.#countVotes(suggestionId, -1),
+    ]);
+    const { error } = await this.supabase
+      .from("suggestions").update({ upvotes, downvotes }).eq("id", suggestionId);
     if (error) throw error;
-    const next = mutate(Number(row.upvotes) || 0, Number(row.downvotes) || 0);
-    const { error: updateError } = await this.supabase
-      .from("suggestions").update({ upvotes: next.upvotes, downvotes: next.downvotes }).eq("id", id);
-    if (updateError) throw updateError;
   }
 
   async updateStatus(id, status) {
@@ -162,14 +220,12 @@ class SupabaseSuggestionRepository {
   }
 
   /**
-   * Supprime la suggestion.
+   * Supprime la suggestion puis ses votes.
    *
-   * Le nettoyage de suggestion_votes est délibérément tolérant : la table
-   * n'existe pas avant M4 et il n'y a aucune clé étrangère, donc la supprimer
-   * en premier ne laisse aucun orphelin bloquant. Surtout, un échec ici ne
-   * doit PAS faire échouer une suppression de suggestion déjà effective —
-   * l'ancien code levait après coup et le service répondait
-   * SUGGESTION_ACTION_FAILED alors que la ligne avait bien disparu.
+   * Il n'y a aucune FK (décision M4) : le nettoyage est donc à la charge du
+   * code. Un échec du nettoyage ne doit PAS faire échouer une suppression de
+   * suggestion déjà effective — l'ancien code levait après coup et le service
+   * répondait SUGGESTION_ACTION_FAILED alors que la ligne avait bien disparu.
    */
   async delete(id) {
     const { error } = await this.supabase.from("suggestions").delete().eq("id", id);
@@ -177,7 +233,8 @@ class SupabaseSuggestionRepository {
     try {
       await this.supabase.from("suggestion_votes").delete().eq("suggestion_id", id);
     } catch {
-      // suggestion_votes absente avant M4 : rien à nettoyer.
+      // Sans FK, un vote orphelin est toléré : il ne fausse aucun compteur,
+      // les compteurs étant recalculés par suggestion_id.
     }
     return { deleted: true };
   }
