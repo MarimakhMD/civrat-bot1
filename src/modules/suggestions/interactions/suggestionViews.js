@@ -3,7 +3,8 @@
 const { SuggestionComponentId: Id } = require("../configuration/suggestionConstants");
 
 function suggestionView({ t, config }) {
-  const enabled = Boolean(config.suggestion_enabled);
+  // C2 : nom réel de la colonne guild_configs.
+  const enabled = Boolean(config.suggestions_enabled);
   return {
     title: t("suggestion.title"),
     content: t(enabled ? "suggestion.enabled" : "suggestion.disabled"),

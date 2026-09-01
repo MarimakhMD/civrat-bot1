@@ -22,25 +22,36 @@ class DiscordSuggestionTransport {
     return msg;
   }
 
-  async updateSuggestion({ suggestion }) {
-    if (!suggestion.message_id || !suggestion.channel_id) return;
-    const channel = this.guild.channels.cache.get(suggestion.channel_id);
-    if (!channel || !channel.isTextBased()) return;
+  /**
+   * C2 — Met à jour l'embed de la suggestion.
+   *
+   * Le message n'est plus retrouvé via `suggestion.message_id` /
+   * `suggestion.channel_id` : ces colonnes n'existent pas dans public.suggestions
+   * et l'ancienne garde `if (!suggestion.message_id || !suggestion.channel_id)
+   * return;` faisait donc systématiquement sortir — les compteurs de votes
+   * n'étaient JAMAIS rafraîchis à l'écran.
+   *
+   * À la place on édite le message réellement cliqué, fourni par l'enveloppe
+   * d'interaction (DiscordInteractionAdapter → `message`). Un clic de bouton
+   * porte toujours son message d'origine : aucune donnée à stocker.
+   */
+  async updateSuggestion({ suggestion, message = null }) {
+    if (!message || typeof message.edit !== "function") return;
     try {
-      const msg = await channel.messages.fetch(suggestion.message_id).catch(() => null);
-      if (!msg) return;
-      const embed = new EmbedBuilder().setTitle("💡 Suggestion").setDescription(suggestion.content).setFooter({ text: `👍 ${suggestion.up_votes || 0} | 👎 ${suggestion.down_votes || 0} | ${suggestion.status}` }).setColor("#5865f2");
-      await msg.edit({ embeds: [embed] }).catch(() => {});
+      const embed = new EmbedBuilder()
+        .setTitle("💡 Suggestion")
+        .setDescription(suggestion.content)
+        .setFooter({ text: `👍 ${suggestion.upvotes || 0} | 👎 ${suggestion.downvotes || 0} | ${suggestion.status}` })
+        .setColor("#5865f2");
+      await message.edit({ embeds: [embed] }).catch(() => {});
     } catch {}
   }
 
-  async deleteSuggestion({ suggestion }) {
-    if (!suggestion.message_id || !suggestion.channel_id) return;
-    const channel = this.guild.channels.cache.get(suggestion.channel_id);
-    if (!channel) return;
+  /** C2 — Supprime le message cliqué ; même principe qu'updateSuggestion. */
+  async deleteSuggestion({ message = null }) {
+    if (!message || typeof message.delete !== "function") return;
     try {
-      const msg = await channel.messages.fetch(suggestion.message_id).catch(() => null);
-      if (msg) await msg.delete().catch(() => {});
+      await message.delete().catch(() => {});
     } catch {}
   }
 }

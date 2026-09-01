@@ -74,7 +74,8 @@ function registerSuggestions({ registry, configService, supabase, logsRuntimeFac
       const repository = new SupabaseSuggestionRepository({ supabase: supabase || context.envelope.supabase });
       const transport = new DiscordSuggestionTransport({ guild });
       const service = new SuggestionService({ configService, repository, transport });
-      const result = await service.vote({ guildId, suggestionId, userId, value: 1 });
+      // C2 : le message cliqué remplace l'ancien suggestion.message_id.
+      const result = await service.vote({ guildId, suggestionId, userId, value: 1, message: context.envelope.message });
       const key = result.ok ? "suggestion.voted" : result.code === "SUGGESTION_ALREADY_VOTED" ? "suggestion.alreadyVoted" : "suggestion.notFound";
       await context.envelope.transport.reply({ view: { title: context.t(key), content: "", components: [] }, ephemeral: true });
       return result;
@@ -92,7 +93,8 @@ function registerSuggestions({ registry, configService, supabase, logsRuntimeFac
       const repository = new SupabaseSuggestionRepository({ supabase: supabase || context.envelope.supabase });
       const transport = new DiscordSuggestionTransport({ guild });
       const service = new SuggestionService({ configService, repository, transport });
-      const result = await service.vote({ guildId, suggestionId, userId, value: -1 });
+      // C2 : le message cliqué remplace l'ancien suggestion.message_id.
+      const result = await service.vote({ guildId, suggestionId, userId, value: -1, message: context.envelope.message });
       const key = result.ok ? "suggestion.voted" : result.code === "SUGGESTION_ALREADY_VOTED" ? "suggestion.alreadyVoted" : "suggestion.notFound";
       await context.envelope.transport.reply({ view: { title: context.t(key), content: "", components: [] }, ephemeral: true });
       return result;
@@ -116,7 +118,8 @@ function registerSuggestions({ registry, configService, supabase, logsRuntimeFac
         const repository = new SupabaseSuggestionRepository({ supabase: supabase || context.envelope.supabase });
         const transport = new DiscordSuggestionTransport({ guild });
         const service = new SuggestionService({ configService, repository, transport });
-        const result = await service.staffAction({ guildId, suggestionId, action, actorId });
+        // C2 : le message cliqué permet de supprimer/éditer le message réel.
+        const result = await service.staffAction({ guildId, suggestionId, action, actorId, message: context.envelope.message });
         const key = result.ok ? `suggestion.${action}d` : "suggestion.notFound";
         // Handle approve/reject/delete key mapping
         const tKey = result.ok ? (action === "approve" ? "suggestion.approved" : action === "reject" ? "suggestion.rejected" : "suggestion.deleted") : "suggestion.notFound";

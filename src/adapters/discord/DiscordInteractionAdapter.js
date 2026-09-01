@@ -37,6 +37,12 @@ class DiscordInteractionAdapter {
       kind,
       name: interaction.commandName || null,
       customId: interaction.customId || null,
+      // Message porteur de l'interaction (bouton / menu sur un message).
+      // Exposé pour les modules qui doivent éditer ou supprimer le message
+      // cliqué sans stocker son id en base — c'est le cas des suggestions,
+      // dont la table n'a aucune colonne message_id.
+      // `null` pour une commande, un autocomplete ou un modal.
+      message: interaction.message || null,
       options: interaction.options || null,
       values: interaction.values || [],
       modalValues: kind === InteractionKind.MODAL
