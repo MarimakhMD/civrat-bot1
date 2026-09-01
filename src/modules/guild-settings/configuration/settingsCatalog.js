@@ -139,8 +139,12 @@ const SETTINGS_CATALOG = Object.freeze([
         id: "giveaways",
         labelKey: "giveaway.section",
         customId: "civrat:v1:giveaway:section",
-        isEnabled: enabledBy("giveaway_enabled"),
-        isConfigured: configuredByAll("giveaway_channel_id"),
+        isEnabled: enabledBy("giveaways_enabled"),
+        // C1 : isConfigured retiré. Il vérifiait giveaway_channel_id, colonne
+        // inexistante et sans remplacement : aucun salon Giveaway n'est
+        // configuré, la publication se fait dans le salon de la commande.
+        // Le défaut de feature() (isConfigured = () => true) s'applique donc :
+        // un giveaway est considéré configuré dès qu'il est activé.
       }),
       feature({
         id: "suggestions",

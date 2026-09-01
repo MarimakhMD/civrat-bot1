@@ -4,7 +4,7 @@ const { PermissionName } = require("../../core/permissions");
 const { prefix } = require("../../core/interactions/routeMatchers");
 const { GiveawayComponentId: Id } = require("./configuration/giveawayConstants");
 const { giveawayView } = require("./interactions/giveawayViews");
-const { toggleGiveaway, selectGiveawayChannel } = require("./interactions/configureGiveaways");
+const { toggleGiveaway } = require("./interactions/configureGiveaways");
 const { GiveawayService } = require("./services/GiveawayService");
 const { SupabaseGiveawayRepository } = require("./persistence/SupabaseGiveawayRepository");
 const { DiscordGiveawayTransport } = require("../../adapters/discord/DiscordGiveawayTransport");
@@ -22,14 +22,8 @@ function registerGiveaways({ registry, configService, supabase, logsRuntimeFacto
       return render(context);
     },
   });
-  registry.registerSelectMenu({
-    customId: Id.CHANNEL,
-    permissions,
-    execute: async (context) => {
-      await selectGiveawayChannel({ service: configService, guildId: context.guildId, values: context.envelope.values });
-      return render(context);
-    },
-  });
+  // C1 : l'enregistrement du sélecteur de salon a été retiré avec le composant.
+  // Il persistait vers giveaway_channel_id, colonne inexistante.
   registry.registerButton({ customId: Id.BACK, permissions, execute: settingsHome });
 
   const createCommand = {
@@ -55,8 +49,13 @@ function registerGiveaways({ registry, configService, supabase, logsRuntimeFacto
       const service = new GiveawayService({ configService, repository, transport, logsRuntime });
       let result;
       if (action === "create") {
+        // L'option de commande conserve le nom `prize` : aucun changement
+        // visible de l'interface de /giveaway create. C'est la colonne réelle
+        // giveaways.title qui la reçoit, le mapping se fait ici.
         const prize = context.envelope.options.getString("prize");
-        result = await service.create({ guildId, channelId: null, prize, winnersCount: 1, durationMinutes: 1440 });
+        // C1 : le salon de publication est celui où la commande est exécutée.
+        // Il n'existe aucune colonne giveaways_channel_id.
+        result = await service.create({ guildId, channelId: context.envelope.channelId, title: prize, winnersCount: 1, durationMinutes: 1440 });
         await context.envelope.transport.reply({ view: { title: context.t(result.ok ? "giveaway.createSuccess" : "giveaway.createFailed", { prize }), content: "", components: [] }, ephemeral: true });
       } else if (action === "draw") {
         const id = context.envelope.options.getString("id");
