@@ -8,7 +8,10 @@ function createXPRuntime({ configService, repository, levelService, xpService, l
   if (!configService || typeof configService.read !== "function") {
     throw new TypeError("createXPRuntime requires configService");
   }
-  const repo = repository || new InMemoryXPRepository();
+  // B3 — le dépôt par défaut partage l'horloge du service : lastXpAt (dépôt)
+  // et la garde locale (service) doivent avancer ensemble, sinon les tests à
+  // horloge figée valideraient deux lignes de temps différentes.
+  const repo = repository || new InMemoryXPRepository({ clock });
   const levels = levelService || new LevelService();
   const service = xpService || new XPService({ repository: repo, levelService: levels, clock });
   const makeLogs = typeof logsRuntimeFactory === "function" ? logsRuntimeFactory : () => null;

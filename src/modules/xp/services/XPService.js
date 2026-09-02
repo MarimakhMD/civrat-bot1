@@ -98,22 +98,65 @@ class XPService {
     if (!config || !config.xp_enabled) return { handled: false, code: "XP_DISABLED" };
 
     const cooldownSeconds = resolveXpCooldownSeconds(config);
+    const xpGain = resolveXpPerMessage(config);
+
+    // Garde locale, NON AUTORITAIRE : elle évite un aller-retour en base pour
+    // les messages manifestement en cooldown. Elle ne peut que BLOQUER à tort
+    // (jamais accorder à tort) — l'autorité reste last_xp_at côté dépôt.
     if (this.isOnCooldown(guildId, userId, cooldownSeconds)) {
       return { handled: false, code: "XP_COOLDOWN" };
     }
 
+    // ── B3 : chemin atomique ──
+    // Le dépôt applique gain + cooldown + niveau en une opération sûre en
+    // concurrence. Aucun read-modify-write côté service.
+    if (typeof this.repository.applyGain === "function") {
+      const outcome = await this.repository.applyGain({
+        guildId,
+        userId,
+        gain: xpGain,
+        cooldownSeconds,
+        computeLevel: (xp) => this.levelService.levelForXp(xp),
+        // Le service impose son « maintenant » : dépôt et garde locale doivent
+        // raisonner sur le même instant. Sans cela un dépôt construit avec sa
+        // propre horloge comparerait last_xp_at à un temps différent.
+        now: this.clock(),
+      });
+
+      if (!outcome || !outcome.applied) {
+        return { handled: false, code: (outcome && outcome.code) || "XP_COOLDOWN" };
+      }
+
+      if (cooldownSeconds > 0 && outcome.xpGain > 0) {
+        this.cooldowns.set(this._cooldownKey(guildId, userId), this.clock());
+      }
+
+      const leveledUp = outcome.level > outcome.previousLevel;
+      return {
+        handled: true,
+        code: leveledUp ? "XP_LEVELED_UP" : "XP_GAINED",
+        xpGain: outcome.xpGain,
+        xp: outcome.xp,
+        level: outcome.level,
+        previousLevel: outcome.previousLevel,
+        leveledUp,
+      };
+    }
+
+    // ── Chemin historique (dépôts sans applyGain, ex. Mongo) ──
+    // Read-modify-write : conservé pour ne pas casser un dépôt existant, mais
+    // il n'est PAS sûr en concurrence. Voir SupabaseXPRepository.
     const existing = await this.repository.findOne(guildId, userId);
     const currentXp = existing ? existing.xp : 0;
     const currentLevel = this.levelService.levelForXp(currentXp);
-    const xpGain = resolveXpPerMessage(config);
     const newXp = currentXp + xpGain;
     const newLevel = this.levelService.levelForXp(newXp);
     const leveledUp = newLevel > currentLevel;
 
     await this.repository.upsert(guildId, userId, newXp, newLevel);
-    // Aucun cooldown à mémoriser quand il est désactivé : on évite de remplir
-    // indéfiniment une Map qui n'est jamais consultée.
-    if (cooldownSeconds > 0) {
+    // Aucun cooldown à mémoriser quand il est désactivé, ni quand le gain est
+    // nul : un gain de 0 ne doit jamais bloquer un gain réel ultérieur.
+    if (cooldownSeconds > 0 && xpGain > 0) {
       this.cooldowns.set(this._cooldownKey(guildId, userId), this.clock());
     }
 

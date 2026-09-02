@@ -226,3 +226,133 @@ test("XP repository integration", async () => {
 test("XP requires repository", () => {
   assert.throws(() => new XPService({}), /repository/);
 });
+
+// ─────────────────────────────────────────────────────────────────────────
+// B3 — aiguillage entre chemin atomique et chemin historique
+// ─────────────────────────────────────────────────────────────────────────
+
+test("B3 — XPService passe par applyGain quand le dépôt le propose", async () => {
+  const calls = [];
+  const repository = {
+    findOne: async () => { throw new Error("findOne ne doit plus être appelé sur le chemin atomique"); },
+    upsert: async () => { throw new Error("upsert ne doit plus être appelé sur le chemin atomique"); },
+    applyGain: async (params) => {
+      calls.push(params);
+      return { applied: true, xpGain: params.gain, xp: 15, level: 0, previousXp: 0, previousLevel: 0 };
+    },
+  };
+  const svc = new XPService({ repository, clock: () => 1234 });
+
+  const result = await svc.handleMessage({
+    guildId: "g", userId: "u", isBot: false,
+    config: { xp_enabled: true, xp_per_message: 15, xp_cooldown: 60 },
+  });
+
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].gain, 15, "le gain fixe A2 doit être transmis au dépôt");
+  assert.equal(calls[0].cooldownSeconds, 60, "le cooldown A2 en secondes doit être transmis");
+  assert.equal(calls[0].now, 1234, "le service doit imposer son horloge au dépôt");
+  assert.equal(calls[0].computeLevel(250), 2, "la formule de niveau reste dans LevelService");
+  assert.equal(result.code, "XP_GAINED");
+  assert.equal(result.xp, 15);
+});
+
+test("B3 — une montée de niveau est signalée depuis le résultat atomique", async () => {
+  const repository = {
+    findOne: async () => null,
+    upsert: async () => null,
+    applyGain: async () => ({ applied: true, xpGain: 20, xp: 110, level: 1, previousXp: 90, previousLevel: 0 }),
+  };
+  const svc = new XPService({ repository });
+  const result = await svc.handleMessage({
+    guildId: "g", userId: "u", isBot: false,
+    config: { xp_enabled: true, xp_per_message: 20, xp_cooldown: 0 },
+  });
+  assert.equal(result.code, "XP_LEVELED_UP");
+  assert.equal(result.leveledUp, true);
+  assert.equal(result.previousLevel, 0);
+});
+
+test("B3 — un rejet du dépôt (cooldown ou conflit) ne produit aucun gain", async () => {
+  for (const code of ["XP_COOLDOWN", "XP_CONFLICT"]) {
+    const repository = {
+      findOne: async () => null,
+      upsert: async () => { throw new Error("aucune écriture ne doit suivre un rejet"); },
+      applyGain: async () => ({ applied: false, code }),
+    };
+    const svc = new XPService({ repository });
+    const result = await svc.handleMessage({
+      guildId: "g", userId: "u", isBot: false,
+      config: { xp_enabled: true, xp_per_message: 15, xp_cooldown: 0 },
+    });
+    assert.equal(result.handled, false);
+    assert.equal(result.code, code, `le code ${code} doit remonter tel quel`);
+  }
+});
+
+test("B3 — un dépôt sans applyGain conserve le chemin historique (compatibilité Mongo)", async () => {
+  // MongoXPRepository n'implémente pas applyGain : le service doit continuer à
+  // fonctionner en read-modify-write plutôt que de lever.
+  const repo = new InMemoryXPRepository();
+  // applyGain vit sur le prototype : `delete` ne le retirerait pas. On le masque
+  // sur l'instance, ce qui reproduit exactement un dépôt qui ne l'implémente pas.
+  repo.applyGain = undefined;
+  assert.equal(typeof repo.applyGain, "undefined");
+
+  const svc = new XPService({ repository: repo });
+  const config = { xp_enabled: true, xp_per_message: 15, xp_cooldown: 0 };
+  const first = await svc.handleMessage({ guildId: "g", userId: "u", isBot: false, config });
+  const second = await svc.handleMessage({ guildId: "g", userId: "u", isBot: false, config });
+
+  assert.equal(first.xp, 15);
+  assert.equal(second.xp, 30);
+  assert.equal((await repo.findOne("g", "u")).xp, 30);
+});
+
+test("B3 — un gain nul n'arme pas la garde locale de cooldown", async () => {
+  const repo = new InMemoryXPRepository();
+  const svc = new XPService({ repository: repo, clock: () => 0 });
+
+  const res = await svc.handleMessage({
+    guildId: "g", userId: "u", isBot: false,
+    config: { xp_enabled: true, xp_per_message: 0, xp_cooldown: 60 },
+  });
+
+  assert.equal(res.xpGain, 0);
+  assert.equal(svc.cooldowns.size, 0,
+    "un gain nul ne doit pas armer la garde locale : il bloquerait un gain réel");
+});
+
+test("B3 — un gain nul suivi d'un gain réel n'est pas refusé (bout en bout)", async () => {
+  const repo = new InMemoryXPRepository();
+  const svc = new XPService({ repository: repo, clock: () => 0 });
+
+  const zero = await svc.handleMessage({
+    guildId: "g", userId: "u", isBot: false,
+    config: { xp_enabled: true, xp_per_message: 0, xp_cooldown: 60 },
+  });
+  assert.equal(zero.xpGain, 0);
+
+  // Défaut mesuré avant correction : ce message partait en XP_COOLDOWN alors
+  // qu'aucun XP n'avait jamais été accordé.
+  const real = await svc.handleMessage({
+    guildId: "g", userId: "u", isBot: false,
+    config: { xp_enabled: true, xp_per_message: 15, xp_cooldown: 60 },
+  });
+  assert.equal(real.code, "XP_GAINED");
+  assert.equal(real.xpGain, 15);
+  assert.equal(real.xp, 15);
+});
+
+test("B3 — applyGain InMemory : un gain nul ne pose pas d'horodatage", async () => {
+  const repo = new InMemoryXPRepository({ clock: () => 0 });
+  const levelFor = (xp) => new LevelService().levelForXp(xp);
+
+  await repo.applyGain({ guildId: "g", userId: "u", gain: 0, cooldownSeconds: 60, computeLevel: levelFor, now: 0 });
+  assert.equal((await repo.findOne("g", "u")).lastXpAt, null,
+    "le repli InMemory doit appliquer la même règle que Supabase");
+
+  const real = await repo.applyGain({ guildId: "g", userId: "u", gain: 15, cooldownSeconds: 60, computeLevel: levelFor, now: 1000 });
+  assert.equal(real.applied, true);
+  assert.equal(real.xp, 15);
+});
