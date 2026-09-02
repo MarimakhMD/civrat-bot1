@@ -4,13 +4,13 @@ const { XPService } = require("../services/XPService");
 const { LevelService } = require("../services/LevelService");
 const { InMemoryXPRepository } = require("../persistence/XPRepository");
 
-function createXPRuntime({ configService, repository, levelService, xpService, logsRuntimeFactory, clock, random } = {}) {
+function createXPRuntime({ configService, repository, levelService, xpService, logsRuntimeFactory, clock } = {}) {
   if (!configService || typeof configService.read !== "function") {
     throw new TypeError("createXPRuntime requires configService");
   }
   const repo = repository || new InMemoryXPRepository();
   const levels = levelService || new LevelService();
-  const service = xpService || new XPService({ repository: repo, levelService: levels, clock, random });
+  const service = xpService || new XPService({ repository: repo, levelService: levels, clock });
   const makeLogs = typeof logsRuntimeFactory === "function" ? logsRuntimeFactory : () => null;
 
   return Object.freeze({
@@ -21,10 +21,11 @@ function createXPRuntime({ configService, repository, levelService, xpService, l
       const isBot = Boolean(message.author.bot);
       const config = await configService.read(guildId);
       if (!config || !config.xp_enabled) return { handled: false, code: "XP_DISABLED" };
-      // Channel filter: if xp_channel_id set, only that channel gives XP
-      if (config.xp_channel_id && message.channel && message.channel.id !== config.xp_channel_id) {
-        return { handled: false, code: "XP_WRONG_CHANNEL" };
-      }
+      // A2 (DCA4) — le filtre « restreindre l'XP à un salon » est supprimé.
+      // Il s'appuyait sur la colonne xp_channel_id, qui n'existe pas en base :
+      // le réglage n'a jamais pu être persisté et échouait en
+      // PERSISTENCE_SCHEMA_MISMATCH. Aucune colonne n'est créée pour le
+      // remplacer, et aucun comportement fantôme n'est conservé.
       const result = await service.handleMessage({ guildId, userId, isBot, config });
       if (result.leveledUp) {
         const logs = makeLogs();

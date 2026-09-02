@@ -133,7 +133,7 @@ test("A1 — every unknown key of a mixed patch is reported at once", async () =
   await assert.rejects(
     () => service.updateGuildConfig("guild-a1", {
       language: "fr",
-      xp_rate: 2,
+      xp_per_message: 2,
       suggestion_enabled: true,
       up_votes: 0,
     }),
@@ -265,19 +265,46 @@ test("A1 — guard: no whitelisted key is invented without a module declaring it
   );
 });
 
-test("A1 — the real defect stays caught: xp_channel_id is whitelisted but still rejected upstream", async () => {
-  // xp_channel_id est écrite par src/modules/xp/register.js alors que la colonne
-  // n'existe pas en base. A1 ne corrige PAS ce point (sous-phase A2, non
-  // autorisée) : la clé reste donc acceptée par la liste blanche.
-  // Ce test fige cet état pour qu'un changement involontaire soit visible.
-  assert.equal(isGuildConfigKey("xp_channel_id"), true,
-    "A1 conserve le comportement existant ; l'alignement sur xp_per_message relève de A2");
+test("A2 — the XP phantom columns are now rejected before reaching the database", async () => {
+  // A1 avait volontairement conservé xp_channel_id et xp_rate dans la liste
+  // blanche pour ne changer aucun comportement. A2 (DCA3/DCA4) les supprime :
+  // ces colonnes n'existent pas en base et ne doivent plus jamais être écrites.
+  for (const key of ["xp_channel_id", "xp_rate"]) {
+    assert.equal(isGuildConfigKey(key), false, `${key} ne doit plus être une clé de guild_configs`);
+    assert.ok(EXCLUDED_NON_CONFIG_KEYS.includes(key), `${key} doit être listée comme exclusion explicite`);
+  }
 
-  const { client, calls } = fakeClient({
-    write: { data: null, error: { code: "42703", message: "column guild_configs.xp_channel_id does not exist" } },
-  });
+  // Les colonnes réelles vérifiées en base sont acceptées.
+  for (const key of ["xp_enabled", "xp_per_message", "xp_cooldown"]) {
+    assert.equal(isGuildConfigKey(key), true, `${key} est une colonne réelle`);
+  }
+
+  const { client, calls } = fakeClient();
   useDatabase(client);
 
-  await assert.rejects(() => service.updateGuildConfig("guild-xp", { xp_channel_id: "chan-1" }));
-  assert.equal(calls.length, 1, "la clé atteint encore la base, comme avant A1");
+  let thrown = null;
+  await assert.rejects(
+    () => service.updateGuildConfig("guild-xp", { xp_channel_id: "chan-1" }),
+    (error) => { thrown = error; return true; }
+  );
+  assert.ok(thrown instanceof ValidationError);
+  assert.deepEqual(thrown.metadata.unknownKeys, ["xp_channel_id"]);
+  assert.equal(calls.length, 0, "la colonne fantôme ne doit plus atteindre PostgREST");
+});
+
+test("A2 — real XP columns are written through unchanged", async () => {
+  const persisted = { guild_id: "guild-xp", xp_enabled: true, xp_per_message: 25, xp_cooldown: 120 };
+  const { client, calls } = fakeClient({ write: { data: persisted, error: null } });
+  useDatabase(client);
+
+  const result = await service.updateGuildConfig("guild-xp", {
+    xp_enabled: true,
+    xp_per_message: 25,
+    xp_cooldown: 120,
+  });
+
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].payload.xp_per_message, 25);
+  assert.equal(calls[0].payload.xp_cooldown, 120);
+  assert.equal(result.xp_per_message, 25);
 });

@@ -65,10 +65,6 @@ function stringSelect(customId, values, captured) {
   return base(captured, { isStringSelectMenu: () => true, customId, values });
 }
 
-function channelSelect(customId, values, captured) {
-  return base(captured, { isChannelSelectMenu: () => true, customId, values });
-}
-
 function rendered(captured) { return captured.update || captured.reply || null; }
 function contains(payload, needle) { return JSON.stringify(payload || {}).includes(needle); }
 
@@ -134,8 +130,11 @@ test("end-to-end: enabling Analytics then tracking events makes them visible in 
   assert.ok(contains(rendered(publicInvites), "recruiter"), "/invites leaderboard must read the same store");
 });
 
-test("XP settings section toggles xp_enabled and stores the restricted channel", async () => {
+// A2 (DCA4) — la restriction de l'XP à un salon est supprimée : la colonne
+// xp_channel_id n'existe pas en base. La section ne pilote plus que xp_enabled.
+test("XP settings section toggles xp_enabled and exposes no channel restriction", async () => {
   assert.equal(sharedStore.g.xp_enabled, undefined, "xp must start unconfigured");
+  assert.equal(XPId.CHANNEL, undefined, "le componentId CHANNEL doit avoir disparu");
   const section = {};
   assert.equal(await runtime.tryHandle(button(XPId.SECTION, section)), true);
   assertLimits(rendered(section), "xp section");
@@ -143,12 +142,11 @@ test("XP settings section toggles xp_enabled and stores the restricted channel",
   const toggled = {};
   assert.equal(await runtime.tryHandle(button(XPId.TOGGLE, toggled)), true);
   assert.equal(sharedStore.g.xp_enabled, true, "toggle must persist xp_enabled");
-  const chan = {};
-  assert.equal(await runtime.tryHandle(channelSelect(XPId.CHANNEL, ["chan-9"], chan)), true);
-  assert.equal(sharedStore.g.xp_channel_id, "chan-9", "channel select must persist xp_channel_id");
   const rerendered = {};
   assert.equal(await runtime.tryHandle(button(XPId.SECTION, rerendered)), true);
-  assert.ok(contains(rendered(rerendered), "chan-9"), "xp section must reflect the chosen channel");
+  assert.ok(!contains(rendered(rerendered), "channel-select"), "aucun sélecteur de salon XP");
+  assert.equal(sharedStore.g.xp_channel_id, undefined, "aucune interaction ne doit écrire xp_channel_id");
+  assert.equal(sharedStore.g.xp_rate, undefined, "aucune interaction ne doit écrire xp_rate");
 });
 
 test("Invites settings section renders status, toggles invitations_enabled and goes back via composition", async () => {

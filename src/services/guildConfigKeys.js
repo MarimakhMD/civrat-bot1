@@ -10,8 +10,10 @@
  * nommée faisait donc échouer tous les réglages du même appel, et l'erreur
  * remontait en PERSISTENCE_FAILED — jamais « colonne inconnue ».
  *
- * C'est exactement le défaut corrigé en C1 sur `giveaway_enabled`, et il était
- * toujours vivant sur `xp_channel_id` (écrit par src/modules/xp/register.js).
+ * C'est exactement le défaut corrigé en C1 sur `giveaway_enabled`. Il était
+ * encore vivant sur `xp_channel_id` après A1, qui l'avait laissée dans la liste
+ * pour ne changer aucun comportement ; A2 (DCA4) l'a supprimée du module XP.
+ * Les deux colonnes fantômes figurent désormais dans EXCLUDED_NON_CONFIG_KEYS.
  *
  * STRATÉGIE RETENUE (décision DCA1 = S1)
  * --------------------------------------
@@ -174,17 +176,19 @@ const WELCOME_GOODBYE_KEYS = Object.freeze([
 /**
  * XP.
  *
- * ⚠️ `xp_rate` et `xp_channel_id` sont conservées À DESSEIN : elles sont les
- * seules que le module XP lit et écrit aujourd'hui, et A1 ne doit changer aucun
- * comportement existant. Leur alignement sur les colonnes réelles
- * (`xp_per_message`, `xp_cooldown`) relève de la sous-phase A2, non autorisée
- * ici. Les retirer maintenant déplacerait seulement l'endroit où l'échec
- * apparaît, sans le corriger.
+ * A2 — aligné sur le schéma Supabase réel vérifié : `xp_enabled` (bool),
+ * `xp_per_message` (integer, DEFAULT 15) et `xp_cooldown` (integer,
+ * DEFAULT 60, en secondes).
+ *
+ * `xp_rate` et `xp_channel_id` ont été SUPPRIMÉES du code et de cette liste
+ * (décisions DCA3/DCA4) : ces colonnes n'existent pas en base et toute écriture
+ * les concernant faisait échouer l'upsert entier. Elles figurent désormais dans
+ * EXCLUDED_NON_CONFIG_KEYS pour empêcher leur réintroduction.
  */
 const XP_KEYS = Object.freeze([
   "xp_enabled",
-  "xp_channel_id",
-  "xp_rate",
+  "xp_per_message",
+  "xp_cooldown",
 ]);
 
 /**
@@ -209,6 +213,9 @@ const EXCLUDED_NON_CONFIG_KEYS = Object.freeze([
   "target_discord_id", "new_owner_discord_id",
   // champs de modale et colonnes d'audit Admin
   "admin_guild_id", "admin_plan", "admin_expires_in_days", "admin_reason",
+  // colonnes XP fantômes, supprimées en A2 (DCA3/DCA4) : elles n'existent pas
+  // en base et ne doivent jamais revenir dans un patch de configuration
+  "xp_rate", "xp_channel_id",
 ]);
 
 const GUILD_CONFIG_KEY_GROUPS = Object.freeze({
