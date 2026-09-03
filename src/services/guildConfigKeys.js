@@ -184,11 +184,26 @@ const WELCOME_GOODBYE_KEYS = Object.freeze([
  * (décisions DCA3/DCA4) : ces colonnes n'existent pas en base et toute écriture
  * les concernant faisait échouer l'upsert entier. Elles figurent désormais dans
  * EXCLUDED_NON_CONFIG_KEYS pour empêcher leur réintroduction.
+ *
+ * A3 — `role_rewards` (jsonb, DEFAULT '[]' vérifié en base) porte les rôles
+ * accordés par niveau atteint. Elle est déclarée ICI et dans XPConfigKey dans
+ * le même changement : le garde-fou bidirectionnel de
+ * guildConfigWhitelist.test.js exige que toute clé d'un module figure dans
+ * cette liste, et réciproquement.
+ *
+ * `level_rewards` (jsonb) est VOLONTAIREMENT ABSENTE. L'historique du dépôt
+ * (commits 027f8c4 / d56ab7b, architecture supprimée) montre qu'elle désignait
+ * la COURBE de niveaux ({level, xp_required}) et non des rôles — et qu'elle
+ * n'a jamais été consommée, la formule étant codée en dur. L'activer imposerait
+ * de changer LevelService et d'invalider les niveaux déjà stockés dans
+ * member_xp. Elle reste donc une colonne inactive, non inscriptible par le
+ * code, en attendant une décision dédiée.
  */
 const XP_KEYS = Object.freeze([
   "xp_enabled",
   "xp_per_message",
   "xp_cooldown",
+  "role_rewards",
 ]);
 
 /**
