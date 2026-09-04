@@ -5,7 +5,9 @@
 // Ce test exerce le VRAI chemin de production :
 //   src/events/guildMemberAdd.js → handleInviteTracking()
 //     → src/services/inviteService.js (singleton, InMemoryInviteStatsRepository)
-//       → InviteService.findUsedInvite() / addInvite() / setInvitedBy()
+//       → InviteService.findUsedInvite() / attributeInvite()
+//         (B2 : une seule écriture — le lien invité → inviteur porte aussi le
+//          compteur, qui est dérivé par COUNT(*) et non stocké)
 //
 // Avant le correctif, `handleInviteTracking` lisait `result.inviter.id` alors
 // que `findUsedInvite()` retourne `inviter` comme IDENTIFIANT (chaîne). La
@@ -197,11 +199,14 @@ test("une attribution posée reste décrémentable au départ du membre", async 
     invites: new Map([["ABC", { code: "ABC", uses: 2, inviter: { id: INVITER_ID } }]]),
   }), {});
 
-  // Conséquence directe du correctif : invitedBy pointe un utilisateur réel,
-  // donc le décrément effectué par guildMemberRemove retombe sur le bon compteur.
+  // Conséquence directe du correctif : le lien pointe un inviteur réel, donc la
+  // révocation effectuée par guildMemberRemove retombe sur le bon compteur.
   const link = await statsRepository.findOne(GUILD_ID, "user-new");
   assert.equal(link.invitedBy, INVITER_ID);
 
-  await inviteService.removeInvite(link.invitedBy, GUILD_ID);
+  // B2 — la révocation se fait par MEMBRE INVITÉ, plus par inviteur : c'est
+  // exactement ce qu'exécute guildMemberRemove. Le compteur, dérivé des liens
+  // actifs, descend tout seul.
+  await inviteService.revokeInvite(GUILD_ID, "user-new");
   assert.equal((await inviteService.getInviteStats(INVITER_ID, GUILD_ID)).current, 0);
 });

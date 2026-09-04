@@ -56,9 +56,9 @@ test("registerInvites wires the public command and the MANAGE_GUILD settings rou
 
 test("/invites leaderboard reads the same repository the tracking writes to", async () => {
   const { registry, inviteService } = makeSetup();
-  await inviteService.statsRepository.addInvite("recruiter", "g");
-  await inviteService.statsRepository.addInvite("recruiter", "g");
-  await inviteService.statsRepository.addInvite("other", "g");
+  await inviteService.statsRepository.addInvite("recruiter", "g", "recruited-1");
+  await inviteService.statsRepository.addInvite("recruiter", "g", "recruited-2");
+  await inviteService.statsRepository.addInvite("other", "g", "recruited-3");
   const captured = {};
   await registry.find({ kind: "command", name: "invites" }).execute(context(captured, { leaderboard: true }));
   assert.ok(captured.reply, "command must reply");
@@ -69,7 +69,7 @@ test("/invites leaderboard reads the same repository the tracking writes to", as
 
 test("/invites without leaderboard option answers the member's own stats", async () => {
   const { registry, inviteService } = makeSetup();
-  await inviteService.statsRepository.addInvite("u1", "g");
+  await inviteService.statsRepository.addInvite("u1", "g", "recruited-1");
   const captured = {};
   await registry.find({ kind: "command", name: "invites" }).execute(context(captured));
   assert.ok(captured.reply.view.content.includes('"count":1'), "member stats must come from the shared store");

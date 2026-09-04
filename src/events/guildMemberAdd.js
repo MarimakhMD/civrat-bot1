@@ -63,16 +63,31 @@ async function handleInviteTracking(member, config) {
       return null;
     }
     const newInvites = await member.guild.invites.fetch().catch(() => null);
+    // B2 : findUsedInvite recache cet instantané quelle que soit sa décision.
     const result = inviteService.findUsedInvite(member.guild.id, newInvites);
 
     if (result?.inviter) {
-      // Phase 1 (C3) : findUsedInvite() retourne `inviter` comme IDENTIFIANT
-      // (chaîne), pas comme objet. L'ancienne lecture `result.inviter.id`
-      // valait donc `undefined` : le compteur était incrémenté sur la clé
-      // "<guildId>:undefined" et `invitedBy` restait vide, ce qui rendait
-      // /invites nul pour tout le monde et le décrément au départ inopérant.
-      await inviteService.addInvite(result.inviter, member.guild.id);
-      await inviteService.setInvitedBy(member.id, member.guild.id, result.inviter);
+      // B2 — self-invite refusée. Ni findUsedInvite ni l'ancien chemin ne le
+      // contrôlaient : un membre pouvait être crédité de sa propre arrivée.
+      // Rien n'est persisté et aucune attribution n'est remontée : il n'y a pas
+      // d'inviteur réel à créditer.
+      if (result.inviter === member.id) return null;
+
+      // B2 — UNE seule écriture. Le lien invité → inviteur porte aussi le
+      // compteur, qui est dérivé par COUNT(*) et non stocké.
+      //
+      // L'ancienne paire addInvite() + setInvitedBy() était DEUX écritures
+      // séparées : une panne entre les deux laissait un compteur crédité sans
+      // lien, et le décrément au départ devenait définitivement impossible.
+      // (Phase 1 / C3 : `inviter` est un IDENTIFIANT, pas un objet — l'ancienne
+      // lecture `result.inviter.id` valait undefined et créditait la clé
+      // "<guildId>:undefined".)
+      await inviteService.attributeInvite({
+        guildId: member.guild.id,
+        invitedId: member.id,
+        inviterId: result.inviter,
+        inviteCode: result.code || null,
+      });
     }
 
     return result;

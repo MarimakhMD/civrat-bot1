@@ -54,7 +54,7 @@ test("getAnalyticsRuntime uses InMemory event storage offline and reuses the wri
     assert.equal(topXP[0].xp, 420);
 
     // Une invitation trackée par le service legacy est visible dans le top Analytics.
-    await legacyInviteService.statsRepository.addInvite("recruiter", "g");
+    await legacyInviteService.statsRepository.addInvite("recruiter", "g", "invited-1");
     const topInvites = await runtime.getTopInvites("g", 5);
     assert.equal(topInvites[0].userId, "recruiter");
     assert.equal(topInvites[0].current, 1);

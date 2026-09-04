@@ -106,7 +106,7 @@ test("end-to-end: enabling Analytics then tracking events makes them visible in 
 
   // XP écrite par le runtime XP réel, invitations par le service legacy réel.
   await getXPRuntime()._repository.upsert("g", "grinder", 420, 4);
-  await legacyInviteService.statsRepository.addInvite("recruiter", "g");
+  await legacyInviteService.statsRepository.addInvite("recruiter", "g", "invited-1");
 
   const overview = {};
   assert.equal(await runtime.tryHandle(command("analytics", overview)), true);
@@ -181,7 +181,12 @@ test("legacy invite tracking guard semantics : explicit opt-out only", () => {
   const remove = fs.readFileSync("src/events/guildMemberRemove.js", "utf8");
   assert.match(add, /config\.invitations_enabled !== false/, "add path must preserve the historical default-on tracking");
   assert.match(remove, /config\.invitations_enabled === false/, "remove path must keep the same guard semantics");
-  assert.match(remove, /inviteService\.getInviteStats/, "remove path must read invitedBy from the shared store, not the orphan mongoose model");
+  // B2 — l'intention est inchangée : le chemin remove doit passer par le dépôt
+  // PARTAGÉ, jamais par le modèle mongoose orphelin. Il ne lit plus invitedBy
+  // avant d'agir (c'était la source de la dérive permanente : invitedBy manquant
+  // ⇒ compteur qui ne redescend jamais) ; il révoque directement par invited_id.
+  assert.match(remove, /inviteService\.revokeInvite/, "remove path must revoke through the shared store, not the orphan mongoose model");
+  assert.doesNotMatch(remove, /mongoose/i, "remove path must not touch mongoose");
 });
 
 test.after(() => {

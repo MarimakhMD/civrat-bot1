@@ -50,9 +50,10 @@ test("getTopXP aggregates from XP repository without duplicating", async () => {
 
 test("getTopInvites aggregates from Invite repository", async () => {
   const inviteRepo = new InMemoryInviteStatsRepository();
-  await inviteRepo.addInvite("u1", "g");
-  await inviteRepo.addInvite("u1", "g");
-  await inviteRepo.addInvite("u2", "g");
+  // B2 — chaque attribution nomme le membre invité (PK guild_id + invited_id).
+  await inviteRepo.addInvite("u1", "g", "invited-1");
+  await inviteRepo.addInvite("u1", "g", "invited-2");
+  await inviteRepo.addInvite("u2", "g", "invited-3");
   const svc = new AnalyticsService({ configService: configService(true), analyticsRepository: new InMemoryAnalyticsRepository(), inviteRepository: inviteRepo });
   const top = await svc.getTopInvites("g", 2);
   assert.equal(top.length, 2);

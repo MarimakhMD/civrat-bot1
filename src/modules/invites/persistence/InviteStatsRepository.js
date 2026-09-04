@@ -1,57 +1,133 @@
 "use strict";
 
+/**
+ * B2 — Persistance des invitations sur public.invite_links.
+ *
+ * MODÈLE : une ligne par membre invité, PK (guild_id, invited_id).
+ * Le compteur d'un inviteur n'est JAMAIS stocké : c'est un COUNT(*) des liens
+ * actifs (revoked_at IS NULL) dont il est l'inviter. Il n'y a donc aucune
+ * valeur à perdre — le lost update devient structurellement impossible, et un
+ * décrément manqué ne peut plus faire dériver un compteur de façon permanente.
+ *
+ * APPEND-ONLY côté suppression : une révocation pose revoked_at, elle ne
+ * supprime jamais la ligne. La base ne concède d'ailleurs aucun DELETE à
+ * service_role.
+ */
 class InviteStatsRepository {
-  async addInvite(userId, guildId) { throw new Error("Not implemented"); }
-  async removeInvite(userId, guildId) { throw new Error("Not implemented"); }
-  async setInvitedBy(memberId, guildId, inviterId) { throw new Error("Not implemented"); }
+  /**
+   * B2 — Attribution. UNE seule écriture portant à la fois le compteur
+   * (implicite, dérivé) et le lien invité → inviteur.
+   *
+   * Remplace l'ancienne paire addInvite() + setInvitedBy(), qui était deux
+   * écritures séparées : une panne entre les deux laissait un compteur crédité
+   * sans lien, et le décrément au départ devenait impossible.
+   */
+  async attributeInvite() { throw new Error("Not implemented"); }
+
+  /** B2 — Révocation au départ : pose revoked_at. Idempotent. Ne supprime jamais. */
+  async revokeInvite() { throw new Error("Not implemented"); }
+
   async getInviteStats(userId, guildId) { throw new Error("Not implemented"); }
   async getLeaderboard(guildId, limit) { throw new Error("Not implemented"); }
   async findOne(guildId, userId) { throw new Error("Not implemented"); }
+
+  // ── Méthodes antérieures à B2, conservées comme aliases ──
+  // Elles exigeaient de créditer un inviteur SANS nommer le membre invité, ce
+  // que la PK (guild_id, invited_id) rend impossible : deux appels identiques
+  // doivent produire une seule ligne. Elles imposent donc désormais le membre
+  // invité et délèguent au modèle liens.
+  async addInvite(userId, guildId, invitedId) { return this.attributeInvite({ guildId, invitedId, inviterId: userId, inviteCode: null }); }
+  async removeInvite(userId, guildId, invitedId) { return this.revokeInvite(guildId, invitedId); }
+  async setInvitedBy(memberId, guildId, inviterId) { return this.attributeInvite({ guildId, invitedId: memberId, inviterId, inviteCode: null }); }
 }
 
+/**
+ * Repli en mémoire, utilisé quand Supabase n'est pas disponible.
+ *
+ * UNE seule source de vérité : `links`. Les deux Map historiques (`invites`,
+ * `invitedBy`) sont devenues des VUES calculées à la demande — il est donc
+ * impossible qu'elles divergent de `links`, ce qui était la faille du modèle
+ * précédent (un compteur incrémenté d'un côté, un lien posé de l'autre).
+ *
+ * Les liens y sont perdus au redémarrage : mode dégradé, pas le nominal.
+ */
 class InMemoryInviteStatsRepository extends InviteStatsRepository {
-  constructor() {
+  constructor({ clock } = {}) {
     super();
-    this.invites = new Map(); // guildId:userId -> count
-    this.invitedBy = new Map(); // guildId:memberId -> inviterId
+    // "guildId:invitedId" → lien. Seule structure écrite.
+    this.links = new Map();
+    this.clock = typeof clock === "function" ? clock : () => Date.now();
   }
 
-  _key(guildId, userId) { return `${guildId}:${userId}`; }
+  _linkKey(guildId, invitedId) { return `${guildId}:${invitedId}`; }
+  _userKey(guildId, userId) { return `${guildId}:${userId}`; }
 
-  async addInvite(userId, guildId) {
-    const key = this._key(guildId, userId);
-    const current = this.invites.get(key) || 0;
-    this.invites.set(key, current + 1);
-    return { userId, guildId, current: current + 1 };
+  /** Vue : nombre de liens ACTIFS par inviteur, pour une guilde ou toutes. */
+  get invites() {
+    const view = new Map();
+    for (const link of this.links.values()) {
+      if (link.revokedAt !== null) continue;
+      const key = this._userKey(link.guildId, link.inviterId);
+      view.set(key, (view.get(key) || 0) + 1);
+    }
+    return view;
   }
 
-  async removeInvite(userId, guildId) {
-    const key = this._key(guildId, userId);
-    const current = this.invites.get(key) || 0;
-    const next = Math.max(0, current - 1);
-    this.invites.set(key, next);
-    return { userId, guildId, current: next };
+  /** Vue : lien actif invité → inviteur. */
+  get invitedBy() {
+    const view = new Map();
+    for (const link of this.links.values()) {
+      if (link.revokedAt !== null) continue;
+      view.set(this._userKey(link.guildId, link.invitedId), link.inviterId);
+    }
+    return view;
   }
 
-  async setInvitedBy(memberId, guildId, inviterId) {
-    this.invitedBy.set(this._key(guildId, memberId), inviterId);
-    return { memberId, guildId, inviterId };
+  async attributeInvite({ guildId, invitedId, inviterId, inviteCode = null } = {}) {
+    if (!guildId || !invitedId || !inviterId) {
+      throw new TypeError("attributeInvite requires guildId, invitedId and inviterId");
+    }
+    // Un lien déjà révoqué est réactivé par la même écriture : c'est le retour
+    // d'un membre. Une seule ligne active par (guildId, invitedId), toujours.
+    const link = Object.freeze({
+      guildId,
+      invitedId,
+      inviterId,
+      inviteCode: inviteCode === undefined ? null : inviteCode,
+      createdAt: new Date(this.clock()).toISOString(),
+      revokedAt: null,
+    });
+    this.links.set(this._linkKey(guildId, invitedId), link);
+    return link;
+  }
+
+  async revokeInvite(guildId, invitedId) {
+    if (!guildId || !invitedId) {
+      throw new TypeError("revokeInvite requires guildId and invitedId");
+    }
+    const key = this._linkKey(guildId, invitedId);
+    const link = this.links.get(key);
+    // Idempotent : un second départ ne trouve plus de lien actif.
+    if (!link || link.revokedAt !== null) return { revoked: false, guildId, invitedId };
+    // La ligne n'est JAMAIS supprimée : revokedAt la marque, c'est tout.
+    this.links.set(key, Object.freeze({ ...link, revokedAt: new Date(this.clock()).toISOString() }));
+    return { revoked: true, guildId, invitedId };
   }
 
   async getInviteStats(userId, guildId) {
-    const key = this._key(guildId, userId);
-    const current = this.invites.get(key) || 0;
-    const invitedBy = this.invitedBy.get(key) || null;
+    const current = this.invites.get(this._userKey(guildId, userId)) || 0;
+    const invitedBy = this.invitedBy.get(this._userKey(guildId, userId)) || null;
     return { userId, guildId, current, invitedBy };
   }
 
   async getLeaderboard(guildId, limit = 10) {
-    const entries = [];
-    for (const [key, count] of this.invites.entries()) {
-      const [g, userId] = key.split(":");
-      if (g === guildId) entries.push({ userId, current: count });
-    }
-    return entries.sort((a, b) => b.current - a.current).slice(0, limit);
+    const bounded = Number.isFinite(limit) && limit > 0 ? Math.min(Math.trunc(limit), 100) : 10;
+    return [...this.invites.entries()]
+      .filter(([key]) => key.startsWith(`${guildId}:`))
+      .map(([key, count]) => ({ userId: key.slice(guildId.length + 1), current: count }))
+      // Égalité départagée sur userId : classement déterministe, comme la RPC.
+      .sort((a, b) => (b.current - a.current) || a.userId.localeCompare(b.userId))
+      .slice(0, bounded);
   }
 
   async findOne(guildId, userId) {
@@ -61,8 +137,7 @@ class InMemoryInviteStatsRepository extends InviteStatsRepository {
   }
 
   clear() {
-    this.invites.clear();
-    this.invitedBy.clear();
+    this.links.clear();
   }
 }
 
