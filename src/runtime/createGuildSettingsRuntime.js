@@ -13,6 +13,8 @@ const { getEntitlementService } = require("./getEntitlementService");
 const { SupabaseTicketRepository } = require("../modules/tickets/persistence/SupabaseTicketRepository");
 const { SupabaseTicketCounterRepository } = require("../modules/tickets/persistence/SupabaseTicketCounterRepository");
 const { TicketChannelNamingService } = require("../modules/tickets/services/TicketChannelNamingService");
+// M8 — panels persistants : chaîne Supabase (supabaseAdmin) > InMemory.
+const { getTicketPanelRepository } = require("../modules/tickets/runtime/getTicketPanelRepository");
 const { DiscordTicketTransport } = require("../adapters/discord/DiscordTicketTransport");
 const { getLogsRuntime } = require("../modules/logs/runtime/getLogsRuntime");
 const { config } = require("../config");
@@ -160,10 +162,21 @@ function createGuildSettingsRuntime({ legacyConfigService, logger = null }) {
   // Le resolver Tickets et tous les autres consommateurs Premium partagent le
   // même EntitlementService runtime ; aucun cache ou repository parallèle.
   const ticketPremiumConfigResolver = new TicketPremiumConfigResolver({ entitlementService, logger });
+  // M8 — dépôt de panels de tickets. Résolu UNE fois, hors de la factory :
+  // la chaîne Supabase (client PRIVILÉGIÉ supabaseAdmin) > InMemory ne dépend
+  // pas du contexte d'interaction.
+  //
+  // ⚠️ Volontairement différent du reste de ce bloc : SupabaseTicketRepository
+  //    utilise le client non privilégié `supabase` parce que public.tickets
+  //    porte encore la policy `public / ALL`. public.ticket_panels est en RLS
+  //    variante A (aucune policy), donc il exige supabaseAdmin — sinon chaque
+  //    écriture échouerait en 42501.
+  const ticketPanelRepository = getTicketPanelRepository();
   registerTickets({
     registry,
     service: ticketConfigService,
     premiumConfigResolver: ticketPremiumConfigResolver,
+    panelRepository: ticketPanelRepository,
     creationServiceFactory: (context) => new TicketService({
       configService: ticketConfigService,
       repository: new SupabaseTicketRepository({ supabase }),
@@ -174,6 +187,9 @@ function createGuildSettingsRuntime({ legacyConfigService, logger = null }) {
       // + nommage Premium des salons.
       counterRepository: new SupabaseTicketCounterRepository({ supabase }),
       channelNamingService: new TicketChannelNamingService(),
+      // M8 — mêmes panels que ceux injectés aux routes de gestion : une seule
+      // source de vérité, aucun second dépôt parallèle.
+      panelRepository: ticketPanelRepository,
       ticketLog: (event) => getLogsRuntime().handleTicketEvent({ guild: context.envelope.discordMember.guild, ...event }),
       transport: new DiscordTicketTransport({ guild: context.envelope.discordMember?.guild }),
     }),

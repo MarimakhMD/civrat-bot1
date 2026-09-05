@@ -57,7 +57,10 @@ test("create route replies with the structured result", async () => {
   const result = await handleTicketCreate({
     guildId: "guild",
     t: (key) => key,
-    envelope: { discordMember: { id: "member" }, transport: { reply: async (payload) => { response = payload; } } },
+    // M8 — la route extrait panelId et buttonIndex du customId. Sans customId
+    // valide elle refuse explicitement (TICKET_PANEL_UNAVAILABLE) au lieu de
+    // deviner une configuration.
+    envelope: { customId: "civrat:v1:tickets:create:7:0", discordMember: { id: "member" }, transport: { reply: async (payload) => { response = payload; } } },
   }, () => ({ createTicket: async () => ({ created: false, code: "TICKETS_DISABLED", details: {} }) }));
   assert.equal(result.code, "TICKETS_DISABLED");
   assert.equal(response.view.content, "tickets.TICKETS_DISABLED");
@@ -102,7 +105,11 @@ test("no open ticket creates a schema-compatible Supabase record", async () => {
   const fixture = createService({ config: completeConfig });
   const result = await fixture.service.createTicket({ guildId: "guild", member: { id: "member" } });
   assert.equal(result.code, "TICKET_CREATED");
-  assert.deepEqual(fixture.createdRecord, { guild_id: "guild", user_id: "member", channel_id: "channel-1", category: "support", status: "open", closed: false });
+    // M8 — `panel_id` rejoint le schéma. null quand l'ouverture ne vient
+    // d'aucun panel ; la colonne est nullable et les tickets antérieurs à M8
+    // restent null (aucun backfill). `category` reste "support" : décision
+    // validée, il n'est PAS refactorisé dans M8.
+    assert.deepEqual(fixture.createdRecord, { guild_id: "guild", user_id: "member", channel_id: "channel-1", category: "support", status: "open", closed: false, panel_id: null });
 });
 
 test("Supabase persistence failure is structured and rolls back the created channel", async () => {

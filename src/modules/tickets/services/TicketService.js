@@ -3,6 +3,12 @@
 const { TicketConfigKey: Key, TicketComponentId: Id } = require("../configuration/ticketConstants");
 const { TicketPremiumConfigKey: PKey } = require("../configuration/ticketPremiumConstants");
 const { TicketPermissionService } = require("./TicketPermissionService");
+const { resolveButtonTarget } = require("../persistence/TicketPanelRepository");
+
+// M8 — PostgREST relaie le code SQL de la violation d'unicité. Convention déjà
+// établie dans le dépôt : M4 (suggestion_votes), M5 (giveaway_entries) et B3
+// (member_xp) définissent toutes cette même constante.
+const UNIQUE_VIOLATION = "23505";
 
 // Nommage Free atomique (ticket-001) : le Free suit le même format de
 // référence que le défaut Premium, via le compteur atomique unique de la
@@ -10,7 +16,7 @@ const { TicketPermissionService } = require("./TicketPermissionService");
 const FREE_CHANNEL_NAME_FORMAT = "ticket-{number}";
 
 class TicketService {
-  constructor({ repository, configService = null, transport = null, welcomeService = null, transcriptService = null, ticketLog = null, premiumConfigResolver = null, counterRepository = null, channelNamingService = null }) {
+  constructor({ repository, configService = null, transport = null, welcomeService = null, transcriptService = null, ticketLog = null, premiumConfigResolver = null, counterRepository = null, channelNamingService = null, panelRepository = null }) {
     this.repository = repository;
     this.configService = configService;
     this.transport = transport;
@@ -20,6 +26,9 @@ class TicketService {
     this.premiumConfigResolver = premiumConfigResolver;
     this.counterRepository = counterRepository;
     this.channelNamingService = channelNamingService;
+    // M8 — dépôt de panels. Optionnel : sans lui, une ouverture demandant un
+    // panelId est refusée (aucun repli sur la configuration de guilde).
+    this.panelRepository = panelRepository;
     this.permissions = new TicketPermissionService();
   }
 
@@ -75,7 +84,7 @@ class TicketService {
   findOpen(guildId, userId) { return this.repository.findOpen(guildId, userId); }
   create(record) { return this.repository.create(record); }
 
-  async createTicket({ guildId, member, t = (key) => key }) {
+  async createTicket({ guildId, member, t = (key) => key, panelId = null, buttonIndex = null, panelRepository = null }) {
     const result = (created, code, details = {}) => ({
       created,
       code,
@@ -89,8 +98,58 @@ class TicketService {
     const config = await this.configService.read(guildId);
     if (!config[Key.ENABLED]) return result(false, "TICKETS_DISABLED");
 
-    const categoryId = config[Key.CATEGORY_ID];
-    const supportRoleId = config[Key.SUPPORT_ROLE_ID];
+    // ───────────────────────────────────────────────────────────────────────
+    // M8 — résolution de la catégorie et du rôle support.
+    //
+    // Si un panelId est fourni, la configuration vient de la LIGNE de
+    // public.ticket_panels, avec fallback bouton → panel :
+    //     buttons[i].category_id  ??  panel.category_id
+    //     buttons[i].support_role_id ?? panel.support_role_id
+    //
+    // Un panel absent ou désactivé est un REFUS, jamais un repli sur
+    // guild_configs : retomber silencieusement sur les défauts de guilde
+    // créerait un ticket dont la configuration ne correspond à aucun panel
+    // publié — exactement l'historique inventé que §12 et §14 interdisent.
+    // ───────────────────────────────────────────────────────────────────────
+    let categoryId = config[Key.CATEGORY_ID];
+    let supportRoleId = config[Key.SUPPORT_ROLE_ID];
+    let resolvedPanelId = null;
+
+    if (panelId !== null && panelId !== undefined && panelId !== "") {
+      const panels = panelRepository || this.panelRepository;
+      if (!panels) return result(false, "TICKET_PANEL_UNAVAILABLE");
+
+      let panel;
+      try {
+        panel = await panels.findActive(guildId, panelId);
+      } catch (_error) {
+        return result(false, "PERSISTENCE_ERROR");
+      }
+      if (!panel) return result(false, "TICKET_PANEL_UNAVAILABLE");
+
+      const target = resolveButtonTarget(panel, buttonIndex);
+      // ─────────────────────────────────────────────────────────────────────
+      // Indice hors bornes : REFUS strict.
+      //
+      // Un buttonIndex qui n'a jamais correspondu à un bouton du panel (un
+      // customId forgé, ou un reste d'un panel profondément remanié) ne doit
+      // JAMAIS pouvoir ouvrir un ticket. Aucun repli sur la catégorie du panel
+      // ni sur guild_configs : ce serait rendre valide n'importe quel indice.
+      //
+      // La compatibilité pendant une réédition est assurée EN AMONT, par
+      // l'ordre des écritures dans TicketPanelDeliveryService.redeliver :
+      // Discord est mis à jour AVANT la base, donc pendant la transition la
+      // base contient encore l'ancien état — un sur-ensemble en cas de
+      // réduction. Les boutons réellement publiés restent résolvables, et les
+      // boutons retirés ne sont plus cliquables.
+      // ─────────────────────────────────────────────────────────────────────
+      if (!target) return result(false, "TICKET_PANEL_UNAVAILABLE", { panelId: panel.id, buttonIndex });
+
+      categoryId = target.categoryId;
+      supportRoleId = target.supportRoleId;
+      resolvedPanelId = panel.id;
+    }
+
     if (!categoryId || !supportRoleId) {
       return result(false, "TICKET_CONFIG_INCOMPLETE", {
         categoryMissing: !categoryId,
@@ -198,16 +257,40 @@ class TicketService {
       guild_id: guildId,
       user_id: member.id,
       channel_id: channel.id,
+      // M8 — décision validée : `category` reste "support" et n'est PAS
+      // refactorisé dans cette étape. L'origine réelle du ticket est portée par
+      // panel_id ; nettoyer `category` est un chantier distinct.
       category: "support",
       status: "open",
       closed: false,
+      // M8 — panel ayant ouvert le ticket. null quand l'ouverture ne vient
+      // d'aucun panel. Colonne nullable : les tickets antérieurs à M8 restent
+      // null, AUCUN backfill (on n'invente pas d'historique).
+      panel_id: resolvedPanelId,
     };
     try {
       const ticket = await this.create(record);
       this.ticketLog?.({action:"ticket_created",ticketChannelId:channel.id,userId:member.id}); return result(true, "TICKET_CREATED", { channelId: channel.id, ticket });
-    } catch (_error) {
-      await this.rollbackTicketChannel(channel.id, "persistence");
-      return result(false, "PERSISTENCE_ERROR", { channelId: channel.id });
+    } catch (error) {
+      // ─────────────────────────────────────────────────────────────────────
+      // M8 — anti double-ouverture.
+      //
+      // findOpen (SELECT) puis create (INSERT) sont deux allers-retours
+      // séparés : sur un double-clic, les deux passent le SELECT avant
+      // qu'aucun n'insère. C'est idx_tickets_open_unique — index unique partiel
+      // sur (guild_id, user_id) WHERE status IN ('open','claimed') — qui tranche.
+      //
+      // Le second INSERT échoue en 23505. Le salon Discord étant créé AVANT
+      // l'insert, il faut le nettoyer : c'est exactement le rôle de
+      // rollbackTicketChannel, déjà en place depuis P13 (B2).
+      //
+      // ⚠️ Le 23505 n'est traduit QUE sur l'INSERT. Sur un update (claim,
+      //    reopen) il signalerait autre chose et doit remonter — même règle
+      //    que M5 sur giveaway_entries.
+      // ─────────────────────────────────────────────────────────────────────
+      const uniqueViolation = error?.code === UNIQUE_VIOLATION;
+      await this.rollbackTicketChannel(channel.id, uniqueViolation ? "unique_violation" : "persistence");
+      return result(false, uniqueViolation ? "OPEN_TICKET_EXISTS" : "PERSISTENCE_ERROR", { channelId: channel.id });
     }
   }
 

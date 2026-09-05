@@ -1,6 +1,10 @@
 "use strict";
 
 const { ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelType, EmbedBuilder, PermissionsBitField } = require("discord.js");
+// M8 — rendu générique des composants (emoji, styles, packing 5×5, garde-fou
+// des 5 lignes d'action). rows() est déjà exporté par DiscordResponseTransport
+// et utilisé par tout le reste du bot : le panel suit enfin le même chemin.
+const { rows } = require("./DiscordResponseTransport");
 
 const TicketChannelPermissions = Object.freeze([
   PermissionsBitField.Flags.ViewChannel,
@@ -15,20 +19,77 @@ const BotTicketChannelPermissions = Object.freeze([
 class DiscordTicketTransport {
   constructor({ guild }) { this.guild = guild; }
 
+  /**
+   * M8 — envoie le panel et RENVOIE le message Discord.
+   *
+   * Avant M8 cette fonction ne renvoyait rien : le messageId était perdu, donc
+   * aucun panel ne pouvait être retrouvé, édité, invalidé ou dédoublonné.
+   *
+   * Le rendu passe désormais par rows() (DiscordResponseTransport) au lieu
+   * d'une ActionRowBuilder construite à la main :
+   *   - tous les composants sont rendus, plus seulement components[0] ;
+   *   - emoji et style sont honorés (avant : style forcé à Primary, emoji jeté) ;
+   *   - le packing 5 boutons × 5 lignes est celui du reste du bot ;
+   *   - rows() LÈVE au-delà de 5 lignes, ce qui borne structurellement un panel.
+   *
+   * Phase 10.2 inchangé : sans view.embed (Free), l'embed n'a ni couleur ni
+   * image et le payload reste identique à l'historique.
+   */
   async sendPanel(channelId, view) {
     const channel = this.guild.channels.cache.get(channelId);
     if (!channel?.isTextBased()) throw new Error("channel_unavailable");
-    const button = view.components[0];
-    // Phase 10.2 : les personnalisations Premium couleur/image n'arrivent que
-    // si le resolver a autorisé Premium. Sans view.embed (Free), le payload
-    // envoyé est strictement identique à l'historique.
+    return channel.send({ embeds: [this._panelEmbed(view)], components: rows(view.components || []) });
+  }
+
+  /**
+   * M8 — édite le message d'un panel déjà publié.
+   *
+   * Lève `panel_message_not_found` si le message a disparu (suppression
+   * manuelle, salon purgé) : c'est le signal qui déclenche la réconciliation
+   * paresseuse côté service — la ligne passe à is_active = false.
+   *
+   * Lève `channel_unavailable` si le salon lui-même a disparu.
+   */
+  async editPanel(channelId, messageId, view) {
+    if (!messageId) throw new Error("panel_message_not_found");
+    const channel = this.guild.channels.cache.get(channelId);
+    if (!channel?.isTextBased()) throw new Error("channel_unavailable");
+    let message;
+    try {
+      message = await channel.messages.fetch(messageId);
+    } catch (_error) {
+      throw new Error("panel_message_not_found");
+    }
+    if (!message) throw new Error("panel_message_not_found");
+    return message.edit({ embeds: [this._panelEmbed(view)], components: rows(view.components || []) });
+  }
+
+  /**
+   * M8 — suppression BEST-EFFORT du message d'un panel.
+   *
+   * Ne lève JAMAIS : la base fait foi (is_active = false). Un message qui n'a
+   * pas pu être supprimé reste cliquable, mais son bouton retombe sur
+   * TICKET_PANEL_UNAVAILABLE puisque le panel est inactif.
+   */
+  async deletePanel(channelId, messageId) {
+    if (!channelId || !messageId) return { deleted: false };
+    try {
+      const channel = this.guild.channels.cache.get(channelId);
+      if (!channel?.isTextBased()) return { deleted: false };
+      const message = await channel.messages.fetch(messageId);
+      if (!message) return { deleted: false };
+      await message.delete();
+      return { deleted: true };
+    } catch (_error) {
+      return { deleted: false };
+    }
+  }
+
+  _panelEmbed(view) {
     const embed = new EmbedBuilder().setTitle(view.title).setDescription(view.content);
     if (view.embed?.color) embed.setColor(view.embed.color);
     if (view.embed?.image) embed.setImage(view.embed.image);
-    await channel.send({
-      embeds: [embed],
-      components: [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(button.customId).setLabel(button.label).setStyle(ButtonStyle.Primary))],
-    });
+    return embed;
   }
 
   async getCategory(categoryId) {
