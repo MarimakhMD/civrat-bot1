@@ -54,7 +54,7 @@ test("getAnalyticsRuntime uses InMemory event storage offline and reuses the wri
     assert.equal(topXP[0].xp, 420);
 
     // Une invitation trackée par le service legacy est visible dans le top Analytics.
-    await legacyInviteService.statsRepository.addInvite("recruiter", "g");
+    await legacyInviteService.statsRepository.addInvite("recruiter", "g", "invited-1");
     const topInvites = await runtime.getTopInvites("g", 5);
     assert.equal(topInvites[0].userId, "recruiter");
     assert.equal(topInvites[0].current, 1);
@@ -65,19 +65,39 @@ test("getAnalyticsRuntime uses InMemory event storage offline and reuses the wri
 
 test("SupabaseAnalyticsRepository persists and aggregates events via the client", async () => {
   const inserted = [];
+  // P10 — les lignes portent guild_id : le dépôt filtre désormais dessus
+  // (.eq("guild_id", …) puis .eq("event_type", …)), comme PostgREST en réel.
   const rows = [
-    { event_type: "message", user_id: "u1" },
-    { event_type: "message", user_id: "u1" },
-    { event_type: "member", user_id: "u2" },
-    { event_type: "member", user_id: "u2" },
+    { event_type: "message", user_id: "u1", guild_id: "g" },
+    { event_type: "message", user_id: "u1", guild_id: "g" },
+    { event_type: "member", user_id: "u2", guild_id: "g" },
+    { event_type: "member", user_id: "u2", guild_id: "g" },
   ];
+  // P10 — faux client chaînable : getStats enchaîne plusieurs .eq() et passe
+  // par .range() pour le comptage distinct paginé. Sémantique reproduite :
+  // count=exact + head renvoie le total sans lignes ; range renvoie la tranche.
   const supabase = {
     from: (table) => {
       assert.equal(table, "analytics_events");
-      return {
+      const ctx = { filters: [], options: {}, range: null };
+      const api = {
         insert: async (record) => { inserted.push(record); return { error: null }; },
-        select: () => ({ eq: async () => ({ data: rows, error: null }) }),
+        select(_columns, options = {}) { Object.assign(ctx.options, options); return api; },
+        eq(column, value) { ctx.filters.push([column, value]); return api; },
+        order: () => api,
+        limit: () => api,
+        range(from, to) { ctx.range = [from, to]; return api; },
+        then(resolve) {
+          const filtered = rows.filter((row) => ctx.filters.every(([column, value]) => row[column] === value));
+          if (ctx.options.count === "exact" && ctx.options.head === true) {
+            resolve({ data: null, error: null, count: filtered.length });
+            return;
+          }
+          const slice = ctx.range ? filtered.slice(ctx.range[0], ctx.range[1] + 1) : filtered;
+          resolve({ data: slice, error: null });
+        },
       };
+      return api;
     },
   };
   const repo = new SupabaseAnalyticsRepository({ supabase });
@@ -86,7 +106,7 @@ test("SupabaseAnalyticsRepository persists and aggregates events via the client"
   assert.equal(inserted[0].guild_id, "g");
   assert.equal(inserted[0].event_type, "message");
   const stats = await repo.getStats("g");
-  assert.deepEqual(stats, { messages: 2, members: 1, total: 4 });
+  assert.deepEqual(stats, { messages: 2, members: 1, total: 4, membersTruncated: false });
 });
 
 test("SupabaseAnalyticsRepository requires a client (constructor guard unchanged)", () => {

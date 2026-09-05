@@ -47,7 +47,9 @@ function dashboardView(t, stats, recentActions, { viewerIsOwner = false, ownerAu
     line(t("adminpanel.statPremiumExpired"), stats.premiumExpired),
     line(t("adminpanel.statPremiumInactive"), stats.premiumInactive),
     line(t("adminpanel.statMessages"), stats.analytics.messages),
-    line(t("adminpanel.statMembers"), stats.analytics.members),
+    // P10 — `members` global est un comptage distinct paginé : au plafond
+    // c'est un plancher, signalé par « + ». `messages` est exact (count=exact).
+    line(t("adminpanel.statMembers"), stats.analytics.truncated ? `${stats.analytics.members}+` : stats.analytics.members),
     !stats.premiumAvailable ? `⚠️ ${t("adminpanel.premiumUnavailable")}` : null,
     !stats.analyticsAvailable ? `⚠️ ${t("adminpanel.analyticsUnavailable")}` : null,
     "",
@@ -182,8 +184,14 @@ function serverView(t, server) {
   const history = server.history.length
     ? server.history.slice(0, 3).map((entry) => `- ${String(entry.created_at || "").slice(0, 19).replace("T", " ")} ${entry.action} (${entry.new_status || "?"})`).join("\n")
     : t("adminpanel.noHistory");
+  // P10 — le comptage distinct `members` est paginé : au plafond il devient un
+  // plancher et reçoit le suffixe « + ». `messages` est un compteur exact.
+  const serverMembers = server.analytics?.members;
+  const serverMembersLabel = serverMembers === null || serverMembers === undefined
+    ? t("adminpanel.notAvailable")
+    : (server.analytics.membersTruncated ? `${serverMembers}+` : serverMembers);
   const analytics = server.analytics
-    ? `${t("adminpanel.statMessages")}: ${server.analytics.messages ?? t("adminpanel.notAvailable")} · ${t("adminpanel.statMembers")}: ${server.analytics.members ?? t("adminpanel.notAvailable")}`
+    ? `${t("adminpanel.statMessages")}: ${server.analytics.messages ?? t("adminpanel.notAvailable")} · ${t("adminpanel.statMembers")}: ${serverMembersLabel}`
     : t("adminpanel.noAnalytics");
   const protectedPremium = Boolean(server.premiumProtection?.protected);
   const canMutatePremium = !protectedPremium || server.premiumMutationAccess?.allowed === true;

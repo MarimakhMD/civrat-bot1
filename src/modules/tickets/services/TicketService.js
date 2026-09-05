@@ -3,6 +3,12 @@
 const { TicketConfigKey: Key, TicketComponentId: Id } = require("../configuration/ticketConstants");
 const { TicketPremiumConfigKey: PKey } = require("../configuration/ticketPremiumConstants");
 const { TicketPermissionService } = require("./TicketPermissionService");
+const { resolveButtonTarget } = require("../persistence/TicketPanelRepository");
+
+// M8 — PostgREST relaie le code SQL de la violation d'unicité. Convention déjà
+// établie dans le dépôt : M4 (suggestion_votes), M5 (giveaway_entries) et B3
+// (member_xp) définissent toutes cette même constante.
+const UNIQUE_VIOLATION = "23505";
 
 // Nommage Free atomique (ticket-001) : le Free suit le même format de
 // référence que le défaut Premium, via le compteur atomique unique de la
@@ -10,7 +16,7 @@ const { TicketPermissionService } = require("./TicketPermissionService");
 const FREE_CHANNEL_NAME_FORMAT = "ticket-{number}";
 
 class TicketService {
-  constructor({ repository, configService = null, transport = null, welcomeService = null, transcriptService = null, ticketLog = null, premiumConfigResolver = null, counterRepository = null, channelNamingService = null }) {
+  constructor({ repository, configService = null, transport = null, welcomeService = null, transcriptService = null, ticketLog = null, premiumConfigResolver = null, counterRepository = null, channelNamingService = null, panelRepository = null }) {
     this.repository = repository;
     this.configService = configService;
     this.transport = transport;
@@ -20,6 +26,9 @@ class TicketService {
     this.premiumConfigResolver = premiumConfigResolver;
     this.counterRepository = counterRepository;
     this.channelNamingService = channelNamingService;
+    // M8 — dépôt de panels. Optionnel : sans lui, une ouverture demandant un
+    // panelId est refusée (aucun repli sur la configuration de guilde).
+    this.panelRepository = panelRepository;
     this.permissions = new TicketPermissionService();
   }
 
@@ -35,8 +44,8 @@ class TicketService {
   // Phase 10.4 : nom Premium du salon. Fail-closed à chaque étape : sans
   // entitlement, sans format valide, sans compteur disponible ou avec un
   // rendu invalide => null => le nommage Free atomique prend le relais
-  // (resolveFreeChannelName), puis repli transport ticket-<userId> si le
-  // compteur est indisponible.
+  // (resolveFreeChannelName). C9 : si les deux échouent, createTicket
+  // retourne TICKET_NAME_UNAVAILABLE — aucun repli ticket-<userId> (§12).
   // Note concurrence : le numéro est réservé avant la création Discord ; si
   // celle-ci échoue ensuite, le trou de séquence est assumé (documenté
   // docs/architecture/phase-10-4-ticket-counter.md).
@@ -59,8 +68,8 @@ class TicketService {
   // Nommage Free atomique : ticket-001, ticket-002… via le compteur unique
   // de la guilde (la même source que le placeholder Premium {number} — Free
   // et Premium partagent un seul compteur). Fail-closed à chaque étape :
-  // compteur absent/en échec ou rendu invalide => null => l'appelant garde
-  // le repli ticket-<userId> du transport, sans jamais bloquer la création.
+  // compteur absent/en échec ou rendu invalide => null. C9 : le transport ne
+  // fournit plus de repli, createTicket retourne alors TICKET_NAME_UNAVAILABLE.
   async resolveFreeChannelName(guildId) {
     if (!guildId || !this.counterRepository || !this.channelNamingService) return null;
     let number;
@@ -75,7 +84,7 @@ class TicketService {
   findOpen(guildId, userId) { return this.repository.findOpen(guildId, userId); }
   create(record) { return this.repository.create(record); }
 
-  async createTicket({ guildId, member, t = (key) => key }) {
+  async createTicket({ guildId, member, t = (key) => key, panelId = null, buttonIndex = null, panelRepository = null }) {
     const result = (created, code, details = {}) => ({
       created,
       code,
@@ -89,8 +98,58 @@ class TicketService {
     const config = await this.configService.read(guildId);
     if (!config[Key.ENABLED]) return result(false, "TICKETS_DISABLED");
 
-    const categoryId = config[Key.CATEGORY_ID];
-    const supportRoleId = config[Key.SUPPORT_ROLE_ID];
+    // ───────────────────────────────────────────────────────────────────────
+    // M8 — résolution de la catégorie et du rôle support.
+    //
+    // Si un panelId est fourni, la configuration vient de la LIGNE de
+    // public.ticket_panels, avec fallback bouton → panel :
+    //     buttons[i].category_id  ??  panel.category_id
+    //     buttons[i].support_role_id ?? panel.support_role_id
+    //
+    // Un panel absent ou désactivé est un REFUS, jamais un repli sur
+    // guild_configs : retomber silencieusement sur les défauts de guilde
+    // créerait un ticket dont la configuration ne correspond à aucun panel
+    // publié — exactement l'historique inventé que §12 et §14 interdisent.
+    // ───────────────────────────────────────────────────────────────────────
+    let categoryId = config[Key.CATEGORY_ID];
+    let supportRoleId = config[Key.SUPPORT_ROLE_ID];
+    let resolvedPanelId = null;
+
+    if (panelId !== null && panelId !== undefined && panelId !== "") {
+      const panels = panelRepository || this.panelRepository;
+      if (!panels) return result(false, "TICKET_PANEL_UNAVAILABLE");
+
+      let panel;
+      try {
+        panel = await panels.findActive(guildId, panelId);
+      } catch (_error) {
+        return result(false, "PERSISTENCE_ERROR");
+      }
+      if (!panel) return result(false, "TICKET_PANEL_UNAVAILABLE");
+
+      const target = resolveButtonTarget(panel, buttonIndex);
+      // ─────────────────────────────────────────────────────────────────────
+      // Indice hors bornes : REFUS strict.
+      //
+      // Un buttonIndex qui n'a jamais correspondu à un bouton du panel (un
+      // customId forgé, ou un reste d'un panel profondément remanié) ne doit
+      // JAMAIS pouvoir ouvrir un ticket. Aucun repli sur la catégorie du panel
+      // ni sur guild_configs : ce serait rendre valide n'importe quel indice.
+      //
+      // La compatibilité pendant une réédition est assurée EN AMONT, par
+      // l'ordre des écritures dans TicketPanelDeliveryService.redeliver :
+      // Discord est mis à jour AVANT la base, donc pendant la transition la
+      // base contient encore l'ancien état — un sur-ensemble en cas de
+      // réduction. Les boutons réellement publiés restent résolvables, et les
+      // boutons retirés ne sont plus cliquables.
+      // ─────────────────────────────────────────────────────────────────────
+      if (!target) return result(false, "TICKET_PANEL_UNAVAILABLE", { panelId: panel.id, buttonIndex });
+
+      categoryId = target.categoryId;
+      supportRoleId = target.supportRoleId;
+      resolvedPanelId = panel.id;
+    }
+
     if (!categoryId || !supportRoleId) {
       return result(false, "TICKET_CONFIG_INCOMPLETE", {
         categoryMissing: !categoryId,
@@ -138,7 +197,7 @@ class TicketService {
 
     // Nommage : format Premium personnalisé d'abord ; sinon nommage Free
     // atomique (ticket-001 via le compteur unique). Toute erreur de
-    // résolution => null => repli transport ticket-<userId> (fail-closed).
+    // résolution => null.
     let channelName = null;
     try {
       channelName = await this.resolvePremiumChannelName({ guildId, config, member: ticketMember, supportRole });
@@ -147,9 +206,20 @@ class TicketService {
       channelName = null;
     }
 
+    // C9 — §12 : AUCUN repli ticket-<userId>. Sans nom on s'arrête AVANT tout
+    // appel Discord : aucun salon orphelin, aucun nommage interdit, et
+    // l'utilisateur reçoit un code explicite au lieu d'un faux succès.
+    // Contrôle de présence uniquement (pas isValidTicketChannelName, dont la
+    // limite 89 est plus stricte que la sanitisation à 100 de
+    // TicketChannelNamingService.build et rejetterait des formats Premium
+    // valides) — la forme est déjà garantie par build().
+    if (typeof channelName !== "string" || channelName.trim() === "") {
+      return result(false, "TICKET_NAME_UNAVAILABLE");
+    }
+
     let channel;
     try {
-      channel = await this.transport.createTicketChannel({ category, member, supportRole, name: channelName || undefined });
+      channel = await this.transport.createTicketChannel({ category, member, supportRole, name: channelName });
     } catch (_error) {
       return result(false, "TICKET_CHANNEL_CREATION_FAILED");
     }
@@ -187,16 +257,40 @@ class TicketService {
       guild_id: guildId,
       user_id: member.id,
       channel_id: channel.id,
+      // M8 — décision validée : `category` reste "support" et n'est PAS
+      // refactorisé dans cette étape. L'origine réelle du ticket est portée par
+      // panel_id ; nettoyer `category` est un chantier distinct.
       category: "support",
       status: "open",
       closed: false,
+      // M8 — panel ayant ouvert le ticket. null quand l'ouverture ne vient
+      // d'aucun panel. Colonne nullable : les tickets antérieurs à M8 restent
+      // null, AUCUN backfill (on n'invente pas d'historique).
+      panel_id: resolvedPanelId,
     };
     try {
       const ticket = await this.create(record);
       this.ticketLog?.({action:"ticket_created",ticketChannelId:channel.id,userId:member.id}); return result(true, "TICKET_CREATED", { channelId: channel.id, ticket });
-    } catch (_error) {
-      await this.rollbackTicketChannel(channel.id, "persistence");
-      return result(false, "PERSISTENCE_ERROR", { channelId: channel.id });
+    } catch (error) {
+      // ─────────────────────────────────────────────────────────────────────
+      // M8 — anti double-ouverture.
+      //
+      // findOpen (SELECT) puis create (INSERT) sont deux allers-retours
+      // séparés : sur un double-clic, les deux passent le SELECT avant
+      // qu'aucun n'insère. C'est idx_tickets_open_unique — index unique partiel
+      // sur (guild_id, user_id) WHERE status IN ('open','claimed') — qui tranche.
+      //
+      // Le second INSERT échoue en 23505. Le salon Discord étant créé AVANT
+      // l'insert, il faut le nettoyer : c'est exactement le rôle de
+      // rollbackTicketChannel, déjà en place depuis P13 (B2).
+      //
+      // ⚠️ Le 23505 n'est traduit QUE sur l'INSERT. Sur un update (claim,
+      //    reopen) il signalerait autre chose et doit remonter — même règle
+      //    que M5 sur giveaway_entries.
+      // ─────────────────────────────────────────────────────────────────────
+      const uniqueViolation = error?.code === UNIQUE_VIOLATION;
+      await this.rollbackTicketChannel(channel.id, uniqueViolation ? "unique_violation" : "persistence");
+      return result(false, uniqueViolation ? "OPEN_TICKET_EXISTS" : "PERSISTENCE_ERROR", { channelId: channel.id });
     }
   }
 
@@ -227,7 +321,7 @@ class TicketService {
 
     let ticket;
     try {
-      ticket = await this.repository.findByChannel(channelId);
+      ticket = await this.repository.findByChannel(guildId, channelId);
     } catch (_error) {
       return result(false, "TICKET_CLOSE_FAILED");
     }
@@ -262,7 +356,7 @@ class TicketService {
 
     const closedAt = new Date().toISOString();
     try {
-      const updatedTicket = await this.repository.updateByChannel(channelId, { status: "closed", closed: true, closed_at: closedAt });
+      const updatedTicket = await this.repository.updateByChannel(guildId, channelId, { status: "closed", closed: true, closed_at: closedAt });
       const premium = await this.resolvePremium(guildId, config);
       const transcriptChannelId = premium?.[PKey.TRANSCRIPT_CHANNEL_ID] || config.ticket_log_channel_id;
       if (this.transcriptService) await this.transcriptService.deliver({ channelId, logChannelId: transcriptChannelId, transport: this.transport });
@@ -308,7 +402,7 @@ class TicketService {
 
     let ticket;
     try {
-      ticket = await this.repository.findByChannel(channelId);
+      ticket = await this.repository.findByChannel(guildId, channelId);
     } catch (_error) {
       return result(false, "TICKET_REOPEN_FAILED");
     }
@@ -340,7 +434,7 @@ class TicketService {
     if (!channelResult?.reopened) return result(false, channelResult?.code || "TICKET_REOPEN_FAILED");
 
     try {
-      const updatedTicket = await this.repository.updateByChannel(channelId, { status: "open", closed: false, closed_at: null });
+      const updatedTicket = await this.repository.updateByChannel(guildId, channelId, { status: "open", closed: false, closed_at: null });
       // P15 : notice de réouverture, sans composants — best-effort.
       await this.sendTicketNotice(channelId, t ? { description: t("tickets.reopenedNotice"), components: [] } : null);
       this.ticketLog?.({action:"ticket_reopened",ticketChannelId:channelId,userId:member.id}); return result(true, "TICKET_REOPENED", { ticket: updatedTicket });
@@ -362,7 +456,7 @@ class TicketService {
 
     let ticket;
     try {
-      ticket = await this.repository.findByChannel(channelId);
+      ticket = await this.repository.findByChannel(guildId, channelId);
     } catch (_error) {
       return result(false, "TICKET_DELETE_FAILED");
     }
@@ -394,7 +488,7 @@ class TicketService {
 
     const deletedAt = new Date().toISOString();
     try {
-      const updatedTicket = await this.repository.updateByChannel(channelId, { status: "deleted", closed: true, closed_at: deletedAt });
+      const updatedTicket = await this.repository.updateByChannel(guildId, channelId, { status: "deleted", closed: true, closed_at: deletedAt });
       this.ticketLog?.({action:"ticket_deleted",ticketChannelId:channelId,userId:member.id}); return result(true, "TICKET_DELETED", { ticket: updatedTicket, deletedAt });
     } catch (_error) {
       return result(false, "TICKET_DELETE_FAILED");
@@ -415,7 +509,7 @@ class TicketService {
 
     let ticket;
     try {
-      ticket = await this.repository.findByChannel(channelId);
+      ticket = await this.repository.findByChannel(guildId, channelId);
     } catch (_error) {
       return result(false, "TICKET_RENAME_FAILED");
     }
@@ -451,7 +545,7 @@ class TicketService {
     const result = (changed, code) => ({ changed, code, guildId: guildId || null, channelId: channelId || null, memberId: member?.id || null, targetMemberId: targetMemberId || null, details: {} });
     if (!guildId || !channelId || !member?.id || !targetMemberId) return result(false, "TICKET_MEMBER_NOT_FOUND");
     let ticket;
-    try { ticket = await this.repository.findByChannel(channelId); } catch (_error) { return result(false, "TICKET_MEMBER_ACCESS_FAILED"); }
+    try { ticket = await this.repository.findByChannel(guildId, channelId); } catch (_error) { return result(false, "TICKET_MEMBER_ACCESS_FAILED"); }
     if (!ticket) return result(false, "TICKET_NOT_FOUND");
     if (ticket.guild_id !== guildId) return result(false, "TICKET_GUILD_MISMATCH");
     if (ticket.status === "deleted") return result(false, "TICKET_ALREADY_DELETED");
@@ -472,13 +566,13 @@ class TicketService {
   async claimTicket({ guildId, channelId, member }) {
     const result=(claimed,code,details={})=>({claimed,code,guildId,channelId,memberId:member?.id||null,details});
     if(!guildId||!channelId||!member?.id)return result(false,"TICKET_NOT_FOUND");
-    let ticket; try{ticket=await this.repository.findByChannel(channelId);}catch(_error){return result(false,"TICKET_CLAIM_FAILED");}
+    let ticket; try{ticket=await this.repository.findByChannel(guildId, channelId);}catch(_error){return result(false,"TICKET_CLAIM_FAILED");}
     if(!ticket)return result(false,"TICKET_NOT_FOUND"); if(ticket.guild_id!==guildId)return result(false,"TICKET_GUILD_MISMATCH"); if(ticket.status==="deleted")return result(false,"TICKET_ALREADY_DELETED"); if(ticket.status==="closed"||ticket.closed)return result(false,"TICKET_ALREADY_CLOSED"); if(ticket.status==="claimed")return result(false,"TICKET_ALREADY_CLAIMED");
     let roleId; try{roleId=(await this.configService.read(guildId))[Key.SUPPORT_ROLE_ID];}catch(_error){return result(false,"TICKET_CLAIM_FAILED");}
     let isSupport; try{isSupport=Boolean(roleId&&await this.transport.isMemberInRole(member,roleId));}catch(_error){return result(false,"TICKET_CLAIM_FAILED");}
     if(!isSupport)return result(false,"TICKET_UNAUTHORIZED");
     let channel;try{channel=await this.transport.claimTicketChannel(channelId,ticket.user_id,member.id);}catch(_error){return result(false,"TICKET_CLAIM_FAILED");}if(!channel?.claimed)return result(false,"TICKET_CLAIM_FAILED");
-    try{const updatedTicket=await this.repository.updateByChannel(channelId,{status:"claimed"});this.ticketLog?.({action:"ticket_claimed",ticketChannelId:channelId,userId:member.id});return result(true,"TICKET_CLAIMED",{ticket:updatedTicket});}catch(_error){return result(false,"TICKET_CLAIM_FAILED");}
+    try{const updatedTicket=await this.repository.updateByChannel(guildId,channelId,{status:"claimed"});this.ticketLog?.({action:"ticket_claimed",ticketChannelId:channelId,userId:member.id});return result(true,"TICKET_CLAIMED",{ticket:updatedTicket});}catch(_error){return result(false,"TICKET_CLAIM_FAILED");}
   }
 }
 

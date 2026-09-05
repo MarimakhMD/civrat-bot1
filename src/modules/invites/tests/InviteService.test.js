@@ -38,23 +38,22 @@ test("findUsedInvite returns null when no cache or no increase", () => {
 test("addInvite, removeInvite, setInvitedBy, getInviteStats", async () => {
   const repo = new InMemoryInviteStatsRepository();
   const svc = new InviteService({ statsRepository: repo });
-  await svc.addInvite("u1", "g1");
+  // B2 — chaque attribution nomme le membre invité : la PK (guild_id,
+  // invited_id) interdit de créditer un inviteur sans dire qui il a invité.
+  await svc.addInvite("u1", "g1", "m1");
   let stats = await svc.getInviteStats("u1", "g1");
   assert.equal(stats.current, 1);
-  await svc.addInvite("u1", "g1");
+  await svc.addInvite("u1", "g1", "m2");
   stats = await svc.getInviteStats("u1", "g1");
   assert.equal(stats.current, 2);
-  await svc.removeInvite("u1", "g1");
+  await svc.removeInvite("u1", "g1", "m2");
   stats = await svc.getInviteStats("u1", "g1");
   assert.equal(stats.current, 1);
   await svc.setInvitedBy("m1", "g1", "u1");
   const invited = await repo.getInviteStats("m1", "g1");
-  // InMemory stores invitedBy per member, not per inviter, so check via getInviteStats for member
-  // Actually getInviteStats for m1 should show invitedBy
+  assert.equal(invited.invitedBy, "u1", "le lien invité → inviteur doit être lisible");
   const memberStats = await svc.getInviteStats("m1", "g1");
-  // InMemory's getInviteStats for m1 will show 0 invites but we set invitedBy
-  // The repo's getInviteStats for m1 returns invitedBy
-  assert.ok(true); // just ensure no throw
+  assert.equal(memberStats.invitedBy, "u1");
 });
 
 test("refreshGuildInvites caches invites", async () => {

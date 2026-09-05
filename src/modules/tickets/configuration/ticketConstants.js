@@ -29,6 +29,29 @@ const TicketComponentId = Object.freeze({
   REMOVE_MEMBER: "civrat:v1:tickets:remove-member",
   REMOVE_MEMBER_SUBMIT: "civrat:v1:tickets:remove-member:submit",
   CLAIM: "civrat:v1:tickets:claim",
+  // ─────────────────────────────────────────────────────────────────────────
+  // M8 — panels persistants (public.ticket_panels).
+  //
+  // CREATE reste enregistré en matcher EXACT : c'est le customId des panels
+  // envoyés AVANT M8, qui vivent toujours sur les serveurs. Sa route ne crée
+  // plus rien et renvoie TICKET_PANEL_LEGACY, qui demande de recréer le panel.
+  //
+  // CREATE_PREFIX porte le nouveau format :
+  //     civrat:v1:tickets:create:<panelId>:<buttonIndex>
+  // Le InteractionRegistry accepte un matcher `prefix` à côté d'un matcher
+  // `exact` sur le même préfixe (overlaps() renvoie false dans les deux sens) :
+  // les deux routes coexistent et sont résolues distinctement.
+  //
+  // ⚠️ Extraction par slice(CREATE_PREFIX.length), JAMAIS par split(":")[1] :
+  //    le préfixe contient déjà quatre « : », donc split(":")[1] vaudrait "v1".
+  // ─────────────────────────────────────────────────────────────────────────
+  CREATE_PREFIX: "civrat:v1:tickets:create:",
+  PANELS_SECTION: "civrat:v1:tickets:panels",
+  PANELS_CREATE: "civrat:v1:tickets:panels:create",
+  PANELS_DETAIL_PREFIX: "civrat:v1:tickets:panels:detail:",
+  PANELS_EDIT_PREFIX: "civrat:v1:tickets:panels:edit:",
+  PANELS_EDIT_SUBMIT_PREFIX: "civrat:v1:tickets:panels:edit:submit:",
+  PANELS_DELETE_PREFIX: "civrat:v1:tickets:panels:delete:",
   // Phase 10.2 — sous-vue /settings « Personnalisation Premium » du panneau.
   PREMIUM_SECTION: "civrat:v1:tickets:premium",
   PREMIUM_EDIT: "civrat:v1:tickets:premium:edit",
@@ -45,4 +68,31 @@ const TicketComponentId = Object.freeze({
   PREMIUM_EDIT_FORMAT_SUBMIT: "civrat:v1:tickets:premium:edit-format:submit",
 });
 
-module.exports = { TicketConfigKey, TicketComponentId };
+// ─────────────────────────────────────────────────────────────────────────
+// M8 — plafonds validés.
+//
+// MAX_PANELS_PER_GUILD = 10 : la sous-vue de gestion liste les panels en
+// boutons. Discord n'autorise que 5 lignes × 5 boutons, donc 10 panels + Back
+// + Créer tiennent sur une seule page sans pagination.
+//
+// MAX_BUTTONS_PER_PANEL = 5 : une ligne d'action. Davantage de types passe par
+// davantage de panels, pas par un panel plus dense. C'est aussi la garantie que
+// rows() (qui LÈVE au-delà de 5 lignes) ne peut pas être dépassé par un panel.
+// ─────────────────────────────────────────────────────────────────────────
+const MAX_PANELS_PER_GUILD = 10;
+const MAX_BUTTONS_PER_PANEL = 5;
+
+/** Identifiants Discord : 15 à 22 chiffres. Même règle que les role_rewards (A3). */
+const DISCORD_ID_PATTERN = /^\d{15,22}$/;
+
+/** Styles de bouton acceptés. `link` est EXCLU : il n'a pas de customId. */
+const PANEL_BUTTON_STYLES = Object.freeze(["primary", "secondary", "success", "danger"]);
+
+module.exports = {
+  TicketConfigKey,
+  TicketComponentId,
+  MAX_PANELS_PER_GUILD,
+  MAX_BUTTONS_PER_PANEL,
+  DISCORD_ID_PATTERN,
+  PANEL_BUTTON_STYLES,
+};

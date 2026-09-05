@@ -8,9 +8,10 @@ function mockRepo(overrides = {}) {
   const suggestions = new Map();
   const votes = new Map();
   return {
-    create: async ({ guildId, channelId, authorId, content }) => {
+    // C2 : signature et colonnes alignées sur le dépôt Supabase réel.
+    create: async ({ guildId, userId, content }) => {
       const id = String(suggestions.size + 1);
-      const rec = { id, guild_id: guildId, channel_id: channelId, author_id: authorId, content, status: "pending", up_votes: 0, down_votes: 0 };
+      const rec = { id, guild_id: guildId, user_id: userId, content, status: "pending", upvotes: 0, downvotes: 0 };
       suggestions.set(id, rec);
       return rec;
     },
@@ -36,21 +37,20 @@ function mockRepo(overrides = {}) {
       suggestions.delete(String(id));
       return { deleted: true };
     },
-    supabase: { from: () => ({ update: () => ({ eq: () => Promise.resolve({}) }) }) },
     ...overrides,
   };
 }
 
 test("create respects disabled and invalid content", async () => {
-  const svc = new SuggestionService({ configService: { read: async () => ({ suggestion_enabled: false }) }, repository: mockRepo() });
+  const svc = new SuggestionService({ configService: { read: async () => ({ suggestions_enabled: false }) }, repository: mockRepo() });
   assert.equal((await svc.create({ guildId: "g1", authorId: "u1", content: "hi" })).code, "SUGGESTION_DISABLED");
-  const svc2 = new SuggestionService({ configService: { read: async () => ({ suggestion_enabled: true, suggestion_channel_id: "c1" }) }, repository: mockRepo() });
+  const svc2 = new SuggestionService({ configService: { read: async () => ({ suggestions_enabled: true, suggestions_channel_id: "c1" }) }, repository: mockRepo() });
   assert.equal((await svc2.create({ guildId: "g1", authorId: "u1", content: "" })).code, "SUGGESTION_INVALID_CONTENT");
   assert.equal((await svc2.create({ guildId: "g1", authorId: "u1", content: "a" })).code, "SUGGESTION_INVALID_CONTENT");
 });
 
 test("create succeeds with channel fallback", async () => {
-  const svc = new SuggestionService({ configService: { read: async () => ({ suggestion_enabled: true, suggestion_channel_id: "c1" }) }, repository: mockRepo() });
+  const svc = new SuggestionService({ configService: { read: async () => ({ suggestions_enabled: true, suggestions_channel_id: "c1" }) }, repository: mockRepo() });
   const res = await svc.create({ guildId: "g1", authorId: "u1", content: "hello" });
   assert.equal(res.ok, true);
   assert.equal(res.code, "SUGGESTION_CREATED");
@@ -58,7 +58,7 @@ test("create succeeds with channel fallback", async () => {
 
 test("vote handles not found and already voted", async () => {
   const repo = mockRepo();
-  const svc = new SuggestionService({ configService: { read: async () => ({ suggestion_enabled: true, suggestion_channel_id: "c1" }) }, repository: repo });
+  const svc = new SuggestionService({ configService: { read: async () => ({ suggestions_enabled: true, suggestions_channel_id: "c1" }) }, repository: repo });
   const created = await svc.create({ guildId: "g1", authorId: "u1", content: "hello" });
   const id = created.suggestion.id;
   const v1 = await svc.vote({ guildId: "g1", suggestionId: id, userId: "u2", value: 1 });
@@ -71,7 +71,7 @@ test("vote handles not found and already voted", async () => {
 
 test("staff approve/reject/delete", async () => {
   const repo = mockRepo();
-  const svc = new SuggestionService({ configService: { read: async () => ({ suggestion_enabled: true, suggestion_channel_id: "c1" }) }, repository: repo });
+  const svc = new SuggestionService({ configService: { read: async () => ({ suggestions_enabled: true, suggestions_channel_id: "c1" }) }, repository: repo });
   const created = await svc.create({ guildId: "g1", authorId: "u1", content: "hello" });
   const id = created.suggestion.id;
   const appr = await svc.staffAction({ guildId: "g1", suggestionId: id, action: "approve", actorId: "mod1" });
@@ -85,7 +85,7 @@ test("staff approve/reject/delete", async () => {
 });
 
 test("staff invalid action", async () => {
-  const svc = new SuggestionService({ configService: { read: async () => ({ suggestion_enabled: true, suggestion_channel_id: "c1" }) }, repository: mockRepo() });
+  const svc = new SuggestionService({ configService: { read: async () => ({ suggestions_enabled: true, suggestions_channel_id: "c1" }) }, repository: mockRepo() });
   const created = await svc.create({ guildId: "g1", authorId: "u1", content: "hello" });
   assert.equal((await svc.staffAction({ guildId: "g1", suggestionId: created.suggestion.id, action: "invalid", actorId: "mod1" })).code, "SUGGESTION_INVALID_ACTION");
 });

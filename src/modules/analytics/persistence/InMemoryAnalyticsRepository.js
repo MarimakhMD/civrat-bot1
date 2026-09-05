@@ -16,7 +16,10 @@ class InMemoryAnalyticsRepository {
     const list = this.events.get(guildId) || [];
     const messages = list.filter((e) => e.type === "message").length;
     const members = new Set(list.filter((e) => e.type === "member").map((e) => e.userId)).size;
-    return { messages, members, total: list.length };
+    // P10 — parité de contrat avec SupabaseAnalyticsRepository : le dépôt en
+    // mémoire ne pagine jamais, donc le drapeau de troncature est toujours
+    // faux. Les valeurs calculées sont strictement inchangées.
+    return { messages, members, total: list.length, membersTruncated: false };
   }
 
   async getEvents(guildId, type = null, limit = 100) {
@@ -42,7 +45,7 @@ class InMemoryAnalyticsRepository {
         if (e.type === "member" && e.userId) memberIds.add(e.userId);
       }
     }
-    return { messages, members: memberIds.size, servers: guildIds.size };
+    return { messages, members: memberIds.size, servers: guildIds.size, truncated: false };
   }
 
   clear(guildId) {
