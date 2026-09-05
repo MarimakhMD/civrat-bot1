@@ -133,7 +133,7 @@ function closeTicketService({ config, record }) {
     configService: { read: async () => config },
     repository: {
       findByChannel: async () => ({ guild_id: "g", user_id: "u", status: "open", closed: false }),
-      updateByChannel: async (_c, updates) => updates,
+      updateByChannel: async (_guildId, _channelId, updates) => updates,
     },
     transcriptService: { deliver: async (args) => { calls.deliver.push(args); return { delivered: true, code: "TRANSCRIPT_SENT" }; } },
     premiumConfigResolver: record === undefined ? null : makeResolver(record),

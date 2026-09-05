@@ -166,11 +166,33 @@ function createGuildSettingsRuntime({ legacyConfigService, logger = null }) {
   // la chaîne Supabase (client PRIVILÉGIÉ supabaseAdmin) > InMemory ne dépend
   // pas du contexte d'interaction.
   //
-  // ⚠️ Volontairement différent du reste de ce bloc : SupabaseTicketRepository
-  //    utilise le client non privilégié `supabase` parce que public.tickets
-  //    porte encore la policy `public / ALL`. public.ticket_panels est en RLS
-  //    variante A (aucune policy), donc il exige supabaseAdmin — sinon chaque
-  //    écriture échouerait en 42501.
+  // ─────────────────────────────────────────────────────────────────────────
+  // 4G C1 — commentaire corrigé : il affirmait l'inverse de la réalité.
+  //
+  // src/config/database.js construit UN SEUL client et l'expose sous les deux
+  // noms :
+  //     const credential = serviceRoleKey || anonKey || null;
+  //     const client = createClientImpl(url, credential, {...});
+  //     return { supabase: client, supabaseAdmin: privileged ? client : null };
+  //
+  // Donc, dès que SUPABASE_SERVICE_ROLE_KEY est définie — ce qui est OBLIGATOIRE
+  // depuis M8, puisque public.ticket_panels est en RLS variante A (0 policy) et
+  // exige le client privilégié — `supabase` EST `supabaseAdmin` : même objet,
+  // clé de service. Vérifié par exécution : `supabase === supabaseAdmin` → true.
+  //
+  // Conséquence à connaître : `service_role` a BYPASSRLS. Les accès à
+  // public.tickets ne sont donc PAS filtrés par la RLS, et le cloisonnement par
+  // guilde repose sur le code — d'où le filtre guild_id ajouté dans la requête
+  // findByChannel (4G C2) en plus de la garde applicative.
+  //
+  // Sans SUPABASE_SERVICE_ROLE_KEY, `supabase` retombe sur la clé anon et
+  // `supabaseAdmin` vaut null : depuis la migration TICKETS-RLS-A, toute
+  // opération tickets échoue alors en 42501 (fail-closed, aucune donnée
+  // exposée) et les panels basculent sur InMemory.
+  //
+  // Le renommage de la variable est volontairement évité : `supabase` est le
+  // nom exporté par config/database et partagé avec giveaways et suggestions.
+  // ─────────────────────────────────────────────────────────────────────────
   const ticketPanelRepository = getTicketPanelRepository();
   registerTickets({
     registry,

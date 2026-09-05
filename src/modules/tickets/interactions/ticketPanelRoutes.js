@@ -1,6 +1,6 @@
 "use strict";
 
-const { TicketComponentId: Id, MAX_PANELS_PER_GUILD, MAX_BUTTONS_PER_PANEL, PANEL_BUTTON_STYLES } = require("../configuration/ticketConstants");
+const { TicketComponentId: Id, MAX_PANELS_PER_GUILD, MAX_BUTTONS_PER_PANEL, PANEL_BUTTON_STYLES, DISCORD_ID_PATTERN } = require("../configuration/ticketConstants");
 const { TicketPanelService } = require("../services/TicketPanelService");
 const { TicketPanelDeliveryService } = require("../services/TicketPanelDeliveryService");
 const { DiscordTicketTransport } = require("../../../adapters/discord/DiscordTicketTransport");
@@ -195,6 +195,20 @@ async function submitPanelEdit(context) {
   const fields = context.envelope.fields || {};
   const categoryId = (fields.category_id || "").trim() || panel.categoryId;
   const supportRoleId = (fields.support_role_id || "").trim() || panel.supportRoleId;
+  // ───────────────────────────────────────────────────────────────────────
+  // 4G C3 — ces deux valeurs viennent d'une modale : un client modifié peut y
+  // mettre n'importe quelle chaîne. On valide le format snowflake AVANT toute
+  // écriture, sur le même principe que validateButtons juste en dessous.
+  //
+  // Sans cela, build() ne vérifie que la non-vacuité et publiait un panel dont
+  // la catégorie ou le rôle n'existe pas : le panel s'affichait, puis chaque
+  // ouverture échouait en TICKET_CONFIG_INCOMPLETE. Le transport étant scopé
+  // par guilde, il n'y avait pas de fuite cross-guilde — seulement un panel
+  // mort. Le refus est maintenant explicite et immédiat.
+  // ───────────────────────────────────────────────────────────────────────
+  if (!DISCORD_ID_PATTERN.test(categoryId) || !DISCORD_ID_PATTERN.test(supportRoleId)) {
+    return replyError(context, "TICKET_INVALID_DISCORD_ID");
+  }
   const firstLabel = (fields.button_label || "").trim();
   const firstEmoji = (fields.button_emoji || "").trim() || null;
 

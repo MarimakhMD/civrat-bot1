@@ -5,7 +5,7 @@ const {
   toDomainPanel,
   normalizeButtons,
 } = require("./TicketPanelRepository");
-const { MAX_PANELS_PER_GUILD } = require("../configuration/ticketConstants");
+const { MAX_PANELS_PER_GUILD, DISCORD_ID_PATTERN } = require("../configuration/ticketConstants");
 
 /**
  * M8 — Dépôt des panels de tickets sur public.ticket_panels (Supabase).
@@ -88,6 +88,14 @@ class SupabaseTicketPanelRepository extends TicketPanelRepository {
     if (!guildId || !channelId || !messageId || !categoryId || !supportRoleId) {
       throw new TypeError("SupabaseTicketPanelRepository.create requires guildId, channelId, messageId, categoryId and supportRoleId");
     }
+    // 4G C3 — la catégorie et le rôle du PANEL doivent être des snowflakes.
+    // normalizeButtons le faisait déjà pour les surcharges PAR BOUTON ; le
+    // niveau panel ne le faisait pas, ce qui permettait d'écrire n'importe
+    // quelle chaîne. Les colonnes étant NOT NULL, une valeur invalide est
+    // refusée, jamais remplacée par null.
+    if (!DISCORD_ID_PATTERN.test(String(categoryId)) || !DISCORD_ID_PATTERN.test(String(supportRoleId))) {
+      throw new TypeError("SupabaseTicketPanelRepository.create requires categoryId and supportRoleId to be Discord snowflakes");
+    }
 
     const { data, error } = await this._table()
       .insert({
@@ -169,10 +177,28 @@ class SupabaseTicketPanelRepository extends TicketPanelRepository {
     if (!guildId || panelId === undefined || panelId === null || panelId === "") return null;
 
     const payload = {};
-    if (updates.channelId !== undefined) payload.channel_id = String(updates.channelId);
-    if (updates.messageId !== undefined) payload.message_id = String(updates.messageId);
-    if (updates.categoryId !== undefined) payload.category_id = String(updates.categoryId);
-    if (updates.supportRoleId !== undefined) payload.support_role_id = String(updates.supportRoleId);
+      if (updates.channelId !== undefined) payload.channel_id = String(updates.channelId);
+      if (updates.messageId !== undefined) payload.message_id = String(updates.messageId);
+      // ─────────────────────────────────────────────────────────────────────
+      // 4G C3 — refus strict d'un identifiant qui n'est pas un snowflake.
+      //
+      // Ces deux valeurs arrivent d'une modale : un client modifié peut y
+      // mettre n'importe quelle chaîne. Avant, `String(updates.categoryId)`
+      // l'écrivait telle quelle, alors que normalizeButtons neutralisait déjà
+      // la même valeur au niveau BOUTON — asymétrie corrigée ici.
+      //
+      // Les colonnes sont NOT NULL : on ne peut pas retomber sur null comme
+      // pour un bouton. On refuse donc toute la mise à jour (return null),
+      // ce que TicketPanelDeliveryService traduit déjà en échec propre.
+      // ─────────────────────────────────────────────────────────────────────
+      if (updates.categoryId !== undefined) {
+        if (!DISCORD_ID_PATTERN.test(String(updates.categoryId))) return null;
+        payload.category_id = String(updates.categoryId);
+      }
+      if (updates.supportRoleId !== undefined) {
+        if (!DISCORD_ID_PATTERN.test(String(updates.supportRoleId))) return null;
+        payload.support_role_id = String(updates.supportRoleId);
+      }
     if (updates.buttons !== undefined) payload.buttons = normalizeButtons(updates.buttons);
     if (Object.keys(payload).length === 0) return this.findActive(guildId, panelId);
 

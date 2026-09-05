@@ -321,7 +321,7 @@ class TicketService {
 
     let ticket;
     try {
-      ticket = await this.repository.findByChannel(channelId);
+      ticket = await this.repository.findByChannel(guildId, channelId);
     } catch (_error) {
       return result(false, "TICKET_CLOSE_FAILED");
     }
@@ -356,7 +356,7 @@ class TicketService {
 
     const closedAt = new Date().toISOString();
     try {
-      const updatedTicket = await this.repository.updateByChannel(channelId, { status: "closed", closed: true, closed_at: closedAt });
+      const updatedTicket = await this.repository.updateByChannel(guildId, channelId, { status: "closed", closed: true, closed_at: closedAt });
       const premium = await this.resolvePremium(guildId, config);
       const transcriptChannelId = premium?.[PKey.TRANSCRIPT_CHANNEL_ID] || config.ticket_log_channel_id;
       if (this.transcriptService) await this.transcriptService.deliver({ channelId, logChannelId: transcriptChannelId, transport: this.transport });
@@ -402,7 +402,7 @@ class TicketService {
 
     let ticket;
     try {
-      ticket = await this.repository.findByChannel(channelId);
+      ticket = await this.repository.findByChannel(guildId, channelId);
     } catch (_error) {
       return result(false, "TICKET_REOPEN_FAILED");
     }
@@ -434,7 +434,7 @@ class TicketService {
     if (!channelResult?.reopened) return result(false, channelResult?.code || "TICKET_REOPEN_FAILED");
 
     try {
-      const updatedTicket = await this.repository.updateByChannel(channelId, { status: "open", closed: false, closed_at: null });
+      const updatedTicket = await this.repository.updateByChannel(guildId, channelId, { status: "open", closed: false, closed_at: null });
       // P15 : notice de réouverture, sans composants — best-effort.
       await this.sendTicketNotice(channelId, t ? { description: t("tickets.reopenedNotice"), components: [] } : null);
       this.ticketLog?.({action:"ticket_reopened",ticketChannelId:channelId,userId:member.id}); return result(true, "TICKET_REOPENED", { ticket: updatedTicket });
@@ -456,7 +456,7 @@ class TicketService {
 
     let ticket;
     try {
-      ticket = await this.repository.findByChannel(channelId);
+      ticket = await this.repository.findByChannel(guildId, channelId);
     } catch (_error) {
       return result(false, "TICKET_DELETE_FAILED");
     }
@@ -488,7 +488,7 @@ class TicketService {
 
     const deletedAt = new Date().toISOString();
     try {
-      const updatedTicket = await this.repository.updateByChannel(channelId, { status: "deleted", closed: true, closed_at: deletedAt });
+      const updatedTicket = await this.repository.updateByChannel(guildId, channelId, { status: "deleted", closed: true, closed_at: deletedAt });
       this.ticketLog?.({action:"ticket_deleted",ticketChannelId:channelId,userId:member.id}); return result(true, "TICKET_DELETED", { ticket: updatedTicket, deletedAt });
     } catch (_error) {
       return result(false, "TICKET_DELETE_FAILED");
@@ -509,7 +509,7 @@ class TicketService {
 
     let ticket;
     try {
-      ticket = await this.repository.findByChannel(channelId);
+      ticket = await this.repository.findByChannel(guildId, channelId);
     } catch (_error) {
       return result(false, "TICKET_RENAME_FAILED");
     }
@@ -545,7 +545,7 @@ class TicketService {
     const result = (changed, code) => ({ changed, code, guildId: guildId || null, channelId: channelId || null, memberId: member?.id || null, targetMemberId: targetMemberId || null, details: {} });
     if (!guildId || !channelId || !member?.id || !targetMemberId) return result(false, "TICKET_MEMBER_NOT_FOUND");
     let ticket;
-    try { ticket = await this.repository.findByChannel(channelId); } catch (_error) { return result(false, "TICKET_MEMBER_ACCESS_FAILED"); }
+    try { ticket = await this.repository.findByChannel(guildId, channelId); } catch (_error) { return result(false, "TICKET_MEMBER_ACCESS_FAILED"); }
     if (!ticket) return result(false, "TICKET_NOT_FOUND");
     if (ticket.guild_id !== guildId) return result(false, "TICKET_GUILD_MISMATCH");
     if (ticket.status === "deleted") return result(false, "TICKET_ALREADY_DELETED");
@@ -566,13 +566,13 @@ class TicketService {
   async claimTicket({ guildId, channelId, member }) {
     const result=(claimed,code,details={})=>({claimed,code,guildId,channelId,memberId:member?.id||null,details});
     if(!guildId||!channelId||!member?.id)return result(false,"TICKET_NOT_FOUND");
-    let ticket; try{ticket=await this.repository.findByChannel(channelId);}catch(_error){return result(false,"TICKET_CLAIM_FAILED");}
+    let ticket; try{ticket=await this.repository.findByChannel(guildId, channelId);}catch(_error){return result(false,"TICKET_CLAIM_FAILED");}
     if(!ticket)return result(false,"TICKET_NOT_FOUND"); if(ticket.guild_id!==guildId)return result(false,"TICKET_GUILD_MISMATCH"); if(ticket.status==="deleted")return result(false,"TICKET_ALREADY_DELETED"); if(ticket.status==="closed"||ticket.closed)return result(false,"TICKET_ALREADY_CLOSED"); if(ticket.status==="claimed")return result(false,"TICKET_ALREADY_CLAIMED");
     let roleId; try{roleId=(await this.configService.read(guildId))[Key.SUPPORT_ROLE_ID];}catch(_error){return result(false,"TICKET_CLAIM_FAILED");}
     let isSupport; try{isSupport=Boolean(roleId&&await this.transport.isMemberInRole(member,roleId));}catch(_error){return result(false,"TICKET_CLAIM_FAILED");}
     if(!isSupport)return result(false,"TICKET_UNAUTHORIZED");
     let channel;try{channel=await this.transport.claimTicketChannel(channelId,ticket.user_id,member.id);}catch(_error){return result(false,"TICKET_CLAIM_FAILED");}if(!channel?.claimed)return result(false,"TICKET_CLAIM_FAILED");
-    try{const updatedTicket=await this.repository.updateByChannel(channelId,{status:"claimed"});this.ticketLog?.({action:"ticket_claimed",ticketChannelId:channelId,userId:member.id});return result(true,"TICKET_CLAIMED",{ticket:updatedTicket});}catch(_error){return result(false,"TICKET_CLAIM_FAILED");}
+    try{const updatedTicket=await this.repository.updateByChannel(guildId,channelId,{status:"claimed"});this.ticketLog?.({action:"ticket_claimed",ticketChannelId:channelId,userId:member.id});return result(true,"TICKET_CLAIMED",{ticket:updatedTicket});}catch(_error){return result(false,"TICKET_CLAIM_FAILED");}
   }
 }
 

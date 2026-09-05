@@ -16,8 +16,8 @@ const assert = require("node:assert/strict");
 // rôle que la table guild_configs en production). g : sans langue => FR par
 // défaut ; gen : language "en" => panneau en anglais (P17).
 const store = {
-  g: { tickets_enabled: true, ticket_category_id: "cat-1", ticket_support_role_id: "role-1" },
-  gen: { tickets_enabled: true, ticket_category_id: "cat-1", ticket_support_role_id: "role-1", language: "en" },
+  g: { tickets_enabled: true, ticket_category_id: "111111111111111111", ticket_support_role_id: "222222222222222222" },
+  gen: { tickets_enabled: true, ticket_category_id: "111111111111111111", ticket_support_role_id: "222222222222222222", language: "en" },
 };
 const guildConfigModule = require("../../src/services/guildConfig");
 const originalGet = guildConfigModule.getGuildConfig;
@@ -43,10 +43,10 @@ function makeInteraction({ guildId, channel }) {
     },
     messages: { fetch: async (id) => messages.get(id) || null },
   };
-  const category = { id: "cat-1", isTextBased: () => false };
+  const category = { id: "111111111111111111", isTextBased: () => false };
   const guild = {
     id: guildId,
-    channels: { cache: { get: (id) => (id === "cat-1" ? category : id === textChannel.id ? textChannel : null) } },
+    channels: { cache: { get: (id) => (id === "111111111111111111" ? category : id === textChannel.id ? textChannel : null) } },
   };
   const captured = { reply: null };
   return { guild, channel: textChannel, reply: async (p) => { captured.reply = p; }, captured, sent, edited };
@@ -82,7 +82,7 @@ test("/ticketpanel delivers the panel to the invoking text channel, never the ca
   assert.equal(payload.components[0].components[0].data.label, "Créer un ticket");
   assert.ok(interaction.captured.reply, "the command must reply to the admin");
   assert.ok(interaction.captured.reply.content.includes("chan-home"), "reply must name the invoking text channel");
-  assert.ok(!interaction.captured.reply.content.includes("cat-1"), "reply must never name the category");
+  assert.ok(!interaction.captured.reply.content.includes("111111111111111111"), "reply must never name the category");
   // Et surtout : la cible de l'envoi était le salon texte (preuve par le mock ci-dessus — la catégorie n'a pas de send()).
 });
 
@@ -125,7 +125,7 @@ test("regression B1: a category destination is structurally refused by the trans
   const { TicketPanelDeliveryService } = require("../../src/modules/tickets/services/TicketPanelDeliveryService");
   const { DiscordTicketTransport } = require("../../src/adapters/discord/DiscordTicketTransport");
   const { InMemoryTicketPanelRepository } = require("../../src/modules/tickets/persistence/TicketPanelRepository");
-  const category = { id: "cat-1", isTextBased: () => false };
+  const category = { id: "111111111111111111", isTextBased: () => false };
   const guild = { channels: { cache: { get: () => category } } };
   const delivery = new TicketPanelDeliveryService({
     panelService: {
@@ -138,7 +138,7 @@ test("regression B1: a category destination is structurally refused by the trans
   const result = await delivery.deliver({
     guildId: "g",
     t: (k) => k,
-    channelId: "cat-1",
+    channelId: "111111111111111111",
     draft: { categoryId: "c", supportRoleId: "r", buttons: [{ label: "l" }] },
   });
   assert.equal(result.delivered, false);

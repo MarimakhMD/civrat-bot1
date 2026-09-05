@@ -118,6 +118,11 @@ class InMemoryTicketPanelRepository extends TicketPanelRepository {
     if (!guildId || !channelId || !messageId || !categoryId || !supportRoleId) {
       throw new TypeError("InMemoryTicketPanelRepository.create requires guildId, channelId, messageId, categoryId and supportRoleId");
     }
+    // 4G C3 — même contrat que le dépôt Supabase : snowflakes obligatoires au
+    // niveau PANEL, comme normalizeButtons l'impose déjà au niveau BOUTON.
+    if (!DISCORD_ID_PATTERN.test(String(categoryId)) || !DISCORD_ID_PATTERN.test(String(supportRoleId))) {
+      throw new TypeError("InMemoryTicketPanelRepository.create requires categoryId and supportRoleId to be Discord snowflakes");
+    }
     const id = String(this.nextId++);
     const now = new Date().toISOString();
     const row = {
@@ -163,8 +168,17 @@ class InMemoryTicketPanelRepository extends TicketPanelRepository {
     const next = { ...row, updated_at: new Date().toISOString() };
     if (updates.channelId !== undefined) next.channel_id = String(updates.channelId);
     if (updates.messageId !== undefined) next.message_id = String(updates.messageId);
-    if (updates.categoryId !== undefined) next.category_id = String(updates.categoryId);
-    if (updates.supportRoleId !== undefined) next.support_role_id = String(updates.supportRoleId);
+    // 4G C3 — refus strict d'un non-snowflake, avant toute mutation : `next`
+    // n'est une copie et n'est écrite dans this.rows qu'à la fin, donc un
+    // retour anticipé ne laisse aucune écriture partielle.
+    if (updates.categoryId !== undefined) {
+      if (!DISCORD_ID_PATTERN.test(String(updates.categoryId))) return null;
+      next.category_id = String(updates.categoryId);
+    }
+    if (updates.supportRoleId !== undefined) {
+      if (!DISCORD_ID_PATTERN.test(String(updates.supportRoleId))) return null;
+      next.support_role_id = String(updates.supportRoleId);
+    }
     if (updates.buttons !== undefined) next.buttons = normalizeButtons(updates.buttons);
     this.rows.set(key, next);
     return toDomainPanel(next);
