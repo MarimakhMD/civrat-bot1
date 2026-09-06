@@ -166,6 +166,10 @@ const WELCOME_GOODBYE_KEYS = Object.freeze([
   "welcome_dm_enabled",
   "welcome_dm_message",
   "welcome_template_id",
+  // 4E/E2 — la colonne existe déjà en base (vérifié par l'utilisateur) :
+  // welcome_image_enabled boolean. Sans cette entrée, le rejet strict A1
+  // (DCA2) refuserait toute écriture du toggle.
+  "welcome_image_enabled",
   "goodbye_enabled",
   "goodbye_channel_id",
   "goodbye_message",

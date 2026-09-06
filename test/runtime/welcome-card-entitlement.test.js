@@ -39,6 +39,9 @@ const member = (guildId) => ({
 
 const CONFIG = Object.freeze({
   welcome_enabled: true,
+  // 4E/E2 — ce fichier couvre la matrice de décision ENTITLEMENT : le toggle
+  // est activé pour que seul l'entitlement varie.
+  welcome_image_enabled: true,
   welcome_channel_id: "channel-1",
   welcome_message: "Bienvenue {mention} sur {server}",
   welcome_embed_enabled: false,

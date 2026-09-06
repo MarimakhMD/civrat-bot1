@@ -2,7 +2,7 @@
 const { normalizeWelcomeDeliveryError } = require("./WelcomeDeliveryError");
 const { buildWelcomeCardRequest } = require("../image/pipeline/buildWelcomeCardRequest");
 const { EntitlementDecision, EntitlementFeature } = require("../../../core/entitlements");
-const { WelcomeGoodbyeConfigKey: Key, WelcomeGoodbyeLogType: LogType } = require("../configuration/welcomeGoodbyeConstants");
+const { WelcomeGoodbyeConfigKey: Key, WelcomeGoodbyeLogType: LogType, WelcomeCardSkipReason: SkipReason } = require("../configuration/welcomeGoodbyeConstants");
 const DEFAULT_TEMPLATE_ID = "template-1";
 class WelcomeDeliveryService {
   // Phase 2 (P6) — `entitlementService` rejoint la composition. Il reste
@@ -39,6 +39,22 @@ class WelcomeDeliveryService {
   }
   async #buildCardFiles(member,config,subtitleText){
     if(!this.imagePipeline||!this.templateRegistry)return null;
+    // 4E/E2 — condition 1/2 : le TOGGLE `welcome_image_enabled`.
+    //
+    // Vérifié AVANT l'entitlement, pour deux raisons : une image désactivée par
+    // l'admin ne doit pas provoquer d'appel au backend Premium, et le motif
+    // journalisé doit dire « désactivée » plutôt que « Premium requis ».
+    //
+    // Comparaison STRICTE à `true` : `undefined` (ligne ou colonne absente),
+    // `null` et toute valeur non booléenne comptent comme DÉSACTIVÉ. C'est le
+    // fail-closed déjà appliqué à l'entitlement — une valeur douteuse n'accorde
+    // jamais une fonctionnalité Premium.
+    if(config?.[Key.WELCOME_IMAGE_ENABLED]!==true){
+      this.logService?.delivery({type:LogType.WELCOME_CARD_SKIPPED,guildId:member.guildId,reason:SkipReason.IMAGE_DISABLED});
+      return null;
+    }
+    // Condition 2/2 : l'entitlement WELCOME_IMAGE. Les deux conditions sont
+    // cumulatives — aucune ne suffit seule.
     const entitlement=await this.#resolveCardEntitlement(member.guildId);
     if(!entitlement.granted){
       // Une guilde Free n'est pas une anomalie : journalisée en info. Un

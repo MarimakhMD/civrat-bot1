@@ -8,5 +8,8 @@ const WelcomeGoodbyeConfigSchema = Object.freeze({
   [Key.WELCOME_COLOR]: { type: "hex-color" }, [Key.GOODBYE_COLOR]: { type: "hex-color" },
   [Key.WELCOME_DM]: { type: "boolean" }, [Key.WELCOME_DM_MESSAGE]: { type: "string", nullable: true, maxLength: 4000 },
   [Key.WELCOME_TEMPLATE]: { type: "enum", values: ["template-1", "template-2", "template-3"] },
+  // 4E/E2 — boolean strict : la validation refuse toute valeur non booléenne,
+  // donc ni "true" (chaîne) ni 1 ne peuvent activer l'image.
+  [Key.WELCOME_IMAGE_ENABLED]: { type: "boolean" },
 });
 module.exports = { WelcomeGoodbyeConfigSchema };

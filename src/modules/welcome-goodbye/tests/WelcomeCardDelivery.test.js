@@ -48,6 +48,9 @@ function createDelivery({ failPipeline = false } = {}) {
 function welcomeConfig(overrides = {}) {
   return {
     welcome_enabled: true,
+    // 4E/E2 — le toggle est une condition NÉCESSAIRE à la carte : ces tests
+    // exercent le chemin entitlement, ils doivent donc l'activer.
+    welcome_image_enabled: true,
     welcome_channel_id: "channel-1",
     welcome_message: "Bienvenue {mention} sur {server} ! ({membercount} membres)",
     welcome_embed_enabled: false,
