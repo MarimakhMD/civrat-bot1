@@ -18,6 +18,14 @@
 const ANALYTICS_COUNT_PAGE_SIZE = 1000;
 const ANALYTICS_DISTINCT_SCAN_CAP = 50000;
 
+// 4D/R7 — plafond de getEvents. P10 avait sécurisé les COMPTEURS
+// (#countRows en HEAD et #countDistinct paginé) mais laissait getEvents passer
+// son `limit` tel quel à `.limit()`. Le plafond est fixé SOUS le `db-max-rows`
+// de PostgREST (1000 par défaut sur Supabase) : au-delà, le serveur tronquerait
+// silencieusement et le plafond affiché dans le code serait un mensonge.
+const ANALYTICS_EVENTS_DEFAULT_LIMIT = 100;
+const ANALYTICS_EVENTS_MAX_LIMIT = 500;
+
 class SupabaseAnalyticsRepository {
   constructor({ supabase }) {
     if (!supabase || typeof supabase.from !== "function") {
@@ -84,8 +92,13 @@ class SupabaseAnalyticsRepository {
     return { messages, members: distinctMembers.count, total, membersTruncated: distinctMembers.truncated };
   }
 
-  async getEvents(guildId, type = null, limit = 100) {
-    let query = this.supabase.from("analytics_events").select("*").eq("guild_id", guildId).order("created_at", { ascending: false }).limit(limit);
+  async getEvents(guildId, type = null, limit = ANALYTICS_EVENTS_DEFAULT_LIMIT) {
+    // 4D/R7 — clamp appliqué DANS le dépôt : le comportement reste identique
+    // pour toute valeur raisonnable, seule une demande déraisonnable est réduite.
+    const bounded = Number.isFinite(limit) && limit > 0
+      ? Math.min(Math.trunc(limit), ANALYTICS_EVENTS_MAX_LIMIT)
+      : ANALYTICS_EVENTS_DEFAULT_LIMIT;
+    let query = this.supabase.from("analytics_events").select("*").eq("guild_id", guildId).order("created_at", { ascending: false }).limit(bounded);
     if (type) query = query.eq("event_type", type);
     const { data, error } = await query;
     if (error) throw error;

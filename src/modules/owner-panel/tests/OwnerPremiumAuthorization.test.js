@@ -70,7 +70,8 @@ function fixture() {
     setStatus: async function setStatus(guildId) { this.writes.push(["setStatus", guildId]); },
     findFeature: async () => null,
     listFeatures: async () => [],
-    listAll: async () => [],
+    // 4D/R1 — listAll renvoie { rows, totalRows, truncated }.
+    listAll: async () => ({ rows: [], totalRows: 0, truncated: false }),
   };
   const entitlementService = new EntitlementService({
     repository: entitlementRepository,

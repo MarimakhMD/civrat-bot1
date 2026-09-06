@@ -17,6 +17,9 @@
 // le nouveau Owner peut rester listé admin — sans effet de sécurité (le
 // service traite Owner ≠ Admin et exclut déjà l'Owner des cibles).
 
+// 4D/R3 — plafond de lecture de `civrat_admins` (voir readAdminIds).
+const ADMIN_IDS_LIMIT = 100;
+
 class SupabaseCivratIdentityRepository {
   constructor({ supabase }) {
     if (!supabase || typeof supabase.from !== "function") {
@@ -39,7 +42,17 @@ class SupabaseCivratIdentityRepository {
   }
 
   async readAdminIds() {
-    const { data, error } = await this.supabase.from("civrat_admins").select("user_id");
+    // 4D/R3 — `.limit()` défensif. La table `civrat_admins` est petite par
+    // nature (les Admins CIVRAT), mais sans plafond un `select()` nu est soumis
+    // au `db-max-rows` de PostgREST (1000 par défaut sur Supabase) et serait
+    // tronqué SILENCIEUSEMENT : des Admins perdraient leurs droits sans aucune
+    // erreur. 100 est très au-delà du besoin réel et reste bien sous le plafond
+    // serveur, donc la liste est toujours complète.
+    const { data, error } = await this.supabase
+      .from("civrat_admins")
+      .select("user_id")
+      .order("user_id", { ascending: true })
+      .limit(ADMIN_IDS_LIMIT);
     if (error) throw error;
     return (data || []).map((row) => row.user_id);
   }

@@ -62,6 +62,21 @@ const UNIQUE_VIOLATION = "23505";
  */
 const MAX_CAS_ATTEMPTS = 40;
 
+// ───────────────────────────────────────────────────────────────
+// 4D/R6 — plafond du classement XP.
+//
+// `getLeaderboard` passait `limit` tel quel à `.limit()` : le CONTRAT
+// acceptait n'importe quelle valeur, même si les appelants de production
+// passent 5 ou 10. Sans plafond, un `.limit(1e9)` serait de toute façon ramené
+// à `db-max-rows` par le serveur, silencieusement.
+//
+// Valeurs alignées sur `SupabaseInviteStatsRepository` (B2), qui clampait déjà
+// avec LEADERBOARD_DEFAULT_LIMIT = 10 / LEADERBOARD_MAX_LIMIT = 100 : deux
+// dépôts frères exposant `getLeaderboard` doivent borner de la même façon.
+// ───────────────────────────────────────────────────────────────
+const LEADERBOARD_DEFAULT_LIMIT = 10;
+const LEADERBOARD_MAX_LIMIT = 100;
+
 /** Erreur typée : la table member_xp est indisponible (migration non appliquée). */
 class MemberXpUnavailableError extends Error {
   constructor(cause) {
@@ -167,13 +182,18 @@ class SupabaseXPRepository extends XPRepository {
    * base : l'index (guild_id, xp DESC) de la migration B3 les couvre, et aucun
    * scan complet n'est renvoyé au bot.
    */
-  async getLeaderboard(guildId, limit = 10) {
+  async getLeaderboard(guildId, limit = LEADERBOARD_DEFAULT_LIMIT) {
+    // 4D/R6 — clamp appliqué DANS le dépôt, comme en B2 pour les invitations.
+    const bounded = Number.isFinite(limit) && limit > 0
+      ? Math.min(Math.trunc(limit), LEADERBOARD_MAX_LIMIT)
+      : LEADERBOARD_DEFAULT_LIMIT;
+
     const { data, error } = await this._table()
       .select("user_id, xp, level")
       .eq("guild_id", guildId)
       .order("xp", { ascending: false })
       .order("level", { ascending: false })
-      .limit(limit);
+      .limit(bounded);
 
     if (error) {
       if (isUndefinedTable(error)) throw new MemberXpUnavailableError(error);

@@ -31,9 +31,10 @@ class TracedEntitlementRepository {
     return this.rows.filter((row) => row.guild_id === guildId);
   }
 
+  // 4D/R1 — listAll renvoie { rows, totalRows, truncated }.
   async listAll() {
     this.calls.push(["listAll"]);
-    return [...this.rows];
+    return { rows: [...this.rows], totalRows: this.rows.length, truncated: false };
   }
 
   async activate(record) {

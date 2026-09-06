@@ -58,6 +58,7 @@ function createFakeSupabase({ errors = {} } = {}) {
       count: state.count,
       selected: state.selected,
       order: state.order ? { ...state.order } : null,
+      limit: state.limit,
     });
     const kind = state.mode || "select";
     const forced = takeError(kind);
@@ -101,7 +102,7 @@ function createFakeSupabase({ errors = {} } = {}) {
 
   function from(table) {
     assert.equal(table, TICKET_PANELS_TABLE, "le dépôt doit viser public.ticket_panels");
-    const state = { filters: [], mode: null, payload: null, head: false, count: null, selected: null, order: null };
+    const state = { filters: [], mode: null, payload: null, head: false, count: null, selected: null, order: null, limit: null };
     const api = {
       select(columns, options) {
         state.selected = columns;
@@ -113,6 +114,8 @@ function createFakeSupabase({ errors = {} } = {}) {
       insert(payload) { state.mode = "insert"; state.payload = payload; return api; },
       update(payload) { state.mode = "update"; state.payload = payload; return api; },
       order(column, options) { state.order = { column, ascending: options?.ascending !== false }; return api; },
+      // 4D/R4 — le dépôt borne listActive : la borne est journalisée pour être assertée.
+      limit(value) { state.limit = value; return api; },
       // La vraie RLS ne concède aucun DELETE à service_role.
       delete() { throw new Error("public.ticket_panels est sans DELETE : la désactivation passe par is_active"); },
       async single() {
@@ -166,6 +169,10 @@ test("M8 Supabase: listActive orders by id in the database (bigint, not lexicogr
   await repo.listActive("g1");
   const last = fake.calls[fake.calls.length - 1];
   assert.deepEqual(last.order, { column: "id", ascending: true });
+  // 4D/R4 — la borne métier est reprise DANS la requête, pas seulement imposée
+  // par la règle de création : sans elle, un select() nu resterait soumis au
+  // db-max-rows de PostgREST et serait tronqué silencieusement.
+  assert.equal(last.limit, MAX_PANELS_PER_GUILD, "listActive doit borner la lecture à MAX_PANELS_PER_GUILD");
 });
 
 test("M8 Supabase: countActive uses HEAD + count=exact, transferring no row", async () => {

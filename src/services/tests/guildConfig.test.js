@@ -16,11 +16,15 @@ function fakeClient({ read = { data: null, error: null }, write = null, all = { 
   const calls = [];
   const client = {
     from(table) {
-      const call = { table, operation: "read", payload: null, options: null, guildId: null };
+      const call = { table, operation: "read", payload: null, options: null, guildId: null, order: null, range: null };
       calls.push(call);
       const builder = {
         select() { return this; },
         eq(_column, value) { call.guildId = value; return this; },
+        // 4D/R2 — getAllGuildConfigs pagine : le faux client doit accepter
+        // .order() et .range() et les journaliser pour qu'on puisse les asserter.
+        order(column, options) { call.order = { column, ascending: options?.ascending !== false }; return this; },
+        range(from, to) { call.range = { from, to }; return this; },
         upsert(payload, options) {
           call.operation = "write";
           call.payload = payload;

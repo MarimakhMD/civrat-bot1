@@ -136,7 +136,13 @@ class SupabaseTicketPanelRepository extends TicketPanelRepository {
       .eq("guild_id", String(guildId))
       .eq("is_active", true)
       // id est un bigint : le tri est demandé à la base, qui trie numériquement.
-      .order("id", { ascending: true });
+      .order("id", { ascending: true })
+      // 4D/R4 — `.limit()` défensif. La règle métier MAX_PANELS_PER_GUILD (M8)
+      // borne déjà le nombre de panels ACTIFS, mais cette borne n'était pas dans
+      // la requête : sans elle, un `.select()` nu reste soumis au `db-max-rows`
+      // de PostgREST et pourrait être tronqué silencieusement. La borne est donc
+      // reprise dans le SQL, ce qui ne change rien au comportement légitime.
+      .limit(MAX_PANELS_PER_GUILD);
 
     if (error) this._wrap(error);
     return (Array.isArray(data) ? data : []).map(toDomainPanel);

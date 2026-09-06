@@ -79,8 +79,9 @@ class AdminSystemService {
     let entitlements = { available: false, records: null };
     if (this.entitlementService && typeof this.entitlementService.listPremiumServers === "function") {
       try {
-        const records = await this.entitlementService.listPremiumServers();
-        entitlements = { available: true, records: records.length };
+        // 4D/R1 — listPremiumServers renvoie désormais { servers, truncated }.
+        const { servers, truncated } = await this.entitlementService.listPremiumServers();
+        entitlements = { available: true, records: servers.length, truncated: Boolean(truncated) };
       } catch (error) {
         this.logger?.warn?.("admin_diagnostics_entitlements_unavailable", {
           code: error?.code || error?.name || "UNKNOWN",

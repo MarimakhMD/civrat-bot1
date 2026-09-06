@@ -35,9 +35,11 @@ class MemoryRepository {
     return this.rows.filter((row) => row.guild_id === guildId);
   }
 
+  // 4D/R1 — listAll renvoie { rows, totalRows, truncated }.
   async listAll() {
     this.calls.push(["listAll"]);
-    return this.rows.map((row) => ({ ...row }));
+    const rows = this.rows.map((row) => ({ ...row }));
+    return { rows, totalRows: rows.length, truncated: false };
   }
 
   async activate(record) {
@@ -204,7 +206,8 @@ test("technical rows from persistence cannot downgrade the effective permanent s
       ends_at: null,
     },
   ]);
-  const servers = await new EntitlementService({ repository }).listPremiumServers();
+  // 4D/R1 — listPremiumServers renvoie { servers, totalRows, truncated }.
+  const { servers } = await new EntitlementService({ repository }).listPremiumServers();
   const technical = servers.filter((server) => server.guildId === TECHNICAL_PREMIUM_GUILD_ID);
   assert.equal(technical.length, 1);
   assert.equal(technical[0].active, true);
