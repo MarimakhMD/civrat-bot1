@@ -115,6 +115,9 @@ function fakeSupabase(responses = []) {
   };
 }
 
+/** 4G-5 — réponse de la vérification de parenté, consommée avant toute opération enfant. */
+const PARENT_GIVEAWAY = { data: { id: "1", guild_id: "g1", active: true, status: "active", winners_count: 1, channel_id: "c1", title: "p" }, error: null };
+
 const postgrestError = (code, message) => ({ code, message, details: null, hint: null });
 
 const validCreate = {
@@ -230,7 +233,7 @@ test("closeIfActive pose les 3 champs de clôture ET la condition active=true", 
   const supabase = fakeSupabase([{ data: [{ id: "1", active: false, status: "ended" }], error: null }]);
   const repo = new SupabaseGiveawayRepository({ supabase });
 
-  const closed = await repo.closeIfActive("1");
+  const closed = await repo.closeIfActive("g1", "1");
 
   assert.equal(closed, true);
   const call = supabase.calls[0];
@@ -238,7 +241,8 @@ test("closeIfActive pose les 3 champs de clôture ET la condition active=true", 
   assert.equal(call.op, "update");
   // La condition .eq("active", true) est ce qui rend la clôture atomique :
   // c'est elle qui fait renvoyer 0 ligne à un second draw concurrent.
-  assert.deepEqual(call.filters, [["id", "1"], ["active", true]]);
+  // 4G-5 — guild_id fait partie du WHERE : c'est le cloisonnement.
+  assert.deepEqual(call.filters, [["guild_id", "g1"], ["id", "1"], ["active", true]]);
   assert.equal(call.payload.status, "ended");
   assert.equal(call.payload.active, false);
   assert.ok(!Number.isNaN(Date.parse(call.payload.ended_at)), "ended_at doit être un horodatage valide");
@@ -249,7 +253,7 @@ test("closeIfActive renvoie false quand le giveaway est déjà clos", async () =
   const supabase = fakeSupabase([{ data: [], error: null }]);
   const repo = new SupabaseGiveawayRepository({ supabase });
 
-  assert.equal(await repo.closeIfActive("1"), false);
+  assert.equal(await repo.closeIfActive("g1", "1"), false);
 });
 
 test("closeIfActive propage une erreur réelle au lieu de la cacher", async () => {
@@ -257,7 +261,7 @@ test("closeIfActive propage une erreur réelle au lieu de la cacher", async () =
   const supabase = fakeSupabase([{ data: null, error: failure }]);
   const repo = new SupabaseGiveawayRepository({ supabase });
 
-  const thrown = await repo.closeIfActive("1").then(() => null, (error) => error);
+  const thrown = await repo.closeIfActive("g1", "1").then(() => null, (error) => error);
   assert.equal(thrown, failure);
 });
 
@@ -265,7 +269,7 @@ test("closeIfActive ne laisse PAS active à true — sinon le giveaway resterait
   const supabase = fakeSupabase([{ data: [{}], error: null }]);
   const repo = new SupabaseGiveawayRepository({ supabase });
 
-  await repo.closeIfActive("1");
+  await repo.closeIfActive("g1", "1");
 
   assert.equal(supabase.calls[0].payload.active, false);
 });
@@ -283,14 +287,17 @@ test("close() inconditionnel a disparu du dépôt", () => {
 
 test("join insère exactement les 2 colonnes réelles de giveaway_entries", async () => {
   const supabase = fakeSupabase([
+    PARENT_GIVEAWAY,
     { data: { giveaway_id: "1", user_id: "u1" }, error: null },
   ]);
   const repo = new SupabaseGiveawayRepository({ supabase });
 
-  const result = await repo.join("1", "u1");
+  const result = await repo.join("g1", "1", "u1");
 
   assert.equal(result.alreadyJoined, false);
-  const call = supabase.calls[0];
+  // 4G-5 — calls[0] est la vérification de parenté sur giveaways.
+  assert.equal(supabase.calls[0].table, "giveaways");
+  const call = supabase.calls[1];
   assert.equal(call.table, "giveaway_entries");
   assert.equal(call.op, "insert");
   // Ni guild_id (dupliquerait giveaways.guild_id), ni created_at (défaut now()).
@@ -299,23 +306,25 @@ test("join insère exactement les 2 colonnes réelles de giveaway_entries", asyn
 });
 
 test("join refuse giveawayId ou userId manquant avant tout appel réseau", async () => {
-  const supabase = fakeSupabase([]);
+  const supabase = fakeSupabase([
+    PARENT_GIVEAWAY,]);
   const repo = new SupabaseGiveawayRepository({ supabase });
 
-  await assert.rejects(() => repo.join(undefined, "u1"), /giveawayId/);
-  await assert.rejects(() => repo.join("", "u1"), /giveawayId/);
-  await assert.rejects(() => repo.join("1", ""), /userId/);
-  await assert.rejects(() => repo.join("1", undefined), /userId/);
+  await assert.rejects(() => repo.join("g1", undefined, "u1"), /giveawayId/);
+  await assert.rejects(() => repo.join("g1", "", "u1"), /giveawayId/);
+  await assert.rejects(() => repo.join("g1", "1", ""), /userId/);
+  await assert.rejects(() => repo.join("g1", "1", undefined), /userId/);
   assert.equal(supabase.calls.length, 0, "aucune requête ne doit partir");
 });
 
 test("listEntries : table giveaway_entries inaccessible lève GIVEAWAY_ENTRIES_UNAVAILABLE", async () => {
   const supabase = fakeSupabase([
+    PARENT_GIVEAWAY,
     { data: null, error: postgrestError("42P01", 'relation "public.giveaway_entries" does not exist') },
   ]);
   const repo = new SupabaseGiveawayRepository({ supabase });
 
-  const thrown = await repo.join("1", "u1").then(() => null, (error) => error);
+  const thrown = await repo.join("g1", "1", "u1").then(() => null, (error) => error);
 
   assert.ok(thrown instanceof GiveawayEntriesUnavailableError);
   assert.equal(thrown.code, "GIVEAWAY_ENTRIES_UNAVAILABLE");
@@ -323,21 +332,22 @@ test("listEntries : table giveaway_entries inaccessible lève GIVEAWAY_ENTRIES_U
 
 test("listEntries et draw signalent aussi l'absence de giveaway_entries", async () => {
   const missing = { data: null, error: postgrestError("42P01", "relation does not exist") };
-  const repoA = new SupabaseGiveawayRepository({ supabase: fakeSupabase([missing]) });
-  const thrownA = await repoA.listEntries("1").then(() => null, (error) => error);
+  const repoA = new SupabaseGiveawayRepository({ supabase: fakeSupabase([PARENT_GIVEAWAY, missing]) });
+  const thrownA = await repoA.listEntries("g1", "1").then(() => null, (error) => error);
   assert.ok(thrownA instanceof GiveawayEntriesUnavailableError);
 
-  const repoB = new SupabaseGiveawayRepository({ supabase: fakeSupabase([missing]) });
-  const thrownB = await repoB.draw("1").then(() => null, (error) => error);
+  const repoB = new SupabaseGiveawayRepository({ supabase: fakeSupabase([PARENT_GIVEAWAY, missing]) });
+  const thrownB = await repoB.draw("g1", "1").then(() => null, (error) => error);
   assert.ok(thrownB instanceof GiveawayEntriesUnavailableError);
 });
 
 test("join : une erreur PostgREST réelle est propagée telle quelle", async () => {
   const failure = postgrestError("42501", "permission denied for table giveaway_entries");
-  const supabase = fakeSupabase([{ data: null, error: failure }]);
+  const supabase = fakeSupabase([
+    PARENT_GIVEAWAY,{ data: null, error: failure }]);
   const repo = new SupabaseGiveawayRepository({ supabase });
 
-  const thrown = await repo.join("1", "u1").then(() => null, (error) => error);
+  const thrown = await repo.join("g1", "1", "u1").then(() => null, (error) => error);
 
   assert.equal(thrown, failure);
   assert.ok(!(thrown instanceof GiveawayEntriesUnavailableError));
@@ -345,23 +355,24 @@ test("join : une erreur PostgREST réelle est propagée telle quelle", async () 
 
 test("join : repli textuel accepté seulement sans code, sur la formulation exacte", async () => {
   const noCode = { message: 'relation "public.giveaway_entries" does not exist' };
-  const repoA = new SupabaseGiveawayRepository({ supabase: fakeSupabase([{ data: null, error: noCode }]) });
-  const thrownA = await repoA.join("1", "u1").then(() => null, (error) => error);
+  const repoA = new SupabaseGiveawayRepository({ supabase: fakeSupabase([PARENT_GIVEAWAY, { data: null, error: noCode }]) });
+  const thrownA = await repoA.join("g1", "1", "u1").then(() => null, (error) => error);
   assert.ok(thrownA instanceof GiveawayEntriesUnavailableError);
 
   // Même absence de code, mais message de permission mentionnant la table :
   // ce n'est PAS une table absente.
   const denied = { message: "permission denied for table giveaway_entries" };
-  const repoB = new SupabaseGiveawayRepository({ supabase: fakeSupabase([{ data: null, error: denied }]) });
-  const thrownB = await repoB.join("1", "u1").then(() => null, (error) => error);
+  const repoB = new SupabaseGiveawayRepository({ supabase: fakeSupabase([PARENT_GIVEAWAY, { data: null, error: denied }]) });
+  const thrownB = await repoB.join("g1", "1", "u1").then(() => null, (error) => error);
   assert.equal(thrownB, denied);
 });
 
 test("join : violation d'unicité (23505) renvoie alreadyJoined", async () => {
-  const supabase = fakeSupabase([{ data: null, error: postgrestError("23505", "duplicate key") }]);
+  const supabase = fakeSupabase([
+    PARENT_GIVEAWAY,{ data: null, error: postgrestError("23505", "duplicate key") }]);
   const repo = new SupabaseGiveawayRepository({ supabase });
 
-  const result = await repo.join("1", "u1");
+  const result = await repo.join("g1", "1", "u1");
   assert.deepEqual(result, { alreadyJoined: true });
 });
 
@@ -372,7 +383,7 @@ test("join : le 23505 n'est traduit QUE sur l'insert", async () => {
   const supabase = fakeSupabase([{ data: null, error: failure }]);
   const repo = new SupabaseGiveawayRepository({ supabase });
 
-  const thrown = await repo.closeIfActive("1").then(() => null, (error) => error);
+  const thrown = await repo.closeIfActive("g1", "1").then(() => null, (error) => error);
   assert.equal(thrown, failure);
 });
 
@@ -388,31 +399,33 @@ const page = (n, offset = 0) => ({
 test("listEntries paginé : 1200 participations → 1200, aucune troncature silencieuse", async () => {
   // Sans .range(), PostgREST applique db-max-rows (1000) et les 200 derniers
   // participants disparaissaient du tirage SANS AUCUNE ERREUR.
-  const supabase = fakeSupabase([page(ENTRIES_PAGE_SIZE, 0), page(200, 1000)]);
+  const supabase = fakeSupabase([
+    PARENT_GIVEAWAY,page(ENTRIES_PAGE_SIZE, 0), page(200, 1000)]);
   const repo = new SupabaseGiveawayRepository({ supabase });
 
-  const { entries, total, truncated } = await repo.listEntries("1");
+  const { entries, total, truncated } = await repo.listEntries("g1", "1");
 
   assert.equal(entries.length, 1200);
   assert.equal(total, 1200);
   assert.equal(truncated, false);
-  assert.equal(supabase.calls.length, 2, "deux lots de 1000 puis 200");
-  assert.deepEqual(supabase.calls[0].range, [0, ENTRIES_PAGE_SIZE - 1]);
-  assert.deepEqual(supabase.calls[1].range, [ENTRIES_PAGE_SIZE, 2 * ENTRIES_PAGE_SIZE - 1]);
+  assert.equal(supabase.calls.length, 3, "parenté + deux lots de 1000 puis 200");
+  assert.deepEqual(supabase.calls[1].range, [0, ENTRIES_PAGE_SIZE - 1]);
+  assert.deepEqual(supabase.calls[2].range, [ENTRIES_PAGE_SIZE, 2 * ENTRIES_PAGE_SIZE - 1]);
 });
 
 test("listEntries impose un ORDER BY stable — sinon la pagination saute des lignes", async () => {
   // Sans ORDER BY, Postgres ne garantit aucun ordre d'une page à l'autre :
   // une pagination sur un ordre instable peut sauter ou dupliquer des lignes.
-  const supabase = fakeSupabase([page(3)]);
+  const supabase = fakeSupabase([
+    PARENT_GIVEAWAY,page(3)]);
   const repo = new SupabaseGiveawayRepository({ supabase });
 
-  await repo.listEntries("1");
+  await repo.listEntries("g1", "1");
 
-  const orders = supabase.calls[0].orders.map(([column]) => column);
+  const orders = supabase.calls[1].orders.map(([column]) => column);
   assert.deepEqual(orders, ["created_at", "user_id"]);
-  assert.deepEqual(supabase.calls[0].filters, [["giveaway_id", "1"]]);
-  assert.equal(supabase.calls[0].columns, "user_id");
+  assert.deepEqual(supabase.calls[1].filters, [["giveaway_id", "1"]]);
+  assert.equal(supabase.calls[1].columns, "user_id");
 });
 
 test("listEntries : au plafond de 50 000, truncated=true et total est un PLANCHER", async () => {
@@ -420,19 +433,20 @@ test("listEntries : au plafond de 50 000, truncated=true et total est un PLANCHE
   const supabase = fakeSupabase(Array.from({ length: 60 }, () => fullPage));
   const repo = new SupabaseGiveawayRepository({ supabase });
 
-  const { entries, total, truncated } = await repo.listEntries("1");
+  const { entries, total, truncated } = await repo.listEntries("g1", "1");
 
   assert.equal(truncated, true, "le plafond doit être signalé");
   assert.equal(total, ENTRIES_SCAN_CAP);
   assert.equal(entries.length, ENTRIES_SCAN_CAP);
-  assert.equal(supabase.calls.length, ENTRIES_SCAN_CAP / ENTRIES_PAGE_SIZE, "la lecture s'arrête au plafond");
+  assert.equal(supabase.calls.length, 1 + ENTRIES_SCAN_CAP / ENTRIES_PAGE_SIZE, "parenté + lecture qui s'arrête au plafond");
 });
 
 test("listEntries : 0 participation renvoie une liste vide, non tronquée", async () => {
-  const supabase = fakeSupabase([{ data: [], error: null }]);
+  const supabase = fakeSupabase([
+    PARENT_GIVEAWAY,{ data: [], error: null }]);
   const repo = new SupabaseGiveawayRepository({ supabase });
 
-  const result = await repo.listEntries("1");
+  const result = await repo.listEntries("g1", "1");
   assert.deepEqual(result, { entries: [], total: 0, truncated: false });
 });
 
@@ -447,25 +461,30 @@ function fixedEntriesSupabase(rows) {
     eq() { return query; },
     order() { return query; },
     range() { return query; },
+    // 4G-5 — la vérification de parenté interroge `giveaways` : ce double
+    // doit donc répondre aux DEUX tables, pas seulement à giveaway_entries.
+    maybeSingle() { return Promise.resolve({ data: { id: "1", guild_id: "g1", active: true, status: "active" }, error: null }); },
     then(resolve) { return Promise.resolve({ data: rows, error: null }).then(resolve); },
   };
   return { from: () => ({ select: () => query }) };
 }
 
 test("draw : 0 participant renvoie une liste vide", async () => {
-  const supabase = fakeSupabase([{ data: [], error: null }]);
+  const supabase = fakeSupabase([
+    PARENT_GIVEAWAY,{ data: [], error: null }]);
   const repo = new SupabaseGiveawayRepository({ supabase });
 
-  const result = await repo.draw("1", { winnersCount: 3 });
+  const result = await repo.draw("g1", "1", { winnersCount: 3 });
   assert.deepEqual(result.winners, []);
   assert.equal(result.entriesTotal, 0);
 });
 
 test("draw : participants < winners_count → tous les disponibles sont tirés (K3)", async () => {
-  const supabase = fakeSupabase([page(2)]);
+  const supabase = fakeSupabase([
+    PARENT_GIVEAWAY,page(2)]);
   const repo = new SupabaseGiveawayRepository({ supabase });
 
-  const result = await repo.draw("1", { winnersCount: 5 });
+  const result = await repo.draw("g1", "1", { winnersCount: 5 });
 
   assert.equal(result.winners.length, 2, "pas de gagnant fantôme, pas d'erreur");
   assert.deepEqual([...result.winners].sort(), ["u0", "u1"]);
@@ -473,18 +492,20 @@ test("draw : participants < winners_count → tous les disponibles sont tirés (
 
 test("draw : winners_count absent, nul ou invalide retombe sur 1 (défaut réel de la colonne)", async () => {
   for (const winnersCount of [undefined, null, 0, -3, "abc"]) {
-    const supabase = fakeSupabase([page(4)]);
+    const supabase = fakeSupabase([
+    PARENT_GIVEAWAY,page(4)]);
     const repo = new SupabaseGiveawayRepository({ supabase });
-    const result = await repo.draw("1", { winnersCount });
+    const result = await repo.draw("g1", "1", { winnersCount });
     assert.equal(result.winners.length, 1, `winners_count=${String(winnersCount)}`);
   }
 });
 
 test("draw : winners_count fractionnaire est tronqué, jamais arrondi au supérieur", async () => {
-  const supabase = fakeSupabase([page(10)]);
+  const supabase = fakeSupabase([
+    PARENT_GIVEAWAY,page(10)]);
   const repo = new SupabaseGiveawayRepository({ supabase });
 
-  const result = await repo.draw("1", { winnersCount: 2.9 });
+  const result = await repo.draw("g1", "1", { winnersCount: 2.9 });
   assert.equal(result.winners.length, 2);
 });
 
@@ -498,7 +519,7 @@ test("draw : le mélange est équiprobable (Fisher–Yates, pas sort(random))", 
   const N = 20000;
   const first = { A: 0, B: 0, C: 0, D: 0, E: 0 };
   for (let i = 0; i < N; i++) {
-    const { winners } = await repo.draw("1", { winnersCount: 1 });
+    const { winners } = await repo.draw("g1", "1", { winnersCount: 1 });
     first[winners[0]] += 1;
   }
   const shares = Object.values(first).map((c) => (100 * c) / N);
@@ -515,7 +536,7 @@ test("draw : tous les participants restent éligibles", async () => {
   const repo = new SupabaseGiveawayRepository({ supabase: fixedEntriesSupabase(rows) });
   const seen = new Set();
   for (let i = 0; i < 300; i++) {
-    const { winners } = await repo.draw("1", { winnersCount: 3 });
+    const { winners } = await repo.draw("g1", "1", { winnersCount: 3 });
     assert.equal(winners.length, 3);
     assert.deepEqual([...winners].sort(), ["A", "B", "C"], "aucun participant perdu ni dupliqué");
     seen.add(winners.join(""));
@@ -523,14 +544,26 @@ test("draw : tous les participants restent éligibles", async () => {
   assert.ok(seen.size >= 4, `seulement ${seen.size} permutations observées sur 6 possibles`);
 });
 
-test("draw ne lit plus le giveaway : winners_count vient du service", async () => {
-  // L'ancien draw() rappelait findById(), donc une seconde lecture inutile.
-  const supabase = fakeSupabase([page(2)]);
+test("draw ne relit pas winners_count en base : il vient du service", async () => {
+  // L'ancien draw() rappelait findById() pour y lire winners_count.
+  //
+  // ⚠️ 4G-5 — attente mise à jour, intention CONSERVÉE et renforcée. draw()
+  // lit désormais le giveaway UNE fois, pour prouver la parenté. Ce qui doit
+  // rester vrai, c'est que winners_count vient de l'ARGUMENT : le parent est
+  // construit avec un winners_count différent (99) et c'est l'argument (2)
+  // qui gagne.
+  const supabase = fakeSupabase([
+    { data: { ...PARENT_GIVEAWAY.data, winners_count: 99 }, error: null },
+    page(2),
+  ]);
   const repo = new SupabaseGiveawayRepository({ supabase });
 
-  await repo.draw("1", { winnersCount: 2 });
+  const result = await repo.draw("g1", "1", { winnersCount: 2 });
 
-  assert.equal(supabase.calls.filter((c) => c.table === "giveaways").length, 0);
+  assert.equal(supabase.calls.filter((c) => c.table === "giveaways").length, 1,
+    "une seule lecture de giveaways : la vérification de parenté 4G-5");
+  assert.equal(result.winners.length, 2,
+    "winners_count vient de l'argument, pas de la ligne lue (99)");
 });
 
 // ---------------------------------------------------------------------------

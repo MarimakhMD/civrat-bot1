@@ -49,6 +49,20 @@ class SuggestionVotesUnavailableError extends Error {
 }
 
 /**
+ * 4G-5 — Erreur typée : la suggestion n'appartient pas à la guilde demandée.
+ *
+ * Levée par le DÉPÔT. Le service conserve sa propre garde
+ * `suggestion.guild_id !== guildId` ; celle-ci est le second rempart.
+ */
+class SuggestionNotInGuildError extends Error {
+  constructor(guildId, suggestionId) {
+    super(`suggestion ${suggestionId} is not in guild ${guildId}`);
+    this.name = "SuggestionNotInGuildError";
+    this.code = "SUGGESTION_NOT_IN_GUILD";
+  }
+}
+
+/**
  * Détecte l'absence de la table suggestion_votes.
  *
  * Le code PostgREST 42P01 (« undefined_table ») est le SEUL signal fiable.
@@ -96,6 +110,12 @@ class SupabaseSuggestionRepository {
    * ne dépend alors plus d'un changement de valeur par défaut en base.
    */
   async create({ guildId, userId, content }) {
+    // 4G-5 — fail-closed : sans guilde, aucune insertion. `guild_id` est
+    // NOT NULL, mais un refus de Postgres remonterait en
+    // SUGGESTION_CREATE_FAILED sans nommer la cause.
+    if (!guildId || typeof guildId !== "string") {
+      throw new TypeError("SupabaseSuggestionRepository.create requires a guildId");
+    }
     const record = {
       guild_id: guildId,
       user_id: userId,
@@ -109,10 +129,39 @@ class SupabaseSuggestionRepository {
     return data;
   }
 
-  async findById(id) {
-    const { data, error } = await this.supabase.from("suggestions").select("*").eq("id", id).maybeSingle();
+  // ───────────────────────────────────────────────────────────────────────
+  // 4G-5 — lecture scopée par guilde.
+  //
+  // Avant, seul `id` filtrait : la requête traversait les guildes et le
+  // cloisonnement reposait uniquement sur `suggestion.guild_id !== guildId`
+  // dans SuggestionService. Le vecteur est réel : le customId du bouton
+  // (`suggestion_up:<id>`) porte l'id de base et un client modifié peut en
+  // soumettre un appartenant à une autre guilde. `guildId`, lui, vient de
+  // `interaction.guildId` (autorité Discord), il n'est pas forgeable.
+  //
+  // Fail-closed : sans guilde, aucune requête n'est émise.
+  // ───────────────────────────────────────────────────────────────────────
+  async findById(guildId, id) {
+    if (!guildId || id === undefined || id === null || id === "") return null;
+    const { data, error } = await this.supabase
+      .from("suggestions").select("*").eq("guild_id", guildId).eq("id", id).maybeSingle();
     if (error) throw error;
     return data;
+  }
+
+  /**
+   * 4G-5 — prouve en BASE que la suggestion appartient à la guilde.
+   *
+   * `suggestion_votes` n'a AUCUNE colonne guild_id et AUCUNE FK vers
+   * suggestions (décision M4 : une FK installerait des triggers RI). Sans FK,
+   * l'embedding PostgREST est impossible et ajouter une colonne est exclu.
+   * La seule garantie possible EN BASE est donc cette vérification de
+   * parenté, faite par le dépôt lui-même avant toute opération sur l'enfant.
+   */
+  async #requireSuggestionInGuild(guildId, suggestionId) {
+    const parent = await this.findById(guildId, suggestionId);
+    if (!parent) throw new SuggestionNotInGuildError(guildId, suggestionId);
+    return parent;
   }
 
   /**
@@ -124,7 +173,12 @@ class SupabaseSuggestionRepository {
    * échouer le second avec une erreur Postgres brute remontée en
    * SUGGESTION_VOTE_FAILED.
    */
-  async vote(id, userId, value) {
+  async vote(guildId, id, userId, value) {
+    // 4G-5 — la parenté est prouvée en base AVANT toute écriture sur
+    // suggestion_votes. Sans cette vérification, un vote sur la suggestion
+    // d'une autre guilde serait inscrit, et #syncCounts réécrirait ensuite les
+    // compteurs de CETTE suggestion étrangère.
+    await this.#requireSuggestionInGuild(guildId, id);
     let existing;
     {
       const { data, error } = await this.supabase
@@ -149,7 +203,7 @@ class SupabaseSuggestionRepository {
         throw error;
       }
 
-      await this.#syncCounts(id);
+      await this.#syncCounts(guildId, id);
       return { alreadyVoted: false, vote: data };
     }
 
@@ -164,7 +218,7 @@ class SupabaseSuggestionRepository {
       throw error;
     }
 
-    await this.#syncCounts(id);
+    await this.#syncCounts(guildId, id);
     return { alreadyVoted: false, vote: data };
   }
 
@@ -203,18 +257,27 @@ class SupabaseSuggestionRepository {
    *
    * Aucun RPC n'est nécessaire — c'était l'alternative plus lourde, écartée.
    */
-  async #syncCounts(suggestionId) {
+  async #syncCounts(guildId, suggestionId) {
     const [upvotes, downvotes] = await Promise.all([
       this.#countVotes(suggestionId, 1),
       this.#countVotes(suggestionId, -1),
     ]);
+    // 4G-5 — la réécriture des compteurs est scopée par guilde. Sans ce
+    // filtre, un vote accepté sur une suggestion étrangère écraserait ses
+    // compteurs ; avec lui, l'UPDATE ne peut toucher que la bonne guilde.
     const { error } = await this.supabase
-      .from("suggestions").update({ upvotes, downvotes }).eq("id", suggestionId);
+      .from("suggestions").update({ upvotes, downvotes })
+      .eq("guild_id", guildId).eq("id", suggestionId);
     if (error) throw error;
   }
 
-  async updateStatus(id, status) {
-    const { data, error } = await this.supabase.from("suggestions").update({ status }).eq("id", id).select().single();
+  async updateStatus(guildId, id, status) {
+    // 4G-5 — UPDATE scopé par guilde dans la requête.
+    if (!guildId || id === undefined || id === null || id === "") {
+      throw new TypeError("SupabaseSuggestionRepository.updateStatus requires a guildId and an id");
+    }
+    const { data, error } = await this.supabase
+      .from("suggestions").update({ status }).eq("guild_id", guildId).eq("id", id).select().single();
     if (error) throw error;
     return data;
   }
@@ -227,9 +290,29 @@ class SupabaseSuggestionRepository {
    * suggestion déjà effective — l'ancien code levait après coup et le service
    * répondait SUGGESTION_ACTION_FAILED alors que la ligne avait bien disparu.
    */
-  async delete(id) {
-    const { error } = await this.supabase.from("suggestions").delete().eq("id", id);
+  async delete(guildId, id) {
+    // 4G-5 — deux défauts corrigés d'un seul coup.
+    //
+    //   1. Le DELETE filtrait sur `id` seul : il traversait les guildes.
+    //   2. Le retour était { deleted: true } INCONDITIONNEL, et le nettoyage
+    //      des votes partait sur .eq("suggestion_id", id) seul. Conséquence :
+    //      même lorsque la ligne parente n'était PAS supprimée, les votes
+    //      d'une suggestion ÉTRANGÈRE étaient détruits. C'était le seul
+    //      chemin du module capable de détruire des données d'une autre
+    //      guilde, et il ne produisait aucune erreur.
+    //
+    // Le DELETE est donc scopé dans la requête, et le nombre de lignes
+    // réellement supprimées est vérifié AVANT de toucher à la table enfant.
+    // `.select("id")` demande le RETURNING : sans lui, PostgREST ne dit pas
+    // combien de lignes ont disparu.
+    if (!guildId || id === undefined || id === null || id === "") {
+      throw new TypeError("SupabaseSuggestionRepository.delete requires a guildId and an id");
+    }
+    const { data, error } = await this.supabase
+      .from("suggestions").delete().eq("guild_id", guildId).eq("id", id).select("id");
     if (error) throw error;
+    const removed = Array.isArray(data) ? data.length : (data ? 1 : 0);
+    if (removed === 0) return { deleted: false };
     try {
       await this.supabase.from("suggestion_votes").delete().eq("suggestion_id", id);
     } catch {
@@ -240,4 +323,8 @@ class SupabaseSuggestionRepository {
   }
 }
 
-module.exports = { SupabaseSuggestionRepository, SuggestionVotesUnavailableError };
+module.exports = {
+  SupabaseSuggestionRepository,
+  SuggestionVotesUnavailableError,
+  SuggestionNotInGuildError,
+};

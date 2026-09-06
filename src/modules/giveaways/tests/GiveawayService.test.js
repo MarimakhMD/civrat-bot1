@@ -29,10 +29,11 @@ function mockRepo(overrides = {}) {
       active: true,
       status: "active",
     }),
-    findById: async (id) => (id === "g1"
+    // 4G-5 — le dépôt réel scope par guilde : le mock fait pareil.
+    findById: async (guildId, id) => (guildId === "g1" && id === "g1"
       ? { id: "g1", guild_id: "g1", channel_id: "c1", title: "prize", winners_count: 1, active: true, status: "active" }
       : null),
-    join: async (gid, uid) => {
+    join: async (_guildId, gid, uid) => {
       const key = `${gid}:${uid}`;
       if (entries.has(key)) return { alreadyJoined: true };
       entries.set(key, true);
@@ -114,7 +115,7 @@ test("draw transmet winners_count au dépôt", async () => {
     configService: enabled,
     repository: {
       findById: async () => ({ id: "g1", guild_id: "g1", winners_count: 3, active: true, status: "active" }),
-      draw: async (gid, options) => { received = options; return { winners: ["u1", "u2", "u3"], entriesTotal: 10, truncated: false }; },
+      draw: async (_guildId, gid, options) => { received = options; return { winners: ["u1", "u2", "u3"], entriesTotal: 10, truncated: false }; },
       closeIfActive: async () => true,
     },
   });

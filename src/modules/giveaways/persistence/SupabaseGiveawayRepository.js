@@ -68,6 +68,21 @@ class GiveawayEntriesUnavailableError extends Error {
 }
 
 /**
+ * 4G-5 — Erreur typée : le giveaway n'appartient pas à la guilde demandée.
+ *
+ * Levée par le DÉPÔT, pas par le service. Le service conserve sa propre garde
+ * `giveaway.guild_id !== guildId` ; celle-ci est le second rempart, celui qui
+ * tient même si un futur appelant oublie la première.
+ */
+class GiveawayNotInGuildError extends Error {
+  constructor(guildId, giveawayId) {
+    super(`giveaway ${giveawayId} is not in guild ${guildId}`);
+    this.name = "GiveawayNotInGuildError";
+    this.code = "GIVEAWAY_NOT_IN_GUILD";
+  }
+}
+
+/**
  * Détecte l'absence de la table giveaway_entries.
  *
  * Le code PostgREST 42P01 est le SEUL signal fiable. Classifier sur le texte du
@@ -136,6 +151,12 @@ class SupabaseGiveawayRepository {
    * nomme la cause au lieu d'être noyée en GIVEAWAY_CREATE_FAILED.
    */
   async create({ guildId, channelId, title, description, winnersCount, duration, requirements, endsAt }) {
+    // 4G-5 — fail-closed : sans guilde, on n'insère rien. `guild_id` est
+    // NOT NULL, mais laisser Postgres refuser la ligne produirait un
+    // GIVEAWAY_CREATE_FAILED qui ne nomme pas la cause.
+    if (!guildId || typeof guildId !== "string") {
+      throw new TypeError("SupabaseGiveawayRepository.create requires a guildId");
+    }
     if (!title || typeof title !== "string" || !title.trim()) {
       throw new TypeError("SupabaseGiveawayRepository.create requires a non-empty title");
     }
@@ -162,10 +183,46 @@ class SupabaseGiveawayRepository {
     return data;
   }
 
-  async findById(id) {
-    const { data, error } = await this.supabase.from("giveaways").select("*").eq("id", id).maybeSingle();
+  // ───────────────────────────────────────────────────────────────────────
+  // 4G-5 — lecture scopée par guilde.
+  //
+  // Avant, seul `id` filtrait : la requête traversait les guildes et le
+  // cloisonnement reposait uniquement sur `giveaway.guild_id !== guildId`
+  // dans GiveawayService. C'est exactement le défaut corrigé en 4G sur
+  // tickets : la faiblesse est structurelle, et un appelant qui oublie la
+  // garde applicative n'a plus aucun rempart.
+  //
+  // Fail-closed : sans guilde, aucune requête n'est émise.
+  // ───────────────────────────────────────────────────────────────────────
+  async findById(guildId, id) {
+    if (!guildId || id === undefined || id === null || id === "") return null;
+    const { data, error } = await this.supabase
+      .from("giveaways").select("*").eq("guild_id", guildId).eq("id", id).maybeSingle();
     if (error) throw error;
     return data;
+  }
+
+  /**
+   * 4G-5 — prouve en BASE que le giveaway appartient à la guilde.
+   *
+   * Nécessaire pour `giveaway_entries`, qui n'a AUCUNE colonne guild_id et
+   * AUCUNE FK vers giveaways (décision M5 : une FK installerait des triggers
+   * d'intégrité référentielle sur giveaways). Sans FK, PostgREST ne peut pas
+   * faire d'embedding de ressource : `.select("*, giveaways!inner(guild_id)")`
+   * échouerait. Ajouter une colonne guild_id à la table enfant est exclu
+   * (aucun changement de schéma).
+   *
+   * Reste donc la seule option qui garantisse le cloisonnement EN BASE :
+   * vérifier la parenté par une requête scopée avant toute opération sur
+   * l'enfant. Ce n'est pas une validation côté service — c'est le dépôt qui
+   * interroge la base et refuse.
+   *
+   * @returns {object} la ligne parente, pour éviter une relecture inutile.
+   */
+  async #requireGiveawayInGuild(guildId, giveawayId) {
+    const parent = await this.findById(guildId, giveawayId);
+    if (!parent) throw new GiveawayNotInGuildError(guildId, giveawayId);
+    return parent;
   }
 
   /**
@@ -182,13 +239,17 @@ class SupabaseGiveawayRepository {
    * Le 23505 n'est traduit QUE sur l'insert : sur un update il signalerait
    * autre chose et doit remonter.
    */
-  async join(giveawayId, userId) {
+  async join(guildId, giveawayId, userId) {
     if (giveawayId === undefined || giveawayId === null || giveawayId === "") {
       throw new TypeError("SupabaseGiveawayRepository.join requires a giveawayId");
     }
     if (!userId || typeof userId !== "string") {
       throw new TypeError("SupabaseGiveawayRepository.join requires a userId");
     }
+    // 4G-5 — la table enfant n'a pas de guild_id : la parenté est prouvée en
+    // base avant l'INSERT, sinon un client modifié pourrait inscrire une ligne
+    // sur le giveaway d'une autre guilde et gonfler ses chances au tirage.
+    await this.#requireGiveawayInGuild(guildId, giveawayId);
     const { data, error } = await this.supabase
       .from("giveaway_entries").insert({ giveaway_id: giveawayId, user_id: userId })
       .select().single();
@@ -213,7 +274,11 @@ class SupabaseGiveawayRepository {
    * garantit aucun ordre stable d'une page à l'autre, et une pagination sur un
    * ordre instable peut sauter ou dupliquer des lignes.
    */
-  async listEntries(giveawayId) {
+  async listEntries(guildId, giveawayId) {
+    // 4G-5 — même garantie que join() : la parenté est prouvée en base avant
+    // de lire les participations d'un giveaway qui pourrait appartenir à une
+    // autre guilde.
+    await this.#requireGiveawayInGuild(guildId, giveawayId);
     const entries = [];
     let truncated = false;
     for (let from = 0; ; from += ENTRIES_PAGE_SIZE) {
@@ -250,8 +315,10 @@ class SupabaseGiveawayRepository {
    *   participants, tous les disponibles sont tirés (décision K3).
    * @returns {{winners: string[], entriesTotal: number, truncated: boolean}}
    */
-  async draw(giveawayId, { winnersCount } = {}) {
-    const { entries, total, truncated } = await this.listEntries(giveawayId);
+  async draw(guildId, giveawayId, { winnersCount } = {}) {
+    // 4G-5 — listEntries prouve déjà la parenté en base ; draw ne fait que
+    // transmettre la guilde.
+    const { entries, total, truncated } = await this.listEntries(guildId, giveawayId);
     if (!entries.length) return { winners: [], entriesTotal: 0, truncated };
     const count = resolveWinnersCount(winnersCount);
     // slice() borne déjà au nombre de participants : participants < winnersCount
@@ -282,10 +349,17 @@ class SupabaseGiveawayRepository {
    * @returns {Promise<boolean>} true si la clôture a eu lieu, false si le
    *   giveaway était déjà clos. Une erreur réelle est propagée, jamais avalée.
    */
-  async closeIfActive(giveawayId) {
+  async closeIfActive(guildId, giveawayId) {
+    // 4G-5 — l'UPDATE est scopé par guilde DANS la requête. Le CAS
+    // `.eq("active", true)` est conservé tel quel : il porte l'atomicité
+    // anti-double-tirage, il ne portait pas le cloisonnement.
+    if (!guildId || giveawayId === undefined || giveawayId === null || giveawayId === "") {
+      throw new TypeError("SupabaseGiveawayRepository.closeIfActive requires a guildId and a giveawayId");
+    }
     const record = { active: false, status: "ended", ended_at: new Date().toISOString() };
     const { data, error } = await this.supabase
-      .from("giveaways").update(record).eq("id", giveawayId).eq("active", true).select();
+      .from("giveaways").update(record)
+      .eq("guild_id", guildId).eq("id", giveawayId).eq("active", true).select();
     if (error) throw error;
     return Array.isArray(data) ? data.length > 0 : Boolean(data);
   }
@@ -294,6 +368,7 @@ class SupabaseGiveawayRepository {
 module.exports = {
   SupabaseGiveawayRepository,
   GiveawayEntriesUnavailableError,
+  GiveawayNotInGuildError,
   ENTRIES_PAGE_SIZE,
   ENTRIES_SCAN_CAP,
 };

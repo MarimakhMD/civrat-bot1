@@ -79,7 +79,7 @@ class GiveawayService {
   async join({ guildId, giveawayId, userId }) {
     let giveaway;
     try {
-      giveaway = await this.repository.findById(giveawayId);
+      giveaway = await this.repository.findById(guildId, giveawayId);
     } catch {
       return { ok: false, code: "GIVEAWAY_NOT_FOUND" };
     }
@@ -90,7 +90,7 @@ class GiveawayService {
     // participation, y compris sur un giveaway ouvert.
     if (giveaway.active !== true) return { ok: false, code: "GIVEAWAY_CLOSED" };
     try {
-      const result = await this.repository.join(giveawayId, userId);
+      const result = await this.repository.join(guildId, giveawayId, userId);
       if (result.alreadyJoined) return { ok: false, code: "GIVEAWAY_ALREADY_JOINED" };
       return { ok: true, code: "GIVEAWAY_JOINED", giveawayId, userId };
     } catch (error) {
@@ -130,7 +130,7 @@ class GiveawayService {
   async draw({ guildId, giveawayId }) {
     let giveaway;
     try {
-      giveaway = await this.repository.findById(giveawayId);
+      giveaway = await this.repository.findById(guildId, giveawayId);
     } catch {
       return { ok: false, code: "GIVEAWAY_NOT_FOUND" };
     }
@@ -143,7 +143,7 @@ class GiveawayService {
 
     let drawn;
     try {
-      drawn = await this.repository.draw(giveawayId, { winnersCount: giveaway.winners_count });
+      drawn = await this.repository.draw(guildId, giveawayId, { winnersCount: giveaway.winners_count });
     } catch (error) {
       if (error && error.code === ENTRIES_UNAVAILABLE) return { ok: false, code: ENTRIES_UNAVAILABLE };
       return { ok: false, code: "GIVEAWAY_DRAW_FAILED" };
@@ -159,7 +159,7 @@ class GiveawayService {
 
     let closed;
     try {
-      closed = await this.repository.closeIfActive(giveawayId);
+      closed = await this.repository.closeIfActive(guildId, giveawayId);
     } catch (error) {
       // Échec RÉEL de clôture : propagé en échec, jamais avalé. Le giveaway
       // reste ouvert et le tirage peut être relancé.

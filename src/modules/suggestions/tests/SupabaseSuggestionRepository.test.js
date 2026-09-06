@@ -107,6 +107,9 @@ function fakeSupabase(responses = []) {
   };
 }
 
+/** 4G-5 — réponse de la vérification de parenté, consommée avant toute opération enfant. */
+const PARENT_SUGGESTION = { data: { id: "1", guild_id: "g1", user_id: "u1", content: "c", status: "pending", upvotes: 0, downvotes: 0 }, error: null };
+
 const postgrestError = (code, message) => ({ code, message, details: null, hint: null });
 
 // ---------------------------------------------------------------------------
@@ -171,6 +174,7 @@ test("findByMessageId a disparu du dépôt (message_id n'existe pas)", () => {
 
 test("vote : premier vote insère puis RECALCULE les compteurs", async () => {
   const supabase = fakeSupabase([
+    PARENT_SUGGESTION,
     { data: null, error: null },                                              // 1. vote existant ?
     { data: { suggestion_id: "1", user_id: "u2", value: 1 }, error: null },   // 2. insert
     { data: null, error: null, count: 1 },                                    // 3. count value = 1
@@ -179,13 +183,13 @@ test("vote : premier vote insère puis RECALCULE les compteurs", async () => {
   ]);
   const repo = new SupabaseSuggestionRepository({ supabase });
 
-  const result = await repo.vote("1", "u2", 1);
+  const result = await repo.vote("g1", "1", "u2", 1);
 
   assert.equal(result.alreadyVoted, false);
-  assert.equal(supabase.calls.length, 5);
-  assert.equal(supabase.calls[1].table, "suggestion_votes");
-  assert.equal(supabase.calls[1].op, "insert");
-  const counters = supabase.calls[4];
+  assert.equal(supabase.calls.length, 6);
+  assert.equal(supabase.calls[2].table, "suggestion_votes");
+  assert.equal(supabase.calls[2].op, "insert");
+  const counters = supabase.calls[5];
   assert.equal(counters.table, "suggestions");
   assert.equal(counters.op, "update");
   assert.deepEqual(counters.payload, { upvotes: 1, downvotes: 0 });
@@ -193,6 +197,7 @@ test("vote : premier vote insère puis RECALCULE les compteurs", async () => {
 
 test("vote : les compteurs sont RECALCULÉS, jamais incrémentés", async () => {
   const supabase = fakeSupabase([
+    PARENT_SUGGESTION,
     { data: { suggestion_id: "1", user_id: "u2", value: -1 }, error: null },  // vote précédent
     { data: { suggestion_id: "1", user_id: "u2", value: 1 }, error: null },   // update du vote
     { data: null, error: null, count: 4 },                                    // upvotes recalculé
@@ -201,17 +206,24 @@ test("vote : les compteurs sont RECALCULÉS, jamais incrémentés", async () => 
   ]);
   const repo = new SupabaseSuggestionRepository({ supabase });
 
-  const result = await repo.vote("1", "u2", 1);
+  const result = await repo.vote("g1", "1", "u2", 1);
 
   assert.equal(result.alreadyVoted, false);
   // Les valeurs écrites proviennent du comptage, pas d'un ancien +1.
-  assert.deepEqual(supabase.calls[4].payload, { upvotes: 4, downvotes: 1 });
+  assert.deepEqual(supabase.calls[5].payload, { upvotes: 4, downvotes: 1 });
 
-  // Preuve décisive : suggestions n'est JAMAIS lu avant écriture. L'ancienne
-  // implémentation faisait select("upvotes, downvotes") puis update — c'est ce
-  // lecture-modification-écriture qui perdait des votes en concurrence.
+  // Preuve décisive : les COMPTEURS ne sont jamais lus avant d'être écrits.
+  // L'ancienne implémentation faisait select("upvotes, downvotes") puis update
+  // — c'est ce lecture-modification-écriture qui perdait des votes.
+  //
+  // ⚠️ 4G-5 — attente mise à jour, intention conservée. La vérification de
+  // parenté lit désormais la ligne, mais elle ne demande aucune colonne de
+  // compteur et son résultat n'alimente PAS l'écriture : les valeurs écrites
+  // viennent des count() ci-dessus, comme le montre l'assertion précédente.
   const reads = supabase.calls.filter((c) => c.table === "suggestions" && c.op === "select");
-  assert.equal(reads.length, 0, "aucune lecture de suggestions ne doit précéder l'écriture");
+  assert.equal(reads.length, 1, "la seule lecture de suggestions est la vérification de parenté");
+  assert.equal(/upvotes|downvotes/.test(String(reads[0].columns)), false,
+    "la vérification de parenté ne demande aucune colonne de compteur");
 });
 
 test("vote : deux votes concurrents de membres différents donnent des compteurs exacts", async () => {
@@ -219,11 +231,13 @@ test("vote : deux votes concurrents de membres différents donnent des compteurs
   // écriture voit le vote du premier. Avec l'ancien incrément, B aurait pu lire
   // upvotes avant que l'écriture de A soit visible et écraser son vote.
   const supabase = fakeSupabase([
+    PARENT_SUGGESTION,
     { data: null, error: null },                                              // A : vote existant ?
     { data: { suggestion_id: "1", user_id: "A", value: 1 }, error: null },    // A : insert
     { data: null, error: null, count: 1 },
     { data: null, error: null, count: 0 },
     { data: null, error: null },                                              // A : écriture
+    PARENT_SUGGESTION,                                                        // B : vérification de parenté 4G-5
     { data: null, error: null },                                              // B : vote existant ?
     { data: { suggestion_id: "1", user_id: "B", value: 1 }, error: null },    // B : insert
     { data: null, error: null, count: 2 },
@@ -232,8 +246,8 @@ test("vote : deux votes concurrents de membres différents donnent des compteurs
   ]);
   const repo = new SupabaseSuggestionRepository({ supabase });
 
-  await repo.vote("1", "A", 1);
-  await repo.vote("1", "B", 1);
+  await repo.vote("g1", "1", "A", 1);
+  await repo.vote("g1", "1", "B", 1);
 
   const writes = supabase.calls.filter((c) => c.table === "suggestions" && c.op === "update");
   assert.equal(writes.length, 2);
@@ -244,6 +258,7 @@ test("vote : deux votes concurrents de membres différents donnent des compteurs
 
 test("vote : le comptage utilise HEAD + count=exact, sans transférer de ligne", async () => {
   const supabase = fakeSupabase([
+    PARENT_SUGGESTION,
     { data: null, error: null },
     { data: { suggestion_id: "1", user_id: "u2", value: 1 }, error: null },
     { data: null, error: null, count: 7 },
@@ -252,7 +267,7 @@ test("vote : le comptage utilise HEAD + count=exact, sans transférer de ligne",
   ]);
   const repo = new SupabaseSuggestionRepository({ supabase });
 
-  await repo.vote("1", "u2", 1);
+  await repo.vote("g1", "1", "u2", 1);
 
   const counts = supabase.calls.filter((c) => c.options && c.options.count === "exact");
   assert.equal(counts.length, 2);
@@ -267,29 +282,32 @@ test("vote : le comptage utilise HEAD + count=exact, sans transférer de ligne",
 
 test("vote : même valeur renvoie alreadyVoted sans aucune écriture", async () => {
   const supabase = fakeSupabase([
+    PARENT_SUGGESTION,
     { data: { suggestion_id: "1", user_id: "u2", value: 1 }, error: null },
   ]);
   const repo = new SupabaseSuggestionRepository({ supabase });
 
-  const result = await repo.vote("1", "u2", 1);
+  const result = await repo.vote("g1", "1", "u2", 1);
 
   assert.equal(result.alreadyVoted, true);
-  assert.equal(supabase.calls.length, 1, "aucune écriture ne doit suivre");
+  assert.equal(supabase.calls.length, 2, "parenté seule, aucune écriture ne doit suivre");
 });
 
 test("vote : insert concurrent (23505) renvoie alreadyVoted, pas une erreur brute", async () => {
   const supabase = fakeSupabase([
+    PARENT_SUGGESTION,
     { data: null, error: null },   // le select ne voit pas encore le vote concurrent
     { data: null, error: postgrestError("23505", 'duplicate key value violates unique constraint "suggestion_votes_pkey"') },
   ]);
   const repo = new SupabaseSuggestionRepository({ supabase });
 
-  const result = await repo.vote("1", "u2", 1);
+  const result = await repo.vote("g1", "1", "u2", 1);
 
   // La PK composite (suggestion_id, user_id) a refusé le doublon en base.
   assert.deepEqual(result, { alreadyVoted: true });
   // Le gagnant de la course synchronise les compteurs : aucune écriture ici.
-  assert.equal(supabase.calls.length, 2);
+  // 4G-5 — parenté + lecture du vote + insert refusé = 3 appels.
+  assert.equal(supabase.calls.length, 3);
 });
 
 test("vote : un 23505 sur l'UPDATE n'est pas traité comme alreadyVoted", async () => {
@@ -297,12 +315,13 @@ test("vote : un 23505 sur l'UPDATE n'est pas traité comme alreadyVoted", async 
   // l'update il signalerait autre chose et doit remonter.
   const failure = postgrestError("23505", "duplicate key value");
   const supabase = fakeSupabase([
+    PARENT_SUGGESTION,
     { data: { suggestion_id: "1", user_id: "u2", value: -1 }, error: null },
     { data: null, error: failure },
   ]);
   const repo = new SupabaseSuggestionRepository({ supabase });
 
-  const thrown = await repo.vote("1", "u2", 1).then(() => null, (error) => error);
+  const thrown = await repo.vote("g1", "1", "u2", 1).then(() => null, (error) => error);
   assert.equal(thrown, failure);
 });
 
@@ -312,23 +331,25 @@ test("vote : value smallint renvoyé en CHAÎNE est reconnu comme vote identique
   // chaque vote était traité comme un changement de sens et les compteurs
   // dérivaient sans aucune erreur visible.
   const supabase = fakeSupabase([
+    PARENT_SUGGESTION,
     { data: { suggestion_id: "1", user_id: "u2", value: "1" }, error: null },
   ]);
   const repo = new SupabaseSuggestionRepository({ supabase });
 
-  const result = await repo.vote("1", "u2", 1);
+  const result = await repo.vote("g1", "1", "u2", 1);
 
   assert.equal(result.alreadyVoted, true);
-  assert.equal(supabase.calls.length, 1, "aucune mise à jour ne doit suivre");
+  assert.equal(supabase.calls.length, 2, "parenté seule, aucune mise à jour ne doit suivre");
 });
 
 test("vote : value chaîne '-1' contre un vote à -1 est aussi reconnu", async () => {
   const supabase = fakeSupabase([
+    PARENT_SUGGESTION,
     { data: { suggestion_id: "1", user_id: "u2", value: "-1" }, error: null },
   ]);
   const repo = new SupabaseSuggestionRepository({ supabase });
 
-  assert.equal((await repo.vote("1", "u2", -1)).alreadyVoted, true);
+  assert.equal((await repo.vote("g1", "1", "u2", -1)).alreadyVoted, true);
 });
 
 test("vote : table suggestion_votes inaccessible lève SUGGESTION_VOTES_UNAVAILABLE", async () => {
@@ -336,11 +357,12 @@ test("vote : table suggestion_votes inaccessible lève SUGGESTION_VOTES_UNAVAILA
   // régression de schéma ou de droits doit rester distinguishable d'un échec
   // réel du vote, et non retomber dans un SUGGESTION_VOTE_FAILED muet.
   const supabase = fakeSupabase([
+    PARENT_SUGGESTION,
     { data: null, error: postgrestError("42P01", 'relation "public.suggestion_votes" does not exist') },
   ]);
   const repo = new SupabaseSuggestionRepository({ supabase });
 
-  const thrown = await repo.vote("1", "u2", 1).then(() => null, (error) => error);
+  const thrown = await repo.vote("g1", "1", "u2", 1).then(() => null, (error) => error);
 
   assert.ok(thrown instanceof SuggestionVotesUnavailableError);
   assert.equal(thrown.code, "SUGGESTION_VOTES_UNAVAILABLE");
@@ -348,10 +370,11 @@ test("vote : table suggestion_votes inaccessible lève SUGGESTION_VOTES_UNAVAILA
 
 test("vote : une erreur PostgREST réelle est propagée telle quelle", async () => {
   const failure = postgrestError("42501", "permission denied for table suggestion_votes");
-  const supabase = fakeSupabase([{ data: null, error: failure }]);
+  const supabase = fakeSupabase([
+    PARENT_SUGGESTION,{ data: null, error: failure }]);
   const repo = new SupabaseSuggestionRepository({ supabase });
 
-  const thrown = await repo.vote("1", "u2", 1).then(() => null, (error) => error);
+  const thrown = await repo.vote("g1", "1", "u2", 1).then(() => null, (error) => error);
 
   assert.equal(thrown, failure);
   assert.ok(!(thrown instanceof SuggestionVotesUnavailableError));
@@ -360,15 +383,15 @@ test("vote : une erreur PostgREST réelle est propagée telle quelle", async () 
 test("vote : repli textuel accepté seulement sans code, sur la formulation exacte", async () => {
   // Client ne fournissant aucun code : la formulation Postgres exacte suffit.
   const noCode = { message: 'relation "public.suggestion_votes" does not exist' };
-  const repoA = new SupabaseSuggestionRepository({ supabase: fakeSupabase([{ data: null, error: noCode }]) });
-  const thrownA = await repoA.vote("1", "u2", 1).then(() => null, (error) => error);
+  const repoA = new SupabaseSuggestionRepository({ supabase: fakeSupabase([PARENT_SUGGESTION, { data: null, error: noCode }]) });
+  const thrownA = await repoA.vote("g1", "1", "u2", 1).then(() => null, (error) => error);
   assert.ok(thrownA instanceof SuggestionVotesUnavailableError);
 
   // Même absence de code, mais message de permission mentionnant la table :
   // ce n'est PAS une table absente.
   const denied = { message: "permission denied for table suggestion_votes" };
-  const repoB = new SupabaseSuggestionRepository({ supabase: fakeSupabase([{ data: null, error: denied }]) });
-  const thrownB = await repoB.vote("1", "u2", 1).then(() => null, (error) => error);
+  const repoB = new SupabaseSuggestionRepository({ supabase: fakeSupabase([PARENT_SUGGESTION, { data: null, error: denied }]) });
+  const thrownB = await repoB.vote("g1", "1", "u2", 1).then(() => null, (error) => error);
   assert.equal(thrownB, denied);
 });
 
@@ -380,23 +403,23 @@ test("updateStatus écrit status et renvoie la ligne", async () => {
   const supabase = fakeSupabase([{ data: { id: "1", status: "approved" }, error: null }]);
   const repo = new SupabaseSuggestionRepository({ supabase });
 
-  const row = await repo.updateStatus("1", "approved");
+  const row = await repo.updateStatus("g1", "1", "approved");
 
   assert.equal(row.status, "approved");
   assert.deepEqual(supabase.calls[0].payload, { status: "approved" });
-  assert.deepEqual(supabase.calls[0].filters, [["id", "1"]]);
+  assert.deepEqual(supabase.calls[0].filters, [["guild_id", "g1"], ["id", "1"]]);
 });
 
 test("delete supprime la suggestion même si suggestion_votes est absente", async () => {
   const supabase = fakeSupabase([
-    { data: null, error: null },                                        // suggestions.delete
+    { data: [{ id: "1" }], error: null },                             // suggestions.delete (RETURNING)
     { data: null, error: postgrestError("42P01", "relation does not exist") }, // votes.delete
   ]);
   const repo = new SupabaseSuggestionRepository({ supabase });
 
   // La suppression de la suggestion est effective : un échec du nettoyage des
   // votes ne doit PAS la faire échouer après coup.
-  const result = await repo.delete("1");
+  const result = await repo.delete("g1", "1");
 
   assert.deepEqual(result, { deleted: true });
   assert.equal(supabase.calls[0].table, "suggestions");
@@ -408,7 +431,7 @@ test("delete propage l'échec de suppression de la suggestion", async () => {
   const supabase = fakeSupabase([{ data: null, error: failure }]);
   const repo = new SupabaseSuggestionRepository({ supabase });
 
-  const thrown = await repo.delete("1").then(() => null, (error) => error);
+  const thrown = await repo.delete("g1", "1").then(() => null, (error) => error);
   assert.equal(thrown, failure);
 });
 

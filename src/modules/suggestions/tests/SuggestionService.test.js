@@ -15,8 +15,12 @@ function mockRepo(overrides = {}) {
       suggestions.set(id, rec);
       return rec;
     },
-    findById: async (id) => suggestions.get(String(id)) || null,
-    vote: async (id, userId, value) => {
+    // 4G-5 — le dépôt réel scope par guilde : le mock fait pareil.
+    findById: async (guildId, id) => {
+      const s = suggestions.get(String(id));
+      return s && s.guild_id === guildId ? s : null;
+    },
+    vote: async (_guildId, id, userId, value) => {
       const key = `${id}:${userId}`;
       if (votes.has(key)) {
         const existing = votes.get(key);
@@ -28,12 +32,12 @@ function mockRepo(overrides = {}) {
       votes.set(key, vote);
       return { alreadyVoted: false, vote };
     },
-    updateStatus: async (id, status) => {
+    updateStatus: async (_guildId, id, status) => {
       const s = suggestions.get(String(id));
       if (s) s.status = status;
       return s;
     },
-    delete: async (id) => {
+    delete: async (_guildId, id) => {
       suggestions.delete(String(id));
       return { deleted: true };
     },

@@ -66,18 +66,18 @@ class SuggestionService {
   async vote({ guildId, suggestionId, userId, value, message = null }) {
     let suggestion;
     try {
-      suggestion = await this.repository.findById(suggestionId);
+      suggestion = await this.repository.findById(guildId, suggestionId);
     } catch {
       return { ok: false, code: "SUGGESTION_NOT_FOUND" };
     }
     if (!suggestion || suggestion.guild_id !== guildId) return { ok: false, code: "SUGGESTION_NOT_FOUND" };
     if (suggestion.status === SuggestionStatus.DELETED) return { ok: false, code: "SUGGESTION_DELETED" };
     try {
-      const result = await this.repository.vote(suggestionId, userId, value);
+      const result = await this.repository.vote(guildId, suggestionId, userId, value);
       if (result.alreadyVoted) return { ok: false, code: "SUGGESTION_ALREADY_VOTED" };
       if (this.transport) {
         try {
-          const updated = await this.repository.findById(suggestionId);
+          const updated = await this.repository.findById(guildId, suggestionId);
           await this.transport.updateSuggestion({ guildId, suggestion: updated, message });
         } catch {}
       }
@@ -96,7 +96,7 @@ class SuggestionService {
   async staffAction({ guildId, suggestionId, action, actorId, message = null }) {
     let suggestion;
     try {
-      suggestion = await this.repository.findById(suggestionId);
+      suggestion = await this.repository.findById(guildId, suggestionId);
     } catch {
       return { ok: false, code: "SUGGESTION_NOT_FOUND" };
     }
@@ -106,10 +106,13 @@ class SuggestionService {
     if (!status) return { ok: false, code: "SUGGESTION_INVALID_ACTION" };
     try {
       if (status === SuggestionStatus.DELETED) {
-        await this.repository.delete(suggestionId);
+        // 4G-5 — le dépôt renvoie { deleted: false } quand sa requête scopée
+        // n'a touché aucune ligne. Le signaler au lieu de répondre succès.
+        const removed = await this.repository.delete(guildId, suggestionId);
+        if (removed && removed.deleted === false) return { ok: false, code: "SUGGESTION_NOT_FOUND" };
         if (this.transport) await this.transport.deleteSuggestion({ guildId, suggestion, message }).catch(() => {});
       } else {
-        await this.repository.updateStatus(suggestionId, status);
+        await this.repository.updateStatus(guildId, suggestionId, status);
         if (this.transport) await this.transport.updateSuggestion({ guildId, suggestion: { ...suggestion, status }, message }).catch(() => {});
       }
       if (this.logsRuntime && !this.logsRuntime.disabled) {
