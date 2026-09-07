@@ -439,7 +439,10 @@ test("4G security: an UPDATE scoped to another guild modifies nothing", async ()
   await assert.rejects(
     () => repository.updateByChannel("GUILDE-A", "chan-1", { status: "closed", closed: true }),
     (error) => {
-      assert.equal(error.code, "PGRST116", "le dépôt remonte l'erreur, il ne l'avale pas");
+      // 4F-2c — le PGRST116 est désormais CLASSIFIÉ : PERSISTENCE_FAILED, la
+      // cause PostgREST d'origine restant disponible (jamais avalé).
+      assert.equal(error.code, "PERSISTENCE_FAILED", "le dépôt remonte l'erreur, il ne l'avale pas");
+      assert.equal(error.cause.code, "PGRST116", "la cause brute conserve le code PostgREST d'origine");
       return true;
     },
   );

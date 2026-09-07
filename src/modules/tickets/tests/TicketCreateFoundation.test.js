@@ -126,6 +126,8 @@ test("Supabase repository creates records and surfaces insert errors", async () 
   const repository = new SupabaseTicketRepository({ supabase: { from: () => ({ insert: (record) => { inserted.push(record); return { select: () => ({ single: async () => ({ data: { id: "ticket-1", ...record }, error: null }) }) }; } }) } });
   assert.equal((await repository.create({ guild_id: "guild" })).id, "ticket-1");
   assert.equal(inserted.length, 1);
+  // 4F-2c — une erreur d'insertion SANS code retombe sur PERSISTENCE_FAILED
+  // (plus de passthrough brut de l'objet PostgREST).
   const failing = new SupabaseTicketRepository({ supabase: { from: () => ({ insert: () => ({ select: () => ({ single: async () => ({ data: null, error: new Error("insert failed") }) }) }) }) } });
-  await assert.rejects(() => failing.create({}), /insert failed/);
+  await assert.rejects(() => failing.create({}), (error) => error.code === "PERSISTENCE_FAILED");
 });
