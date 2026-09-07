@@ -1,4 +1,5 @@
 const { getLogsRuntime } = require("../modules/logs/runtime/getLogsRuntime");
+const logger = require("../utils/logger");
 
 module.exports = {
   name: "roleCreate",
@@ -13,7 +14,13 @@ module.exports = {
       });
       try {
         await require("../modules/security/runtime/getSecurityRuntime").getSecurityRuntime().handleRoleCreate(role);
-      } catch {}
-    } catch {}
+      } catch (error) {
+        // 4F-1 — observabilité : best-effort conservé.
+        logger.warn("Security roleCreate handling failed", { event: "security_role_create_failed", guildId: role?.guild?.id || null, error: error?.message || String(error) });
+      }
+    } catch (error) {
+      // 4F-1 — observabilité : best-effort conservé.
+      logger.warn("roleCreate handling failed", { event: "role_create_failed", guildId: role?.guild?.id || null, error: error?.message || String(error) });
+    }
   },
 };

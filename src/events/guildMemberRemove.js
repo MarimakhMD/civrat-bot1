@@ -67,5 +67,8 @@ async function handleInviteDecrement(member, config) {
     // rien. Idempotent : un second départ ne trouve plus de lien actif. La
     // ligne n'est jamais supprimée.
     await inviteService.revokeInvite(member.guild.id, member.id);
-  } catch {}
+  } catch (error) {
+    // 4F-1 — observabilité : best-effort conservé.
+    logger.warn("Invite decrement failed", { event: "invite_decrement_failed", guildId: member?.guild?.id || null, error: error?.message || String(error) });
+  }
 }

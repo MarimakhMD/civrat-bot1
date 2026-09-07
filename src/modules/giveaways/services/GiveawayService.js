@@ -3,7 +3,7 @@
 const ENTRIES_UNAVAILABLE = "GIVEAWAY_ENTRIES_UNAVAILABLE";
 
 class GiveawayService {
-  constructor({ configService, repository, transport, logsRuntime }) {
+  constructor({ configService, repository, transport, logsRuntime, logger = null }) {
     if (!configService || typeof configService.read !== "function") {
       throw new TypeError("GiveawayService requires a configService");
     }
@@ -12,6 +12,9 @@ class GiveawayService {
     this.repository = repository;
     this.transport = transport;
     this.logsRuntime = logsRuntime;
+    // 4F-1 — observabilité : logger injectable pour les tests ; en production,
+    // on retombe sur le logger partagé (aucun changement de composition).
+    this.logger = logger || require("../../../utils/logger");
   }
 
   /**
@@ -63,15 +66,20 @@ class GiveawayService {
         // silence dans un catch vide. La branche this.repository.updateMessageId
         // était morte : cette méthode n'a jamais existé sur le dépôt.
         // Le bouton Join porte l'id de base, donc rien à stocker.
-      } catch {
+      } catch (error) {
         // L'échec d'envoi Discord n'annule pas un giveaway déjà persisté.
+        // 4F-1 — observabilité : désormais journalisé.
+        this.logger.warn("Giveaway announcement failed", { operation: "giveaway_announce", guildId, giveawayId: giveaway?.id ?? null, error: error?.message || String(error) });
       }
     }
 
     if (this.logsRuntime && !this.logsRuntime.disabled) {
       try {
         await this.logsRuntime.handleModerationEvent({ guild: { id: guildId }, action: "giveaway_created", targetId: null });
-      } catch {}
+      } catch (error) {
+        // 4F-1 — observabilité : best-effort conservé.
+        this.logger.warn("Giveaway log event failed", { operation: "giveaway_log", guildId, error: error?.message || String(error) });
+      }
     }
     return { ok: true, code: "GIVEAWAY_CREATED", giveaway };
   }

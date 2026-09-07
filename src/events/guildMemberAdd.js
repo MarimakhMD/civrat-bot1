@@ -38,11 +38,17 @@ module.exports = {
     // 5. Security Center (modern Foundation → Runtime → Transport/Logs, no legacy securityService)
     try {
       await require("../modules/security/runtime/getSecurityRuntime").getSecurityRuntime().handleMemberJoined(member);
-    } catch {}
+    } catch (error) {
+      // 4F-1 — observabilité : best-effort conservé.
+      logger.warn("Security member join handling failed", { event: "security_join_failed", guildId: member?.guild?.id || null, error: error?.message || String(error) });
+    }
     // 6. Analytics (track member, isolated, never break)
     try {
       await require("../modules/analytics/runtime/getAnalyticsRuntime").getAnalyticsRuntime().trackMember(member);
-    } catch {}
+    } catch (error) {
+      // 4F-1 — observabilité : best-effort conservé.
+      logger.warn("Analytics member tracking failed", { event: "analytics_member_failed", guildId: member?.guild?.id || null, error: error?.message || String(error) });
+    }
   },
 
   // Phase 1 (C3) : export additionnel, strictement additif. `loadEvents`

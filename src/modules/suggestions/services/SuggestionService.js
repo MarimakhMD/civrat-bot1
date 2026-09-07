@@ -3,7 +3,7 @@
 const { SuggestionStatus } = require("../configuration/suggestionConstants");
 
 class SuggestionService {
-  constructor({ configService, repository, transport, logsRuntime }) {
+  constructor({ configService, repository, transport, logsRuntime, logger = null }) {
     if (!configService || typeof configService.read !== "function") {
       throw new TypeError("SuggestionService requires a configService");
     }
@@ -12,6 +12,9 @@ class SuggestionService {
     this.repository = repository;
     this.transport = transport;
     this.logsRuntime = logsRuntime;
+    // 4F-1 — observabilité : logger injectable pour les tests ; en production,
+    // on retombe sur le logger partagé (aucun changement de composition).
+    this.logger = logger || require("../../../utils/logger");
   }
 
   async create({ guildId, channelId, authorId, content }) {
@@ -46,15 +49,20 @@ class SuggestionService {
         // (C5) échouait en silence dans un catch vide. Le message n'a pas
         // besoin d'être stocké : les boutons portent l'id de base et
         // l'édition ultérieure se fait sur le message réellement cliqué.
-      } catch {
+      } catch (error) {
         // L'échec d'envoi Discord n'annule pas une suggestion déjà persistée.
+        // 4F-1 — observabilité : désormais journalisé.
+        this.logger.warn("Suggestion announcement failed", { operation: "suggestion_announce", guildId, suggestionId: suggestion?.id ?? null, error: error?.message || String(error) });
       }
     }
 
     if (this.logsRuntime && !this.logsRuntime.disabled) {
       try {
         await this.logsRuntime.handleModerationEvent({ guild: { id: guildId }, action: "suggestion_created", targetId: authorId });
-      } catch {}
+      } catch (error) {
+        // 4F-1 — observabilité : best-effort conservé.
+        this.logger.warn("Suggestion log event failed", { operation: "suggestion_log", guildId, error: error?.message || String(error) });
+      }
     }
     return { ok: true, code: "SUGGESTION_CREATED", suggestion };
   }

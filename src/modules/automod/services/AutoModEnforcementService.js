@@ -10,8 +10,11 @@ const { AutoModDecisionService } = require("./AutoModDecisionService");
  * Decision is now centralized in AutoModDecisionService.
  */
 class AutoModEnforcementService {
-  constructor({ decisionService } = {}) {
+  constructor({ decisionService, logger = null } = {}) {
     this.decisionService = decisionService instanceof AutoModDecisionService ? decisionService : new AutoModDecisionService();
+    // 4F-1 — observabilité : logger injectable pour les tests ; en production,
+    // on retombe sur le logger partagé (aucun changement de composition).
+    this.logger = logger || require("../../../utils/logger");
   }
 
   decidePunishment(config) {
@@ -29,12 +32,24 @@ class AutoModEnforcementService {
     const decision = this.decisionService.decide({ detection, config });
     actions.decision = decision;
 
+    const guildId = message?.guild?.id || null;
+    const targetId = message?.author?.id || null;
+
     if (decision.deleteMessage && enforcer && typeof enforcer.deleteMessage === "function") {
       try {
         await enforcer.deleteMessage(message);
         actions.deleted = true;
-      } catch {
+      } catch (error) {
         actions.deleted = false;
+        // 4F-1 — observabilité : l'échec de suppression reste non bloquant,
+        // mais il est désormais journalisé.
+        this.logger.warn("AutoMod message deletion failed", {
+          operation: "automod_delete",
+          rule: decision.rule || null,
+          guildId,
+          targetId,
+          error: error?.message || String(error),
+        });
       }
     }
 
@@ -54,8 +69,18 @@ class AutoModEnforcementService {
             reason: decision.reason,
           });
         }
-      } catch {
+      } catch (error) {
         actions.punishment = null;
+        // 4F-1 — observabilité : l'échec de sanction reste non bloquant,
+        // mais il est désormais journalisé.
+        this.logger.warn("AutoMod punishment failed", {
+          operation: "automod_punish",
+          type: decision.type,
+          rule: decision.rule || null,
+          guildId,
+          targetId,
+          error: error?.message || String(error),
+        });
       }
     }
 
@@ -72,8 +97,14 @@ class AutoModEnforcementService {
             rules: decision.rules,
           });
         }
-      } catch {
-        /* logging is best-effort */
+      } catch (error) {
+        // 4F-1 — observabilité : logging is best-effort, désormais visible.
+        this.logger.warn("AutoMod log event failed", {
+          operation: "automod_log",
+          rule: decision.rule || null,
+          guildId,
+          error: error?.message || String(error),
+        });
       }
     }
 
