@@ -12,9 +12,9 @@ const commands = new Map();
 const errorResponder = new ErrorResponder({ logger });
 const i18n = new I18nService({ dictionaries });
 
-// These files still exist while their modular equivalents are authoritative.
-// Loading both implementations would create duplicate slash commands.
-const MIGRATED_LEGACY_FILES = Object.freeze(["warn.js", "mute.js", "unmute.js"]);
+// 4H (L1) — les anciennes commandes legacy warn/mute/unmute ont été supprimées :
+// leurs équivalents modulaires (registerModeration) sont les seuls autoritaires.
+// Aucun fichier legacy restant ne crée de doublon de slash command.
 
 function safeErrorDetails(error, extra = {}) {
   return {
@@ -28,7 +28,7 @@ function loadCommands() {
   const commandsPath = path.join(__dirname, "..", "commands");
   const commandFiles = fs
     .readdirSync(commandsPath)
-    .filter((file) => file.endsWith(".js") && !MIGRATED_LEGACY_FILES.includes(file))
+    .filter((file) => file.endsWith(".js"))
     .sort();
 
   commands.clear();
