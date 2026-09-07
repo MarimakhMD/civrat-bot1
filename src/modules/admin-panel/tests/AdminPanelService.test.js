@@ -15,7 +15,8 @@ class InMemoryEntitlementRepository {
   constructor(rows = []) { this.rows = rows.map((r) => ({ ...r })); }
   async findFeature(guildId, feature) { return this.rows.find((r) => r.guild_id === guildId && r.feature_key === feature) || null; }
   async listFeatures(guildId) { return this.rows.filter((r) => r.guild_id === guildId); }
-  async listAll() { return [...this.rows]; }
+  // 4D/R1 — listAll renvoie { rows, totalRows, truncated }.
+  async listAll() { return { rows: [...this.rows], totalRows: this.rows.length, truncated: false }; }
   async activate(record) {
     const i = this.rows.findIndex((r) => r.guild_id === record.guild_id && r.feature_key === record.feature_key);
     if (i >= 0) this.rows[i] = { ...this.rows[i], ...record };
@@ -113,7 +114,8 @@ test("premium with expiry becomes expired after the delay; without expiry stays 
   assert.equal(await f.entitlementService.hasFeature({ guildId: GUILD_A, feature: EntitlementFeature.TICKET_PREMIUM }), true);
   f.clock.now += 2 * 24 * 60 * 60 * 1000;
   assert.equal(await f.entitlementService.hasFeature({ guildId: GUILD_A, feature: EntitlementFeature.TICKET_PREMIUM }), false, "expired");
-  const servers = await f.entitlementService.listPremiumServers();
+  // 4D/R1 — listPremiumServers renvoie { servers, totalRows, truncated }.
+  const { servers } = await f.entitlementService.listPremiumServers();
   assert.equal(servers[0].expired, true);
 
   const f2 = fixture();
@@ -149,10 +151,14 @@ test("counters distinguish active/expired/inactive", async () => {
   await f.service.activatePremium({ actorId: ADMIN_ID, guildId: GUILD_A, plan: EntitlementFeature.TICKET_PREMIUM });
   await f.service.activatePremium({ actorId: ADMIN_ID, guildId: GUILD_B, plan: EntitlementFeature.TICKET_PREMIUM, expiresInDays: 1 });
   f.clock.now += 2 * 24 * 60 * 60 * 1000;
-  assert.equal(await f.entitlementService.countActive(EntitlementFeature.TICKET_PREMIUM), 1);
-  assert.equal(await f.entitlementService.countExpired(EntitlementFeature.TICKET_PREMIUM), 1);
+  // 4D/R1 — les compteurs renvoient { count, truncated } : un compteur dérivé
+  // d'une liste plafonnée ne peut plus être présenté comme un nombre nu.
+  const active = await f.entitlementService.countActive(EntitlementFeature.TICKET_PREMIUM);
+  assert.deepEqual(active, { count: 1, truncated: false });
+  const expired = await f.entitlementService.countExpired(EntitlementFeature.TICKET_PREMIUM);
+  assert.deepEqual(expired, { count: 1, truncated: false });
   await f.service.revokePremiumForAbuse({ actorId: ADMIN_ID, guildId: GUILD_A, plan: EntitlementFeature.TICKET_PREMIUM, reason: "x" });
-  assert.equal(await f.entitlementService.countInactive(EntitlementFeature.TICKET_PREMIUM), 1);
+  assert.deepEqual(await f.entitlementService.countInactive(EntitlementFeature.TICKET_PREMIUM), { count: 1, truncated: false });
 });
 
 test("getServerInfo returns id, name, status, history and analytics", async () => {

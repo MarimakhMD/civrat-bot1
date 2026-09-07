@@ -12,6 +12,26 @@ const {
   classifySupabaseError,
   toPersistenceError,
 } = require("../adapters/supabase/supabaseErrorClassifier");
+// A1 — liste blanche statique des colonnes de guild_configs.
+const { isGuildConfigKey, SERVICE_MANAGED_KEYS } = require("./guildConfigKeys");
+
+// ───────────────────────────────────────────────────────────────
+// 4D/R2 — bornes de getAllGuildConfigs().
+//
+// La fonction lisait `guild_configs` d'un seul `.select("*")` : ni filtre, ni
+// ordre, ni limite. Deux défauts distincts :
+//   • sans `.range()`, PostgREST applique `db-max-rows` (1000 par défaut sur
+//     Supabase) et TRONQUE SILENCIEUSEMENT avec HTTP 200 — au-delà de 1000
+//     serveurs, la liste serait incomplète sans aucune erreur ;
+//   • sans `.order()`, PostgREST trie sur `ctid`, donc l'ordre change après un
+//     VACUUM : une pagination sans ordre stable peut sauter ou dupliquer des
+//     lignes. `guild_id` est la clé primaire, le tri est donc déterministe.
+//
+// La fonction et son export sont CONSERVÉS (décision utilisateur 4D) ; seule la
+// lecture est bornée.
+// ───────────────────────────────────────────────────────────────
+const GUILD_CONFIG_PAGE_SIZE = 1000;
+const GUILD_CONFIG_SCAN_CAP = 10000;
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
 const cache = new Map(); // guildId -> { config, expiresAt, found }
@@ -149,6 +169,26 @@ function validateUpdate(guildId, patch) {
   if (Object.prototype.hasOwnProperty.call(patch, "guild_id")) {
     throw new ValidationError("guild_id cannot be changed through a configuration patch", { resource: "guild_config" });
   }
+
+  // A1 — Liste blanche des colonnes de guild_configs.
+  //
+  // Sans ce contrôle, PostgREST rejetait l'UPSERT ENTIER dès qu'une colonne
+  // était inconnue, et l'erreur remontait en PERSISTENCE_FAILED : impossible de
+  // savoir quelle clé était en cause, et tous les réglages du même appel étaient
+  // perdus. Le défaut est désormais nommé, localisé et levé AVANT tout I/O.
+  //
+  // Décision DCA2 = R1 : rejet strict. Aucun filtrage silencieux — une clé
+  // écartée sans bruit reproduirait exactement le problème qu'on corrige.
+  const unknown = Object.keys(patch).filter((key) => !isGuildConfigKey(key));
+  if (unknown.length > 0) {
+    const managed = unknown.filter((key) => SERVICE_MANAGED_KEYS.includes(key));
+    throw new ValidationError(
+      managed.length > 0
+        ? `unknown guild_config key(s): ${unknown.join(", ")} — ${managed.join(", ")} is managed by the service and must not be provided`
+        : `unknown guild_config key(s): ${unknown.join(", ")} — declare it in src/services/guildConfigKeys.js`,
+      { resource: "guild_config", unknownKeys: unknown },
+    );
+  }
 }
 
 function cleanPatch(patch) {
@@ -211,14 +251,36 @@ async function getAllGuildConfigs() {
   }
 
   try {
-    const { data, error } = await client.from("guild_configs").select("*");
-    if (error) throw error;
-    if (!Array.isArray(data)) {
-      throw new PersistenceError({
-        metadata: { operation: "read_all", resource: "guild_config", source: "supabase", reason: "INVALID_RESPONSE" },
-      });
+    // 4D/R2 — lecture paginée et bornée, dans l'ordre de la clé primaire.
+    const configs = [];
+    for (let from = 0; ; from += GUILD_CONFIG_PAGE_SIZE) {
+      if (configs.length >= GUILD_CONFIG_SCAN_CAP) {
+        // Le plafond est atteint : la liste est un PLANCHER. On le dit au lieu
+        // de laisser croire que le parc tient dans le tableau.
+        (logger.warn || logger.error).call(logger, "Guild configurations read truncated at scan cap", {
+          operation: "read_all",
+          resource: "guild_config",
+          source: "supabase",
+          scanCap: GUILD_CONFIG_SCAN_CAP,
+        });
+        break;
+      }
+      const { data, error } = await client
+        .from("guild_configs")
+        .select("*")
+        .order("guild_id", { ascending: true })
+        .range(from, from + GUILD_CONFIG_PAGE_SIZE - 1);
+      if (error) throw error;
+      if (!Array.isArray(data)) {
+        throw new PersistenceError({
+          metadata: { operation: "read_all", resource: "guild_config", source: "supabase", reason: "INVALID_RESPONSE" },
+        });
+      }
+      for (const row of data) configs.push(row);
+      // Page incomplète : la table est épuisée.
+      if (data.length < GUILD_CONFIG_PAGE_SIZE) break;
     }
-    return data.map(cloneConfig);
+    return configs.map(cloneConfig);
   } catch (error) {
     if (error instanceof BackendUnavailableError || error instanceof PersistenceError) throw error;
     const classified = classifySupabaseError(error);

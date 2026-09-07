@@ -39,6 +39,7 @@ function fake({
   name = "settings",
   customId = "x",
   lifecycle = null,
+  message = null,
 } = {}) {
   return {
     replied: false,
@@ -55,6 +56,7 @@ function fake({
     isModalSubmit: () => false,
     commandName: name,
     customId,
+    message,
     values: userSelect || mentionableSelect ? ["selected-user"] : [],
     guildId: "1320817768962064384",
     channelId: "1542957356382552154",
@@ -132,4 +134,20 @@ test("registered Discord commands defer before execution and complete the origin
   assert.deepEqual(calls.map(([method]) => method), ["deferReply", "editReply"]);
   assert.equal(calls[1][1].content, "ready");
   assert.equal(Object.hasOwn(calls[1][1], "ephemeral"), false);
+});
+
+test("l'enveloppe expose le message porteur d'un bouton, et null sinon", () => {
+  const { adapter } = createAdapter();
+
+  // C2 (option B) : un clic de bouton porte toujours son message d'origine.
+  // L'exposer évite de stocker un message_id en base — public.suggestions
+  // n'a aucune colonne de ce type.
+  const message = { id: "999", edit: async () => {}, delete: async () => {} };
+  const buttonEnvelope = adapter.normalize(fake({ button: true, customId: "suggestion_up:1", message }));
+  assert.equal(buttonEnvelope.kind, InteractionKind.BUTTON);
+  assert.equal(buttonEnvelope.message, message);
+
+  // Une commande n'a pas de message porteur : null explicite, jamais undefined.
+  const commandEnvelope = adapter.normalize(fake({ command: true }));
+  assert.equal(commandEnvelope.message, null);
 });

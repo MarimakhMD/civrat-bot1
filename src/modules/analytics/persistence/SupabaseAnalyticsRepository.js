@@ -1,5 +1,31 @@
 "use strict";
 
+// P10 — plafonnement honnête des lectures Analytics.
+//
+// Avant ce correctif, getStats et getGlobalStats lisaient toutes les lignes
+// sans .limit(). PostgREST applique alors db-max-rows (1000 par défaut) et
+// renvoie 1000 lignes SANS erreur : les totaux affichés par /analytics et par
+// le dashboard Admin étaient donc silencieusement faux (§19 — vrais analytics).
+//
+// Solution retenue, sans aucune migration :
+//  • compteurs de lignes  -> HEAD + Prefer: count=exact. Le total exact arrive
+//    dans Content-Range, AUCUNE ligne n'est transférée.
+//  • compteurs distincts  -> PostgREST n'expose pas COUNT(DISTINCT …), donc
+//    pagination par lots de ANALYTICS_COUNT_PAGE_SIZE avec un plafond de
+//    sécurité. Le résultat est exact ; si le plafond est atteint on renvoie un
+//    PLANCHER et truncated = true — jamais un faux exact.
+
+const ANALYTICS_COUNT_PAGE_SIZE = 1000;
+const ANALYTICS_DISTINCT_SCAN_CAP = 50000;
+
+// 4D/R7 — plafond de getEvents. P10 avait sécurisé les COMPTEURS
+// (#countRows en HEAD et #countDistinct paginé) mais laissait getEvents passer
+// son `limit` tel quel à `.limit()`. Le plafond est fixé SOUS le `db-max-rows`
+// de PostgREST (1000 par défaut sur Supabase) : au-delà, le serveur tronquerait
+// silencieusement et le plafond affiché dans le code serait un mensonge.
+const ANALYTICS_EVENTS_DEFAULT_LIMIT = 100;
+const ANALYTICS_EVENTS_MAX_LIMIT = 500;
+
 class SupabaseAnalyticsRepository {
   constructor({ supabase }) {
     if (!supabase || typeof supabase.from !== "function") {
@@ -14,16 +40,65 @@ class SupabaseAnalyticsRepository {
     if (error) throw error;
   }
 
-  async getStats(guildId) {
-    const { data, error } = await this.supabase.from("analytics_events").select("event_type, user_id").eq("guild_id", guildId);
+  // Compte EXACT d'un nombre de lignes : requête HEAD + Prefer: count=exact.
+  // Aucune ligne transférée ; le total vient de l'en-tête Content-Range.
+  // Insensible à db-max-rows puisque aucune ligne n'est demandée.
+  async #countRows({ guildId = null, eventType = null } = {}) {
+    let query = this.supabase.from("analytics_events").select("*", { count: "exact", head: true });
+    if (guildId) query = query.eq("guild_id", guildId);
+    if (eventType) query = query.eq("event_type", eventType);
+    const { count, error } = await query;
     if (error) throw error;
-    const messages = data.filter((r) => r.event_type === "message").length;
-    const members = new Set(data.filter((r) => r.event_type === "member").map((r) => r.user_id)).size;
-    return { messages, members, total: data.length };
+    const value = Number(count);
+    return Number.isFinite(value) && value >= 0 ? value : 0;
   }
 
-  async getEvents(guildId, type = null, limit = 100) {
-    let query = this.supabase.from("analytics_events").select("*").eq("guild_id", guildId).order("created_at", { ascending: false }).limit(limit);
+  // Compte DISTINCT exact par pagination bornée. `column` est un nom de
+  // colonne interne figé (jamais une entrée utilisateur) : "user_id" | "guild_id".
+  // Les valeurs nulles/vides sont ignorées, comme dans l'implémentation
+  // InMemory historique (`if (e.type === "member" && e.userId)`).
+  async #countDistinct(column, { guildId = null, eventType = null } = {}) {
+    const seen = new Set();
+    let scanned = 0;
+    let truncated = false;
+    for (let from = 0; ; from += ANALYTICS_COUNT_PAGE_SIZE) {
+      if (scanned >= ANALYTICS_DISTINCT_SCAN_CAP) {
+        truncated = true;
+        break;
+      }
+      let query = this.supabase.from("analytics_events").select(column);
+      if (guildId) query = query.eq("guild_id", guildId);
+      if (eventType) query = query.eq("event_type", eventType);
+      const { data, error } = await query.range(from, from + ANALYTICS_COUNT_PAGE_SIZE - 1);
+      if (error) throw error;
+      const rows = data || [];
+      if (rows.length === 0) break;
+      for (const row of rows) {
+        const value = row[column];
+        if (value) seen.add(value);
+      }
+      scanned += rows.length;
+      if (rows.length < ANALYTICS_COUNT_PAGE_SIZE) break;
+    }
+    return { count: seen.size, truncated };
+  }
+
+  async getStats(guildId) {
+    const [messages, total, distinctMembers] = await Promise.all([
+      this.#countRows({ guildId, eventType: "message" }),
+      this.#countRows({ guildId }),
+      this.#countDistinct("user_id", { guildId, eventType: "member" }),
+    ]);
+    return { messages, members: distinctMembers.count, total, membersTruncated: distinctMembers.truncated };
+  }
+
+  async getEvents(guildId, type = null, limit = ANALYTICS_EVENTS_DEFAULT_LIMIT) {
+    // 4D/R7 — clamp appliqué DANS le dépôt : le comportement reste identique
+    // pour toute valeur raisonnable, seule une demande déraisonnable est réduite.
+    const bounded = Number.isFinite(limit) && limit > 0
+      ? Math.min(Math.trunc(limit), ANALYTICS_EVENTS_MAX_LIMIT)
+      : ANALYTICS_EVENTS_DEFAULT_LIMIT;
+    let query = this.supabase.from("analytics_events").select("*").eq("guild_id", guildId).order("created_at", { ascending: false }).limit(bounded);
     if (type) query = query.eq("event_type", type);
     const { data, error } = await query;
     if (error) throw error;
@@ -37,14 +112,18 @@ class SupabaseAnalyticsRepository {
 
   // Agrégats globaux pour le dashboard Admin (sans filtre guild).
   async getGlobalStats() {
-    const { data, error } = await this.supabase.from("analytics_events").select("event_type, user_id, guild_id");
-    if (error) throw error;
-    const rows = data || [];
-    const messages = rows.filter((r) => r.event_type === "message").length;
-    const members = new Set(rows.filter((r) => r.event_type === "member").map((r) => r.user_id)).size;
-    const servers = new Set(rows.map((r) => r.guild_id).filter(Boolean)).size;
-    return { messages, members, servers };
+    const [messages, distinctMembers, distinctGuilds] = await Promise.all([
+      this.#countRows({ eventType: "message" }),
+      this.#countDistinct("user_id", { eventType: "member" }),
+      this.#countDistinct("guild_id"),
+    ]);
+    return {
+      messages,
+      members: distinctMembers.count,
+      servers: distinctGuilds.count,
+      truncated: distinctMembers.truncated || distinctGuilds.truncated,
+    };
   }
 }
 
-module.exports = { SupabaseAnalyticsRepository };
+module.exports = { SupabaseAnalyticsRepository, ANALYTICS_COUNT_PAGE_SIZE, ANALYTICS_DISTINCT_SCAN_CAP };

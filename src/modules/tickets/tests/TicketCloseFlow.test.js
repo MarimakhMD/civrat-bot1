@@ -16,7 +16,7 @@ function createCloseService({ ticket = { guild_id: "guild", channel_id: "channel
   let updates = null;
   const repository = {
     findByChannel: async () => { if (findError) throw findError; return ticket; },
-    updateByChannel: async (_channelId, value) => { updateCalls += 1; updates = value; if (updateError) throw updateError; if (ticket) Object.assign(ticket, value); return ticket; },
+    updateByChannel: async (_guildId, _channelId, value) => { updateCalls += 1; updates = value; if (updateError) throw updateError; if (ticket) Object.assign(ticket, value); return ticket; },
   };
   const service = new TicketService({
     repository,
@@ -104,13 +104,57 @@ test("close route is registered while Claim remains untouched", () => {
   assert.ok(registry.find({ kind: "button", customId: Id.CLAIM }));
 });
 
-test("Supabase repository finds and updates a ticket by channel", async () => {
+// ⚠️ CHANGEMENT D'ATTENTE (4G C2 + C5) — signalé explicitement.
+// findByChannel prend désormais (guildId, channelId) et la requête porte le
+// filtre guild_id ; la projection n'est plus select("*"). Ce test enregistrait
+// l'ancienne signature à un seul argument : il est renforcé pour VERROUILLER le
+// nouveau contrat au lieu de simplement le laisser passer.
+test("Supabase repository scopes findByChannel by guild_id and reads only the columns it needs", async () => {
   const calls = [];
+  const filters = [];
+  let projected = null;
   const repository = new SupabaseTicketRepository({ supabase: { from: () => ({
-    select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { channel_id: "channel" }, error: null }) }) }),
-    update: (updates) => ({ eq: (_field, channelId) => ({ select: () => ({ single: async () => { calls.push({ channelId, updates }); return { data: { channel_id: channelId, ...updates }, error: null }; } }) }) }),
+    select: (columns) => {
+      projected = columns;
+      const chain = {
+        eq: (field, value) => { filters.push([field, value]); return chain; },
+        maybeSingle: async () => ({ data: { channel_id: "channel", guild_id: "guild-1" }, error: null }),
+      };
+      return chain;
+    },
+    update: (updates) => {
+      const updateFilters = [];
+      const chain = {
+        eq: (field, value) => { updateFilters.push([field, value]); return chain; },
+        select: () => ({
+          single: async () => {
+            calls.push({ filters: updateFilters, updates });
+            return { data: { guild_id: "guild-1", channel_id: "channel", ...updates }, error: null };
+          },
+        }),
+      };
+      return chain;
+    },
   }) } });
-  assert.equal((await repository.findByChannel("channel")).channel_id, "channel");
-  assert.equal((await repository.updateByChannel("channel", { closed: true })).closed, true);
-  assert.deepEqual(calls, [{ channelId: "channel", updates: { closed: true } }]);
+
+  assert.equal((await repository.findByChannel("guild-1", "channel")).channel_id, "channel");
+  // 4G C2 — le cloisonnement par guilde est DANS la requête, pas seulement dans
+  // la vérification applicative qui suit.
+  assert.deepEqual(filters, [["guild_id", "guild-1"], ["channel_id", "channel"]]);
+  // 4G C5 — projection réduite aux cinq colonnes réellement lues.
+  assert.equal(projected, "guild_id, user_id, channel_id, status, closed");
+
+  // 4G C2 — l'ÉCRITURE est scopée comme la lecture : guild_id ET channel_id.
+  assert.equal((await repository.updateByChannel("guild-1", "channel", { closed: true })).closed, true);
+  assert.deepEqual(calls, [{ filters: [["guild_id", "guild-1"], ["channel_id", "channel"]], updates: { closed: true } }]);
+});
+
+// 4G C2 — fail-closed : sans guilde ni salon, aucune requête n'est émise.
+test("Supabase repository refuses to query without guildId and channelId", async () => {
+  let queried = 0;
+  const repository = new SupabaseTicketRepository({ supabase: { from: () => { queried += 1; throw new Error("should not be reached"); } } });
+  assert.equal(await repository.findByChannel(null, "channel"), null);
+  assert.equal(await repository.findByChannel("guild-1", null), null);
+  assert.equal(await repository.findByChannel(undefined, undefined), null);
+  assert.equal(queried, 0, "aucun appel à from()");
 });

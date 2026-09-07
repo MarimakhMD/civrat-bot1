@@ -39,7 +39,8 @@ class InMemoryIdentityRepository {
 class InMemoryEntitlementRepository {
   async findFeature() { return null; }
   async listFeatures() { return []; }
-  async listAll() { return []; }
+  // 4D/R1 — listAll renvoie { rows, totalRows, truncated }.
+  async listAll() { return { rows: [], totalRows: 0, truncated: false }; }
   async activate(record) { return record; }
   async setStatus() { return null; }
 }

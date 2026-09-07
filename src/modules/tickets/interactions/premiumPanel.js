@@ -248,7 +248,11 @@ async function previewPremiumPanel(context) {
   const decision = await requirePremium(context);
   if (!decision) return null;
   const panelService = new TicketPanelService({ configService: context.service, premiumConfigResolver: context.premiumConfigResolver });
-  const panel = await panelService.build(context.guildId, context.t);
+  // M8 — mode APERÇU : aucun panel n'existe ici, donc aucun panelId à encoder.
+  // panel: null fait retomber la vue sur le rendu historique à un bouton de
+  // customId civrat:v1:tickets:create. L'aperçu montre le CHROME (titre,
+  // description, couleur, image, libellé), qui reste global via guild_configs.
+  const panel = await panelService.build({ guildId: context.guildId, panel: null, t: context.t });
   if (!panel.ready) {
     await context.envelope.transport.reply({
       view: { title: context.t("tickets.title"), content: context.t(`tickets.${panel.code}`), components: [] },

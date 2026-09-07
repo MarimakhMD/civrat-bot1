@@ -1,9 +1,14 @@
 "use strict";
 
 function analyticsView({ t, stats, topXP, topInvites }) {
+  // P10 — `members` est un comptage distinct obtenu par pagination bornée :
+  // au plafond, c'est un PLANCHER, pas un total. Le suffixe « + » le dit
+  // explicitement, aucun chiffre tronqué n'est présenté comme exact.
+  // `messages` est un compteur exact (count=exact) et ne porte jamais « + ».
+  const members = stats.membersTruncated ? `${stats.members}+` : stats.members;
   const lines = [
     t("analytics.messages", { count: stats.messages }),
-    t("analytics.members", { count: stats.members }),
+    t("analytics.members", { count: members }),
     t("analytics.topXP") + ": " + (topXP.length ? topXP.map((e, i) => `${i + 1}. <@${e.userId}> ${e.xp || e.current} XP`).join(", ") : t("analytics.noData")),
     t("analytics.invitesTop") + ": " + (topInvites.length ? topInvites.map((e, i) => `${i + 1}. <@${e.userId}> ${e.current}`).join(", ") : t("analytics.noData")),
   ];

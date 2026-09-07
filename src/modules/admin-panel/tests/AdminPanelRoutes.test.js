@@ -29,7 +29,8 @@ class InMemoryEntitlementRepository {
   constructor(rows = []) { this.rows = rows.map((r) => ({ ...r })); }
   async findFeature(g, f) { return this.rows.find((r) => r.guild_id === g && r.feature_key === f) || null; }
   async listFeatures(g) { return this.rows.filter((r) => r.guild_id === g); }
-  async listAll() { return [...this.rows]; }
+  // 4D/R1 — listAll renvoie { rows, totalRows, truncated }.
+  async listAll() { return { rows: [...this.rows], totalRows: this.rows.length, truncated: false }; }
   async activate(record) {
     const i = this.rows.findIndex((r) => r.guild_id === record.guild_id && r.feature_key === record.feature_key);
     if (i >= 0) this.rows[i] = { ...this.rows[i], ...record }; else this.rows.push({ ...record });

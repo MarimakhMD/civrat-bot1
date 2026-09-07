@@ -23,7 +23,7 @@ function createCloseService({ config = {}, record = undefined, ticketLog = null 
   const service = new TicketService({
     repository: {
       findByChannel: async () => ({ guild_id: "guild", channel_id: "channel", user_id: "creator", status: "open", closed: false }),
-      updateByChannel: async (_c, value) => value,
+      updateByChannel: async (_guildId, _channelId, value) => value,
     },
     configService: { read: async () => ({ tickets_enabled: true, ticket_category_id: "category", ticket_support_role_id: "support", ...config }) },
     transport: {

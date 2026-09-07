@@ -12,6 +12,9 @@ module.exports = {
   ...require("./persistence/TicketCounterRepository"),
   ...require("./persistence/SupabaseTicketCounterRepository"),
   ...require("./persistence/InMemoryTicketCounterRepository"),
+  // M8 — panels persistants (public.ticket_panels).
+  ...require("./persistence/TicketPanelRepository"),
+  ...require("./persistence/SupabaseTicketPanelRepository"),
   ...require("./configuration/ticketPremiumConstants"),
   ...require("./configuration/ticketPremiumDefaults"),
   ...require("./configuration/ticketPremiumConfigSchema"),

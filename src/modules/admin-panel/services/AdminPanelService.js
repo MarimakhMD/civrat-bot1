@@ -28,6 +28,31 @@ function safeFailure(error) {
   };
 }
 
+// ───────────────────────────────────────────────────────────────
+// 4D/R8 — clamp des paramètres de pagination.
+//
+// `page` et `pageSize` atteignent les dépôts où ils alimentent un
+// `.range(offset, offset + limit - 1)` ou un `.limit()`. `page` provient d'un
+// customId (donc forgeable) et `pageSize` est un paramètre public : sans clamp,
+// un `pageSize` énorme demanderait des dizaines de milliers de lignes d'un coup
+// et un `page` énorme produirait un offset déraisonnable. Les valeurs invalides
+// retombent sur les défauts du panneau plutôt que de lever.
+// ───────────────────────────────────────────────────────────────
+const PAGE_SIZE_MAX = 100;
+const PAGE_INDEX_MAX = 100000;
+
+function boundedPageSize(value, fallback = AdminPanelPolicy.PAGE_SIZE) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return fallback;
+  return Math.min(Math.trunc(n), PAGE_SIZE_MAX);
+}
+
+function boundedPage(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0) return 0;
+  return Math.min(Math.trunc(n), PAGE_INDEX_MAX);
+}
+
 // Orchestration opérationnelle du CIVRAT Admin Panel. Réutilise le core
 // EntitlementService (le SEUL système Premium) + deux journaux append-only
 // (historique Premium et audit Admin). Jamais de secret : uniquement des ids,
@@ -54,12 +79,17 @@ class AdminPanelService {
     let premiumActive = null;
     let premiumExpired = null;
     let premiumInactive = null;
+    // 4D/R1 — la lecture est plafonnée : `truncated` remonte jusqu'au dashboard
+    // pour que les compteurs ne soient jamais présentés comme exacts alors que
+    // la source est incomplète.
+    let premiumTruncated = false;
     try {
-      const servers = await this.entitlementService.listPremiumServers();
+      const { servers, truncated } = await this.entitlementService.listPremiumServers();
       premiumTotal = servers.length;
       premiumActive = servers.filter((s) => s.active).length;
       premiumExpired = servers.filter((s) => s.expired).length;
       premiumInactive = servers.filter((s) => s.status && s.status !== "active").length;
+      premiumTruncated = Boolean(truncated);
     } catch (error) {
       premiumAvailable = false;
       this.log("premium_stats_unavailable", { ...safeFailure(error) });
@@ -89,6 +119,7 @@ class AdminPanelService {
       premiumActive,
       premiumExpired,
       premiumInactive,
+      premiumTruncated,
       analyticsAvailable,
       analytics,
     };
@@ -97,7 +128,8 @@ class AdminPanelService {
   async getRecentActions({ limit = 5 } = {}) {
     if (!this.auditRepository) return [];
     try {
-      return await this.auditRepository.list({ limit });
+      // 4D/R8 — clamp : `limit` atteint un `.range()` côté dépôt.
+      return await this.auditRepository.list({ limit: boundedPageSize(limit, 5) });
     } catch (error) {
       this.log("recent_actions_unavailable", { ...safeFailure(error) });
       return [];
@@ -106,18 +138,44 @@ class AdminPanelService {
 
   // ---------- Premium : liste / recherche / détail ----------
   async listPremiumServers({ page = 0, pageSize = AdminPanelPolicy.PAGE_SIZE, guildNameResolver = null } = {}) {
+    // 4D/R8 — page et pageSize sont clampés : `pageSize` alimente directement un
+    // `.range()`/`offset` plus bas, et `page` vient d'un customId.
+    const safePageSize = boundedPageSize(pageSize);
+    const safePage = boundedPage(page);
     try {
-      const servers = await this.entitlementService.listPremiumServers();
+      const { servers, totalRows, truncated } = await this.entitlementService.listPremiumServers();
+      // La pagination reste en mémoire, mais la source est désormais BORNÉE :
+      // c'était le but de 4D/R1. `total` compte ce qui a réellement été lu.
       const total = servers.length;
-      const start = page * pageSize;
-      const items = servers.slice(start, start + pageSize).map((server) => ({
+      const start = safePage * safePageSize;
+      const items = servers.slice(start, start + safePageSize).map((server) => ({
         ...server,
         name: guildNameResolver ? guildNameResolver(server.guildId) || null : null,
       }));
-      return { ok: true, code: "PREMIUM_LISTED", items, total, page, pageSize, hasMore: start + pageSize < total };
+      return {
+        ok: true,
+        code: "PREMIUM_LISTED",
+        items,
+        total,
+        totalRows,
+        truncated: Boolean(truncated),
+        page: safePage,
+        pageSize: safePageSize,
+        hasMore: start + safePageSize < total,
+      };
     } catch (error) {
       this.log("premium_list_failed", { ...safeFailure(error) });
-      return { ok: false, code: "PREMIUM_LIST_UNAVAILABLE", items: [], total: 0, page, pageSize, hasMore: false };
+      return {
+        ok: false,
+        code: "PREMIUM_LIST_UNAVAILABLE",
+        items: [],
+        total: 0,
+        totalRows: 0,
+        truncated: false,
+        page: safePage,
+        pageSize: safePageSize,
+        hasMore: false,
+      };
     }
   }
 
@@ -190,32 +248,38 @@ class AdminPanelService {
 
   async getHistory(guildId, { page = 0, pageSize = AdminPanelPolicy.PAGE_SIZE } = {}) {
     if (!isDiscordId(guildId)) return { ok: false, code: "INVALID_GUILD_ID" };
-    if (!this.historyRepository) return { ok: false, code: "HISTORY_UNAVAILABLE", entries: [], total: 0, page, pageSize, hasMore: false };
+    // 4D/R8 — clamp avant tout calcul d'offset.
+    const safePageSize = boundedPageSize(pageSize);
+    const safePage = boundedPage(page);
+    if (!this.historyRepository) return { ok: false, code: "HISTORY_UNAVAILABLE", entries: [], total: 0, page: safePage, pageSize: safePageSize, hasMore: false };
     try {
-      const offset = page * pageSize;
-      const entries = await this.historyRepository.listByGuild(guildId, { limit: pageSize, offset });
+      const offset = safePage * safePageSize;
+      const entries = await this.historyRepository.listByGuild(guildId, { limit: safePageSize, offset });
       const total = entries.length; // approximation : total réel inconnu sans count (affichage page courante)
-      return { ok: true, code: "HISTORY_LISTED", entries, total, page, pageSize, hasMore: entries.length === pageSize };
+      return { ok: true, code: "HISTORY_LISTED", entries, total, page: safePage, pageSize: safePageSize, hasMore: entries.length === safePageSize };
     } catch (error) {
       this.log("history_list_failed", { guildId, ...safeFailure(error) });
-      return { ok: false, code: "HISTORY_UNAVAILABLE", entries: [], total: 0, page, pageSize, hasMore: false };
+      return { ok: false, code: "HISTORY_UNAVAILABLE", entries: [], total: 0, page: safePage, pageSize: safePageSize, hasMore: false };
     }
   }
 
   // ---------- Audit ----------
   async listAudit({ page = 0, pageSize = AdminPanelPolicy.PAGE_SIZE, guildId = null } = {}) {
-    if (!this.auditRepository) return { ok: false, code: "AUDIT_UNAVAILABLE", entries: [], total: 0, page, pageSize, hasMore: false };
+    // 4D/R8 — clamp : page vient d'un customId forgeable et pageSize alimente
+    // directement le `.range()` du dépôt.
+    const limit = boundedPageSize(pageSize);
+    const safePage = boundedPage(page);
+    if (!this.auditRepository) return { ok: false, code: "AUDIT_UNAVAILABLE", entries: [], total: 0, page: safePage, pageSize: limit, hasMore: false };
     try {
-      const limit = pageSize;
-      const offset = page * pageSize;
+      const offset = safePage * limit;
       const [entries, total] = await Promise.all([
         this.auditRepository.list({ limit, offset, guildId }),
         this.auditRepository.count({ guildId }),
       ]);
-      return { ok: true, code: "AUDIT_LISTED", entries, total, page, pageSize, hasMore: offset + entries.length < total };
+      return { ok: true, code: "AUDIT_LISTED", entries, total, page: safePage, pageSize: limit, hasMore: offset + entries.length < total };
     } catch (error) {
       this.log("audit_list_failed", { ...safeFailure(error) });
-      return { ok: false, code: "AUDIT_UNAVAILABLE", entries: [], total: 0, page, pageSize, hasMore: false };
+      return { ok: false, code: "AUDIT_UNAVAILABLE", entries: [], total: 0, page: safePage, pageSize: limit, hasMore: false };
     }
   }
 

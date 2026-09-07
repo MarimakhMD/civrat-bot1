@@ -117,7 +117,7 @@ function createLifecycleService({ noticeError = null, record = {} } = {}) {
     configService: { read: async () => ({ ticket_support_role_id: "sup" }) },
     repository: {
       findByChannel: async () => ({ ...base, ...record }),
-      updateByChannel: async (_channelId, updates) => { updated.push(updates); return { ...base, ...record, ...updates }; },
+      updateByChannel: async (_guildId, _channelId, updates) => { updated.push(updates); return { ...base, ...record, ...updates }; },
     },
     transport: {
       isMemberInRole: async () => true,
@@ -176,7 +176,7 @@ test("without t or without transport.support, no notice is attempted (backward c
     configService: { read: async () => ({ ticket_support_role_id: "sup" }) },
     repository: {
       findByChannel: async () => ({ guild_id: "g", user_id: "creator", status: "open", closed: false }),
-      updateByChannel: async (_c, updates) => updates,
+      updateByChannel: async (_guildId, _channelId, updates) => updates,
     },
     transport: {
       isMemberInRole: async () => true,

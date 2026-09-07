@@ -10,9 +10,8 @@
     "disable": "Désactiver l'XP",
     "enabled": "L'XP est activé.",
     "disabled": "L'XP est désactivé.",
-    "channel": "Restreindre l'XP à un salon",
-    "channelAll": "tous les salons",
-    "channelLine": "Salon XP : {{channel}}",
+    "perMessageLine": "XP par message : {{amount}}",
+    "cooldownLine": "Délai entre deux gains : {{seconds}} s",
     "back": "Retour"
   }
 }

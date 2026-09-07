@@ -73,7 +73,11 @@ function makeContext({ config = { ...freeConfig }, record = ACTIVE, repositoryEr
 
 function buildPanel({ config, record }) {
   const service = new TicketPanelService({ configService: { read: async () => config }, premiumConfigResolver: record === undefined ? null : makeResolver(record) });
-  return service.build("g", (key) => key);
+  // M8 — build() prend un objet. `panel: null` = mode APERÇU : c'est bien ce
+  // que ces tests vérifient, le CHROME Premium (titre, description, couleur,
+  // image, libellé), qui reste global via guild_configs. Aucun panel réel n'est
+  // en jeu ici, donc aucun panelId à encoder dans le customId.
+  return service.build({ guildId: "g", panel: null, t: (key) => key });
 }
 
 const historicalFreeView = {
@@ -134,11 +138,17 @@ test("invalid stored Premium values fall back per key even when active", async (
 test("tickets settings view exposes the Premium entry and stays within Discord limits", () => {
   const view = ticketView({ t: (key) => key, config: { tickets_enabled: true } });
   const json = JSON.stringify(view.components);
-  for (const id of [Id.TOGGLE, Id.CATEGORY, Id.SUPPORT_ROLE, Id.PREMIUM_SECTION, Id.PREVIEW, Id.BACK]) {
+  // M8 (D-A) — l'entrée « Aperçu » a cédé sa place à l'entrée « Panels » : la
+  // vue occupait déjà les 5 lignes d'action autorisées par Discord.
+  for (const id of [Id.TOGGLE, Id.CATEGORY, Id.SUPPORT_ROLE, Id.PREMIUM_SECTION, Id.PANELS_SECTION, Id.BACK]) {
     assert.ok(json.includes(id), `tickets view is missing ${id}`);
   }
+  assert.ok(!json.includes(Id.PREVIEW), "tickets view must no longer expose the preview entry");
   const rows = toActionRows(view.components);
   assert.ok(rows.length <= 5, `tickets view renders ${rows.length} rows`);
+  // Garde-fou M8 : la limite Discord est exactement 5, et toActionRows LÈVE
+  // au-delà. Cette assertion verrouille le budget pour toute évolution future.
+  assert.equal(rows.length, 5, "tickets view must use exactly the 5 allowed rows");
 });
 
 test("locked view explains the Premium decision and exposes only Back", () => {

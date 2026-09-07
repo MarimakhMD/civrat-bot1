@@ -15,7 +15,7 @@ function createService({ ticket = { guild_id: "guild", channel_id: "channel", us
   const service = new TicketService({
     repository: {
       findByChannel: async () => { if (findError) throw findError; return ticket; },
-      updateByChannel: async (_channelId, value) => { updateCalls += 1; updates = value; if (updateError) throw updateError; if (ticket) Object.assign(ticket, value); return ticket; },
+      updateByChannel: async (_guildId, _channelId, value) => { updateCalls += 1; updates = value; if (updateError) throw updateError; if (ticket) Object.assign(ticket, value); return ticket; },
     },
     configService: { read: async () => ({ ticket_support_role_id: "support" }) },
     transport: {

@@ -15,6 +15,15 @@ class EntitlementRepository {
     throw new Error("EntitlementRepository.listFeatures must be implemented.");
   }
 
+  /**
+   * Toutes les lignes de la table.
+   *
+   * 4D/R1 — renvoie `{ rows, totalRows, truncated }` et NON plus un tableau nu.
+   * Une implémentation doit borner sa lecture (pagination + plafond) : PostgREST
+   * tronque silencieusement à `db-max-rows`, donc un tableau nu ne peut pas
+   * exprimer « j'ai peut-être été coupé ». `truncated` est le seul signal
+   * honnête d'une liste incomplète.
+   */
   async listAll() {
     throw new Error("EntitlementRepository.listAll must be implemented.");
   }

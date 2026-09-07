@@ -24,11 +24,23 @@ const { WelcomeTemplateRenderer, defaultPlaceholderProviders } = require("./serv
 const { WelcomeAdminAction } = require("./services/WelcomeAdminLogService");
 function registerWelcomeGoodbye({registry,service,adminLogService=null,settingsHome=null,imagePipeline=null,templateRegistry=null,entitlementService=null}) { const permissions={allOf:[PermissionName.MANAGE_GUILD]}; const update=async(c)=>c.envelope.transport.update({view:settingsView({t:c.t,config:await service.get(c.guildId)})}); const log=(action,c)=>adminLogService?.record({action,guildId:c.guildId,actorId:c.userId});
   registry.registerButton({customId:Id.PREVIEW_WELCOME_IMAGE,permissions,execute:async c=>{
+    // 4E/E2 — condition 1/2 : le TOGGLE `welcome_image_enabled`.
+    //
+    // Lu AVANT l'entitlement, pour deux raisons : le motif affiché doit être le
+    // bon (« image désactivée » et non « Premium requis »), et un backend
+    // Premium injoignable ne doit pas être consulté pour une image que l'admin
+    // a éteinte. Comparaison STRICTE à `true` : `undefined`, `null` et toute
+    // valeur non booléenne comptent comme désactivé (fail-closed), exactement
+    // comme dans WelcomeDeliveryService — une seule règle aux deux endroits.
+    const config=await service.get(c.guildId);
+    if(config?.[Key.WELCOME_IMAGE_ENABLED]!==true){
+      return c.envelope.transport.reply({view:{content:c.t("welcomeGoodbye.welcomeImageDisabled"),components:[]},ephemeral:true});
+    }
+    // Condition 2/2 : l'entitlement WELCOME_IMAGE. Les deux sont cumulatives.
     const ent=entitlementService
       ? await entitlementService.requireFeature({guildId:c.guildId,feature:EntitlementFeature.WELCOME_IMAGE})
       : {ok:false,granted:false,code:EntitlementDecision.UNAVAILABLE};
     if(!ent.granted){return c.envelope.transport.reply({view:premiumRequiredView(c.t,{decision:ent.code}),ephemeral:true});}
-    const config=await service.get(c.guildId);
     const template=(templateRegistry&&(templateRegistry.get(config[Key.WELCOME_TEMPLATE])||templateRegistry.get("template-1")))||null;
     const dm=c.envelope.discordMember;
     const member={guildId:c.guildId,userId:c.userId,user:"@"+(dm?.user?.username||"user"),mention:"@"+(dm?.user?.username||"user"),username:dm?.user?.username||"user",displayName:dm?.displayName||dm?.user?.username||"CIVRAT",avatarUrl:dm?.user?.displayAvatarURL?.({extension:"png",size:256})||null,server:dm?.guild?.name||"CIVRAT",memberCount:dm?.guild?.memberCount,joinDate:dm?.joinedAt?.toLocaleDateString?.()};

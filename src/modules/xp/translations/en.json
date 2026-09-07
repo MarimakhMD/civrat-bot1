@@ -1,7 +1,7 @@
 {
   "xp": {
     "levelUp": "Level up! {{user}} reached level {{level}}!",
-    "levelUpDescription": "{{user}} leveled up to {{level}} ({{xp}} XP)",
+    "levelUpDescription": "{{user}} leveled up to level {{level}} ({{xp}} XP)",
     "gained": "{{user}} gained {{gain}} XP ({{xp}} total)",
     "cooldown": "XP on cooldown",
     "section": "XP",
@@ -10,9 +10,8 @@
     "disable": "Disable XP",
     "enabled": "XP is enabled.",
     "disabled": "XP is disabled.",
-    "channel": "Restrict XP to a channel",
-    "channelAll": "all channels",
-    "channelLine": "XP channel: {{channel}}",
+    "perMessageLine": "XP per message: {{amount}}",
+    "cooldownLine": "Delay between gains: {{seconds}} s",
     "back": "Back"
   }
 }

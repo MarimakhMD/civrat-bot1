@@ -7,7 +7,7 @@ const { SuggestionComponentId: Id } = require("../configuration/suggestionConsta
 
 test("suggestion view disabled", () => {
   const t = (k) => k;
-  const view = suggestionView({ t, config: { suggestion_enabled: false } });
+  const view = suggestionView({ t, config: { suggestions_enabled: false } });
   assert.equal(view.title, "suggestion.title");
   assert.equal(view.content, "suggestion.disabled");
   const ids = view.components.map((c) => c.customId);
@@ -18,7 +18,7 @@ test("suggestion view disabled", () => {
 
 test("suggestion view enabled", () => {
   const t = (k) => k;
-  const view = suggestionView({ t, config: { suggestion_enabled: true } });
+  const view = suggestionView({ t, config: { suggestions_enabled: true } });
   assert.equal(view.content, "suggestion.enabled");
   const toggle = view.components.find((c) => c.customId === Id.TOGGLE);
   assert.equal(toggle.style, "success");

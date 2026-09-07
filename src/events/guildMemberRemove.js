@@ -47,10 +47,6 @@ async function handleKickDetection(member, config) {
 async function handleInviteDecrement(member, config) {
   // Phase 11 : garde alignée sur guildMemberAdd — défaut « activé » (tracking
   // historique inconditionnel), opt-out explicite uniquement.
-  // De plus, invitedBy est lu dans le MÊME stockage que l'écriture
-  // (inviteService.statsRepository partagé) : la lecture directe du modèle
-  // mongoose (jamais alimenté par le service legacy) rendait le décrément
-  // inopérant — les classements Invites/Analytics ne décroissaient jamais.
   if (config.invitations_enabled === false) return;
   if (member.user.bot) return;
 
@@ -59,7 +55,17 @@ async function handleInviteDecrement(member, config) {
     await new Promise((resolve) => setTimeout(resolve, 1500));
     const entry = await fetchAuditLog(member.guild, 20);
     if (entry?.target?.id === member.id) return;
-    const userData = await inviteService.getInviteStats(member.id, member.guild.id);
-    if (userData?.invitedBy) await inviteService.removeInvite(userData.invitedBy, member.guild.id);
+    // B2 — révocation par invited_id, en UNE écriture.
+    //
+    // L'ancien chemin lisait d'abord invitedBy puis décrémentait l'inviteur.
+    // Si invitedBy manquait (interruption entre les deux écritures
+    // d'attribution, ou arrivée antérieure à B2), le compteur ne redescendait
+    // JAMAIS : la dérive était permanente et invisible.
+    //
+    // Le compteur étant désormais dérivé des liens actifs, poser revoked_at
+    // suffit. Un départ sans lien ne matche aucune ligne et ne fausse donc
+    // rien. Idempotent : un second départ ne trouve plus de lien actif. La
+    // ligne n'est jamais supprimée.
+    await inviteService.revokeInvite(member.guild.id, member.id);
   } catch {}
 }

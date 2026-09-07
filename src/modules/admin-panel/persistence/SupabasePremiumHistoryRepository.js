@@ -2,6 +2,25 @@
 
 const { PremiumHistoryRepository } = require("./PremiumHistoryRepository");
 
+// 4D/R9 — mêmes plafonds que l'audit Admin : `limit`/`offset` alimentent un
+// `.range()` ou un `.limit()`, et le plafond reste sous le `db-max-rows` de
+// PostgREST pour qu'aucune page ne soit tronquée silencieusement.
+const HISTORY_DEFAULT_LIMIT = 20;
+const HISTORY_MAX_LIMIT = 200;
+const HISTORY_MAX_OFFSET = 100000;
+
+function boundedLimit(value, fallback = HISTORY_DEFAULT_LIMIT) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return fallback;
+  return Math.min(Math.trunc(n), HISTORY_MAX_LIMIT);
+}
+
+function boundedOffset(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0) return 0;
+  return Math.min(Math.trunc(n), HISTORY_MAX_OFFSET);
+}
+
 class SupabasePremiumHistoryRepository extends PremiumHistoryRepository {
   constructor({ supabase }) {
     super();
@@ -26,22 +45,27 @@ class SupabasePremiumHistoryRepository extends PremiumHistoryRepository {
   }
 
   async listByGuild(guildId, { limit = 20, offset = 0 } = {}) {
+    // 4D/R9 — bornes appliquées DANS le dépôt.
+    const safeLimit = boundedLimit(limit);
+    const safeOffset = boundedOffset(offset);
     const { data, error } = await this.supabase
       .from("guild_entitlement_history")
       .select("*")
       .eq("guild_id", guildId)
       .order("created_at", { ascending: false })
-      .range(offset, offset + limit - 1);
+      .range(safeOffset, safeOffset + safeLimit - 1);
     if (error) throw error;
     return data || [];
   }
 
   async listRecent({ limit = 20 } = {}) {
+    // 4D/R9 — `limit` clampé : sans plafond, un `.limit(1e9)` serait ramené à
+    // `db-max-rows` par le serveur, silencieusement.
     const { data, error } = await this.supabase
       .from("guild_entitlement_history")
       .select("*")
       .order("created_at", { ascending: false })
-      .limit(limit);
+      .limit(boundedLimit(limit));
     if (error) throw error;
     return data || [];
   }

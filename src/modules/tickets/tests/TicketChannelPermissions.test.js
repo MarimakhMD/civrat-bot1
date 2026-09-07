@@ -5,6 +5,8 @@ const assert = require("node:assert/strict");
 const { PermissionsBitField } = require("discord.js");
 const { DiscordTicketTransport } = require("../../../adapters/discord/DiscordTicketTransport");
 const { TicketService } = require("../services/TicketService");
+const { InMemoryTicketCounterRepository } = require("../persistence/InMemoryTicketCounterRepository");
+const { TicketChannelNamingService } = require("../services/TicketChannelNamingService");
 
 function createTransportFixture({ manageable = true, overwriteError = null } = {}) {
   let overwrites = null;
@@ -29,6 +31,9 @@ function createService({ category = { id: "category" }, supportRole = { id: "sup
   let overwriteCalls = 0;
   const deleted = [];
   const service = new TicketService({
+    // C9 : nommage obligatoire (plus de repli ticket-<userId>).
+    counterRepository: new InMemoryTicketCounterRepository(),
+    channelNamingService: new TicketChannelNamingService(),
     configService: { read: async () => ({ tickets_enabled: true, ticket_category_id: "category", ticket_support_role_id: "support" }) },
     repository: { findOpen: async () => null, create: async (record) => record },
     transport: {

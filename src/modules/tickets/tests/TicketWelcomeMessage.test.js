@@ -10,6 +10,8 @@ const { TicketService } = require("../services/TicketService");
 const { TicketWelcomeService } = require("../services/TicketWelcomeService");
 const fr = require("../translations/fr.json");
 const en = require("../translations/en.json");
+const { InMemoryTicketCounterRepository } = require("../persistence/InMemoryTicketCounterRepository");
+const { TicketChannelNamingService } = require("../services/TicketChannelNamingService");
 
 function translate(dictionary) {
   return (key) => key.split(".").reduce((value, segment) => value[segment], dictionary);
@@ -20,6 +22,9 @@ function createTicketService({ createChannelError = null, welcomeError = null, d
   let persisted = 0;
   const deleted = [];
   const service = new TicketService({
+    // C9 : nommage obligatoire (plus de repli ticket-<userId>).
+    counterRepository: new InMemoryTicketCounterRepository(),
+    channelNamingService: new TicketChannelNamingService(),
     configService: { read: async () => ({ tickets_enabled: true, ticket_category_id: "category", ticket_support_role_id: "support" }) },
     repository: { findOpen: async () => null, create: async (record) => { persisted += 1; return record; } },
     welcomeService: new TicketWelcomeService(),

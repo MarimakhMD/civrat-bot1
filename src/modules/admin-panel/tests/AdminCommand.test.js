@@ -15,8 +15,16 @@ test("/admin is a technical guild-only command with no secret-bearing option", (
   assert.deepEqual(adminCommand.contexts, ["guild"]);
   assert.deepEqual(adminCommand.integrationTypes, ["guildInstall"]);
   assert.deepEqual(adminCommand.options, []);
+  // Phase 2 (P12) — visibilité Discord : sans ce champ, /admin était visible de
+  // tous les membres de la guilde technique (CIVRAT_ADMIN est un rôle, absent de
+  // discordPermissionMap, donc le repli permissions.allOf[0] ne produisait rien).
+  // Le champ réduit la VISIBILITÉ ; l'autorisation reste la garde runtime
+  // CIVRAT_ADMIN ci-dessus. Aucune option n'est ajoutée : la garde
+  // « aucune option portant un secret » reste entière.
+  assert.equal(adminCommand.defaultMemberPermissions, PermissionName.ADMINISTRATOR);
   assert.deepEqual(keys(adminCommand), [
     "contexts",
+    "defaultMemberPermissions",
     "deploymentScope",
     "description",
     "integrationTypes",

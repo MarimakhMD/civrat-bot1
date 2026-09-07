@@ -105,8 +105,17 @@ class EntitlementService {
     return rows.map((row) => describeRecord(row, this.now()));
   }
 
+  /**
+   * 4D/R1 — renvoie `{ servers, totalRows, truncated }`.
+   *
+   * `servers` reste la liste affichable (serveurs réels + la guilde technique
+   * synthétique). `totalRows` est le nombre EXACT de lignes en base et
+   * `truncated` signale que la lecture a été plafonnée : dans ce cas `servers`
+   * est un PLANCHER et tout total dérivé doit être présenté comme tel plutôt
+   * que comme une valeur exacte.
+   */
   async listPremiumServers() {
-    const rows = await this.repository.listAll();
+    const { rows, totalRows, truncated } = await this.repository.listAll();
     const servers = rows
       .filter((row) => !this.mutationPolicy.isTechnicalGuild(row?.guild_id))
       .map((row) => ({
@@ -119,22 +128,34 @@ class EntitlementService {
       guildId: this.mutationPolicy.technicalGuildId,
       ...describeRecord(this.mutationPolicy.permanentRecord(representativeFeature), this.now()),
     });
-    return servers;
+    return { servers, totalRows, truncated };
   }
 
+  // 4D/R1 — ces compteurs dérivent d'une liste éventuellement plafonnée. Ils
+  // renvoient donc { count, truncated } : un compteur présenté comme exact
+  // alors que la source est tronquée serait un mensonge silencieux.
   async countActive(feature = null) {
-    const servers = await this.listPremiumServers();
-    return servers.filter((server) => server.active && (!feature || server.feature === feature)).length;
+    const { servers, truncated } = await this.listPremiumServers();
+    return {
+      count: servers.filter((server) => server.active && (!feature || server.feature === feature)).length,
+      truncated,
+    };
   }
 
   async countExpired(feature = null) {
-    const servers = await this.listPremiumServers();
-    return servers.filter((server) => server.expired && (!feature || server.feature === feature)).length;
+    const { servers, truncated } = await this.listPremiumServers();
+    return {
+      count: servers.filter((server) => server.expired && (!feature || server.feature === feature)).length,
+      truncated,
+    };
   }
 
   async countInactive(feature = null) {
-    const servers = await this.listPremiumServers();
-    return servers.filter((server) => server.status && server.status !== "active" && (!feature || server.feature === feature)).length;
+    const { servers, truncated } = await this.listPremiumServers();
+    return {
+      count: servers.filter((server) => server.status && server.status !== "active" && (!feature || server.feature === feature)).length,
+      truncated,
+    };
   }
 
   async grantPremium({

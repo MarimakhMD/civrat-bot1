@@ -72,9 +72,12 @@ test("tickets settings view exposes the Premium entry and keeps every Free contr
   assert.equal(await runtime.tryHandle(button(Id.PANEL, captured)), true);
   const payload = rendered(captured);
   assertLimits(payload, "tickets section");
-  for (const id of [Id.TOGGLE, Id.CATEGORY, Id.SUPPORT_ROLE, Id.LOG_CHANNEL, Id.PREVIEW, Id.BACK]) {
+  // M8 (D-A) — l'entrée « Aperçu » a cédé sa place à l'entrée « Panels » : la
+  // section Tickets occupait déjà les 5 lignes d'action autorisées par Discord.
+  for (const id of [Id.TOGGLE, Id.CATEGORY, Id.SUPPORT_ROLE, Id.LOG_CHANNEL, Id.PANELS_SECTION, Id.BACK]) {
     assert.ok(contains(payload, id), `tickets section lost the Free control ${id}`);
   }
+  assert.ok(!contains(payload, Id.PREVIEW), "tickets section must no longer expose the preview entry");
   assert.ok(contains(payload, Id.PREMIUM_SECTION), "tickets section misses the Premium entry");
 });
 

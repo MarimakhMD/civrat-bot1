@@ -5,10 +5,16 @@ const { XPConfigKey: Key } = require("./configuration/xpConstants");
 const { XPComponentId: Id } = require("./configuration/xpConstants");
 const { xpSettingsView } = require("./interactions/xpSettingsViews");
 
-// Phase 11 — intégration /settings du module XP : activation, salon restreint
-// (filtre déjà appliqué par createXPRuntime.handleMessage) et retour au panneau
-// via settingsHome. Le gain XP lui-même (messageCreate → getXPRuntime) n'est
-// pas modifié : il ne fait que lire la config déjà persistée ici.
+// A2 — intégration /settings du module XP : activation et retour au panneau via
+// settingsHome. Le gain (xp_per_message) et le cooldown (xp_cooldown) sont lus
+// et appliqués par XPService ; ils ne sont pas encore éditables ici.
+//
+// Le select-menu « restreindre l'XP à un salon » a été supprimé (DCA4) : il
+// écrivait xp_channel_id, colonne inexistante en base, donc le réglage échouait
+// silencieusement. Aucune écriture fantôme n'est conservée.
+//
+// Le gain XP lui-même (messageCreate → getXPRuntime) n'est pas modifié : il ne
+// fait que lire la configuration déjà persistée.
 function registerXPSettings({ registry, configService, settingsHome = null }) {
   const permissions = { allOf: [PermissionName.MANAGE_GUILD] };
 
@@ -24,15 +30,6 @@ function registerXPSettings({ registry, configService, settingsHome = null }) {
     execute: async (context) => {
       const config = await configService.read(context.guildId);
       await configService.update(context.guildId, { [Key.ENABLED]: !config[Key.ENABLED] });
-      return renderSettings(context);
-    },
-  });
-  registry.registerSelectMenu({
-    customId: Id.CHANNEL,
-    permissions,
-    execute: async (context) => {
-      const channelId = context.envelope.values && context.envelope.values[0] ? context.envelope.values[0] : null;
-      await configService.update(context.guildId, { [Key.CHANNEL_ID]: channelId });
       return renderSettings(context);
     },
   });

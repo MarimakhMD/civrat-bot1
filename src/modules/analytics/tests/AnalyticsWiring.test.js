@@ -13,7 +13,21 @@ test("analytics wiring in messageCreate and guildMemberAdd is isolated and non-b
   assert.match(memberAdd, /trackMember/);
   // Both in try/catch
   assert.ok((msgCreate.match(/try/g) || []).length >= 3);
-  assert.ok((memberAdd.match(/try/g) || []).length >= 5);
+
+  // Phase 1 : l'ancienne assertion était `(memberAdd.match(/try/g) || []).length >= 5`.
+  // C'était un proxy syntaxique, pas une vérification d'intention : retirer une
+  // fonction morte contenant un try/catch (handleJoinLog, jamais appelée) la
+  // faisait échouer alors que l'isolation réelle des branches non critiques
+  // était intacte. On asserte désormais cette intention directement : chaque
+  // branche non critique de guildMemberAdd est enveloppée dans son propre try.
+  const isolatedBranches = [
+    ["guild config service require", /try \{\n {2}guildConfigService = require\("\.\.\/services\/guildConfig"\)/],
+    ["security runtime", /try \{\n +await require\("\.\.\/modules\/security\/runtime\/getSecurityRuntime"\)/],
+    ["analytics runtime", /try \{\n +await require\("\.\.\/modules\/analytics\/runtime\/getAnalyticsRuntime"\)/],
+  ];
+  for (const [label, pattern] of isolatedBranches) {
+    assert.match(memberAdd, pattern, `member add must isolate ${label} in its own try/catch`);
+  }
 });
 
 test("analytics wiring does not break AutoMod/XP/Security", async () => {
