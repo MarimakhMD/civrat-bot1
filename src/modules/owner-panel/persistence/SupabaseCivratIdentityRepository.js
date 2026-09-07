@@ -20,6 +20,8 @@
 // 4D/R3 — plafond de lecture de `civrat_admins` (voir readAdminIds).
 const ADMIN_IDS_LIMIT = 100;
 
+const { toPersistenceError } = require("../../../adapters/supabase/supabaseErrorClassifier");
+
 class SupabaseCivratIdentityRepository {
   constructor({ supabase }) {
     if (!supabase || typeof supabase.from !== "function") {
@@ -30,7 +32,8 @@ class SupabaseCivratIdentityRepository {
 
   async readOwnerId() {
     const { data, error } = await this.supabase.from("civrat_owner_state").select("owner_id").eq("id", 1).maybeSingle();
-    if (error) throw error;
+    // 4F-2b — erreur PostgREST classifiée.
+    if (error) throw toPersistenceError(error, { operation: "readOwnerId", resource: "civrat_owner_state" });
     return data?.owner_id ?? null;
   }
 
@@ -38,7 +41,7 @@ class SupabaseCivratIdentityRepository {
     const { error } = await this.supabase
       .from("civrat_owner_state")
       .upsert({ id: 1, owner_id: ownerId, updated_at: new Date().toISOString() }, { onConflict: "id" });
-    if (error) throw error;
+    if (error) throw toPersistenceError(error, { operation: "writeOwnerId", resource: "civrat_owner_state" });
   }
 
   async readAdminIds() {
@@ -53,7 +56,7 @@ class SupabaseCivratIdentityRepository {
       .select("user_id")
       .order("user_id", { ascending: true })
       .limit(ADMIN_IDS_LIMIT);
-    if (error) throw error;
+    if (error) throw toPersistenceError(error, { operation: "readAdminIds", resource: "civrat_admins" });
     return (data || []).map((row) => row.user_id);
   }
 
@@ -62,19 +65,19 @@ class SupabaseCivratIdentityRepository {
     const { error } = await this.supabase
       .from("civrat_admins")
       .upsert({ user_id: userId, added_at: new Date().toISOString() }, { onConflict: "user_id" });
-    if (error) throw error;
+    if (error) throw toPersistenceError(error, { operation: "addAdmin", resource: "civrat_admins" });
   }
 
   async removeAdmin(userId) {
     const { error } = await this.supabase.from("civrat_admins").delete().eq("user_id", userId);
-    if (error) throw error;
+    if (error) throw toPersistenceError(error, { operation: "removeAdmin", resource: "civrat_admins" });
   }
 
   async transferOwnership({ newOwnerId }) {
     await this.writeOwnerId(newOwnerId);
     // Le nouveau Owner ne peut rester listé comme admin (Owner ≠ Admin).
     const { error } = await this.supabase.from("civrat_admins").delete().eq("user_id", newOwnerId);
-    if (error) throw error;
+    if (error) throw toPersistenceError(error, { operation: "transferOwnership", resource: "civrat_admins" });
   }
 }
 

@@ -1,6 +1,7 @@
 "use strict";
 
 const { AdminAuditRepository } = require("./AdminAuditRepository");
+const { toPersistenceError } = require("../../../adapters/supabase/supabaseErrorClassifier");
 
 // ───────────────────────────────────────────────────────────────
 // 4D/R8 — plafonds de la pagination d'audit.
@@ -43,7 +44,9 @@ class SupabaseAdminAuditRepository extends AdminAuditRepository {
       reason: entry.reason ?? null,
       created_at: new Date().toISOString(),
     });
-    if (error) throw error;
+    // 4F-2b — erreur PostgREST classifiée (permission / réseau / schéma) au lieu
+    // d'une erreur brute indistingable.
+    if (error) throw toPersistenceError(error, { operation: "append", resource: "civrat_admin_audit" });
   }
 
   async list({ limit = 20, offset = 0, guildId = null } = {}) {
@@ -54,7 +57,7 @@ class SupabaseAdminAuditRepository extends AdminAuditRepository {
     let query = this.supabase.from("civrat_admin_audit").select("*").order("created_at", { ascending: false }).range(safeOffset, safeOffset + safeLimit - 1);
     if (guildId) query = query.eq("guild_id", guildId);
     const { data, error } = await query;
-    if (error) throw error;
+    if (error) throw toPersistenceError(error, { operation: "list", resource: "civrat_admin_audit" });
     return data || [];
   }
 
@@ -62,7 +65,7 @@ class SupabaseAdminAuditRepository extends AdminAuditRepository {
     let query = this.supabase.from("civrat_admin_audit").select("id", { count: "exact", head: true });
     if (guildId) query = query.eq("guild_id", guildId);
     const { count, error } = await query;
-    if (error) throw error;
+    if (error) throw toPersistenceError(error, { operation: "count", resource: "civrat_admin_audit" });
     return count ?? 0;
   }
 }

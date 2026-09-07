@@ -169,9 +169,9 @@ test("P10/T7-T8 — getGlobalStats: exact messages, paginated distincts, no guil
 });
 
 // T9 — fail-loud : une erreur PostgREST est propagée, jamais un 0 silencieux.
-// Note : comme SupabaseTicketCounterRepository, le dépôt re-lance l'objet
-// PostgREST BRUT (pas une instance d'Error). Le test asserte donc l'identité
-// de l'objet plutôt qu'un motif sur le message.
+// 4F-2b : l'erreur est désormais CLASSIFIÉE via toPersistenceError (plus de
+// passthrough brut) — un 42501 devient PERSISTENCE_PERMISSION_DENIED, l'objet
+// PostgREST d'origine restant disponible via `cause`.
 test("P10/T9 — PostgREST errors are propagated, never swallowed into zeros", async () => {
   const postgrestError = { message: "permission denied", code: "42501" };
   // Chaînable sur plusieurs .eq() et thenable : comme le vrai builder.
@@ -192,11 +192,12 @@ test("P10/T9 — PostgREST errors are propagated, never swallowed into zeros", a
   let thrown = "aucune exception";
   try { await repo.getStats("g"); } catch (error) { thrown = error; }
   assert.notEqual(thrown, "aucune exception", "l'erreur doit être propagée, pas avalée");
-  assert.equal(thrown, postgrestError, "l'objet PostgREST est re-lancé tel quel");
+  assert.equal(thrown.code, "PERSISTENCE_PERMISSION_DENIED", "42501 => permission refusée, classifiée");
+  assert.equal(thrown.cause, postgrestError, "l'objet PostgREST d'origine reste la cause");
 
   let globalThrown = "aucune exception";
   try { await repo.getGlobalStats(); } catch (error) { globalThrown = error; }
-  assert.equal(globalThrown, postgrestError, "getGlobalStats propage aussi");
+  assert.equal(globalThrown.code, "PERSISTENCE_PERMISSION_DENIED", "getGlobalStats propage aussi, classifiée");
 });
 
 // T11 — getEvents strictement inchangé (non-régression).

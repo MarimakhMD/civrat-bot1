@@ -6,7 +6,8 @@
 // Verrouille le dépôt Supabase réel (jamais une vraie base : un faux client
 // journalise les requêtes émises) :
 //   1. le mapping EXACT des colonnes de `guild_entitlement_history` ;
-//   2. la propagation des erreurs PostgREST (`throw error`) ;
+//   2. la classification des erreurs PostgREST via `toPersistenceError`
+//      (4F-2b : permission denied, conflit, réseau/backend indisponible) ;
 //   3. le comportement de `AdminPanelService.#appendHistory` quand `append()`
 //      échoue : l'activation Premium reste RÉUSSIE et un log
 //      `premium_history_append_failed` est émis (l'historique ne doit jamais
@@ -20,6 +21,7 @@ const assert = require("node:assert/strict");
 const { SupabasePremiumHistoryRepository } = require("../persistence/SupabasePremiumHistoryRepository");
 const { EntitlementService, EntitlementFeature } = require("../../../core/entitlements");
 const { AdminPanelService } = require("../services/AdminPanelService");
+const { ErrorCode, BackendUnavailableError } = require("../../../core/errors");
 
 const GUILD_ID = "111111111111111111";
 const ACTOR_ID = "222222222222222222";
@@ -125,15 +127,46 @@ test("G2-A: les champs absents de l'entrée tombent sur null, jamais sur undefin
 });
 
 // ───────────────────────────────────────────────────────────────
-// 2 · Propagation des erreurs PostgREST
+// 2 · Classification des erreurs PostgREST (4F-2b)
 // ───────────────────────────────────────────────────────────────
 
-test("G2-A: append propage l'erreur PostgREST sans l'avaler", async () => {
+test("G2-A: append classe un conflit PostgREST (23502) en PERSISTENCE_CONFLICT", async () => {
   const postgrestError = { code: "23502", message: "null value in column \"actor_id\"" };
   const { client } = makeClient([{ data: null, error: postgrestError }]);
   const repo = new SupabasePremiumHistoryRepository({ supabase: client });
 
-  await assert.rejects(() => repo.append(fullEntry()), (error) => error.code === "23502");
+  await assert.rejects(() => repo.append(fullEntry()), (error) => {
+    assert.equal(error.code, ErrorCode.PERSISTENCE_CONFLICT);
+    assert.equal(error.metadata.classification, "CONFLICT");
+    assert.equal(error.metadata.operation, "append");
+    assert.equal(error.cause, postgrestError, "l'erreur PostgREST d'origine reste la cause");
+    return true;
+  });
+});
+
+test("G2-A: append classe un refus RLS (42501) en PERSISTENCE_PERMISSION_DENIED", async () => {
+  const postgrestError = { code: "42501", message: "new row violates row-level security policy" };
+  const { client } = makeClient([{ data: null, error: postgrestError }]);
+  const repo = new SupabasePremiumHistoryRepository({ supabase: client });
+
+  await assert.rejects(() => repo.append(fullEntry()), (error) => {
+    assert.equal(error.code, ErrorCode.PERSISTENCE_PERMISSION_DENIED);
+    assert.equal(error.metadata.classification, "PERMISSION_DENIED");
+    return true;
+  });
+});
+
+test("G2-A: append classe une indisponibilité réseau en BackendUnavailableError", async () => {
+  const networkError = { code: "ECONNREFUSED", message: "fetch failed" };
+  const { client } = makeClient([{ data: null, error: networkError }]);
+  const repo = new SupabasePremiumHistoryRepository({ supabase: client });
+
+  await assert.rejects(() => repo.append(fullEntry()), (error) => {
+    assert.ok(error instanceof BackendUnavailableError, "réseau => BackendUnavailableError");
+    assert.equal(error.code, ErrorCode.BACKEND_UNAVAILABLE);
+    assert.equal(error.retryable, true, "l'indisponibilité backend est retentable");
+    return true;
+  });
 });
 
 // ───────────────────────────────────────────────────────────────

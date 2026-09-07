@@ -1,6 +1,7 @@
 "use strict";
 
 const { PremiumHistoryRepository } = require("./PremiumHistoryRepository");
+const { toPersistenceError } = require("../../../adapters/supabase/supabaseErrorClassifier");
 
 // 4D/R9 — mêmes plafonds que l'audit Admin : `limit`/`offset` alimentent un
 // `.range()` ou un `.limit()`, et le plafond reste sous le `db-max-rows` de
@@ -41,7 +42,8 @@ class SupabasePremiumHistoryRepository extends PremiumHistoryRepository {
       reason: entry.reason ?? null,
       created_at: new Date().toISOString(),
     });
-    if (error) throw error;
+    // 4F-2b — erreur PostgREST classifiée.
+    if (error) throw toPersistenceError(error, { operation: "append", resource: "guild_entitlement_history" });
   }
 
   async listByGuild(guildId, { limit = 20, offset = 0 } = {}) {
@@ -54,7 +56,7 @@ class SupabasePremiumHistoryRepository extends PremiumHistoryRepository {
       .eq("guild_id", guildId)
       .order("created_at", { ascending: false })
       .range(safeOffset, safeOffset + safeLimit - 1);
-    if (error) throw error;
+    if (error) throw toPersistenceError(error, { operation: "listByGuild", resource: "guild_entitlement_history" });
     return data || [];
   }
 
@@ -66,7 +68,7 @@ class SupabasePremiumHistoryRepository extends PremiumHistoryRepository {
       .select("*")
       .order("created_at", { ascending: false })
       .limit(boundedLimit(limit));
-    if (error) throw error;
+    if (error) throw toPersistenceError(error, { operation: "listRecent", resource: "guild_entitlement_history" });
     return data || [];
   }
 }

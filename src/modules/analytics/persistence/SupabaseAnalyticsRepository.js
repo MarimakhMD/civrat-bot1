@@ -26,6 +26,8 @@ const ANALYTICS_DISTINCT_SCAN_CAP = 50000;
 const ANALYTICS_EVENTS_DEFAULT_LIMIT = 100;
 const ANALYTICS_EVENTS_MAX_LIMIT = 500;
 
+const { toPersistenceError } = require("../../../adapters/supabase/supabaseErrorClassifier");
+
 class SupabaseAnalyticsRepository {
   constructor({ supabase }) {
     if (!supabase || typeof supabase.from !== "function") {
@@ -37,7 +39,8 @@ class SupabaseAnalyticsRepository {
   async track(guildId, event) {
     const record = { guild_id: guildId, user_id: event.userId || null, event_type: event.type, created_at: new Date().toISOString() };
     const { error } = await this.supabase.from("analytics_events").insert(record);
-    if (error) throw error;
+    // 4F-2b — erreur PostgREST classifiée.
+    if (error) throw toPersistenceError(error, { operation: "track", resource: "analytics_events" });
   }
 
   // Compte EXACT d'un nombre de lignes : requête HEAD + Prefer: count=exact.
@@ -48,7 +51,7 @@ class SupabaseAnalyticsRepository {
     if (guildId) query = query.eq("guild_id", guildId);
     if (eventType) query = query.eq("event_type", eventType);
     const { count, error } = await query;
-    if (error) throw error;
+    if (error) throw toPersistenceError(error, { operation: "countRows", resource: "analytics_events" });
     const value = Number(count);
     return Number.isFinite(value) && value >= 0 ? value : 0;
   }
@@ -70,7 +73,7 @@ class SupabaseAnalyticsRepository {
       if (guildId) query = query.eq("guild_id", guildId);
       if (eventType) query = query.eq("event_type", eventType);
       const { data, error } = await query.range(from, from + ANALYTICS_COUNT_PAGE_SIZE - 1);
-      if (error) throw error;
+      if (error) throw toPersistenceError(error, { operation: "countDistinct", resource: "analytics_events" });
       const rows = data || [];
       if (rows.length === 0) break;
       for (const row of rows) {
@@ -101,7 +104,7 @@ class SupabaseAnalyticsRepository {
     let query = this.supabase.from("analytics_events").select("*").eq("guild_id", guildId).order("created_at", { ascending: false }).limit(bounded);
     if (type) query = query.eq("event_type", type);
     const { data, error } = await query;
-    if (error) throw error;
+    if (error) throw toPersistenceError(error, { operation: "getEvents", resource: "analytics_events" });
     return data || [];
   }
 

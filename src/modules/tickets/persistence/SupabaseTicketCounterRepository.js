@@ -1,6 +1,7 @@
 "use strict";
 
 const { TicketCounterRepository } = require("./TicketCounterRepository");
+const { toPersistenceError } = require("../../../adapters/supabase/supabaseErrorClassifier");
 
 // Compteur atomique via la fonction RPC Supabase increment_ticket_counter
 // (INSERT … ON CONFLICT DO UPDATE … RETURNING = verrou de ligne, atomique en
@@ -16,7 +17,9 @@ class SupabaseTicketCounterRepository extends TicketCounterRepository {
   async next(guildId) {
     if (!this.supabase) throw new Error("counter_storage_unavailable");
     const { data, error } = await this.supabase.rpc("increment_ticket_counter", { p_guild_id: guildId });
-    if (error) throw error;
+    // 4F-2b — erreur RPC classifiée (42883 = fonction absente → SCHEMA_MISMATCH,
+    // 42501 = RLS → PERMISSION_DENIED, réseau → BACKEND_UNAVAILABLE).
+    if (error) throw toPersistenceError(error, { operation: "next", resource: "rpc.increment_ticket_counter" });
     const value = Number(data);
     if (!Number.isInteger(value) || value < 1) throw new Error("counter_invalid_value");
     return value;

@@ -396,10 +396,11 @@ test("C9/N1 — real transport end-to-end: ticket-001/002/003 reach channels.cre
 });
 
 // N2 — le repository Supabase rejette tout retour de RPC non exploitable.
-// Note : la ligne 19 (`if (error) throw error`) re-lance l'objet PostgREST
-// BRUT, qui n'est pas une instance d'Error — d'où deux groupes d'assertions.
+// 4F-2b : l'erreur PostgREST est CLASSIFIÉE via toPersistenceError (plus de
+// passthrough brut) — PGRST202 (fonction absente) => PERSISTENCE_SCHEMA_MISMATCH,
+// 42501 (RLS) => PERSISTENCE_PERMISSION_DENIED, réseau => BackendUnavailableError.
 // TicketService attrape tout (`catch (_error)`), donc le comportement
-// fail-closed est identique dans les deux cas.
+// fail-closed est identique.
 test("C9/N2 — SupabaseTicketCounterRepository rejects invalid RPC returns", async () => {
   const invalidValues = [
     ["0", { data: 0, error: null }],
@@ -413,13 +414,28 @@ test("C9/N2 — SupabaseTicketCounterRepository rejects invalid RPC returns", as
     await assert.rejects(() => repo.next("g"), Error, `cas « ${label} » aurait dû lever une Error`);
   }
 
-  // Erreur PostgREST : re-lancée brute (pas une Error), mais bien propagée.
+  // Erreur PostgREST : classifiée (PGRST202 => fonction absente => SCHEMA_MISMATCH).
   const postgrestError = { message: "Could not find the function public.increment_ticket_counter(text)", code: "PGRST202" };
   const failing = new SupabaseTicketCounterRepository({ supabase: { rpc: async () => ({ data: null, error: postgrestError }) } });
   let thrown = "aucune exception";
   try { await failing.next("g"); } catch (error) { thrown = error; }
   assert.notEqual(thrown, "aucune exception", "l'erreur PostgREST doit être propagée");
-  assert.equal(thrown, postgrestError, "l'objet PostgREST est re-lancé tel quel (ligne 19)");
+  assert.equal(thrown.code, "PERSISTENCE_SCHEMA_MISMATCH", "PGRST202 => schema mismatch, classifié");
+  assert.equal(thrown.cause, postgrestError, "l'objet PostgREST d'origine reste la cause");
+
+  // Erreur RLS (42501) => PERSISTENCE_PERMISSION_DENIED.
+  const rlsError = { message: "permission denied for function increment_ticket_counter", code: "42501" };
+  const denied = new SupabaseTicketCounterRepository({ supabase: { rpc: async () => ({ data: null, error: rlsError }) } });
+  await assert.rejects(() => denied.next("g"), (error) => error.code === "PERSISTENCE_PERMISSION_DENIED");
+
+  // Réseau/backend indisponible => BackendUnavailableError (retentable).
+  const networkError = { message: "fetch failed", code: "ECONNREFUSED" };
+  const down = new SupabaseTicketCounterRepository({ supabase: { rpc: async () => ({ data: null, error: networkError }) } });
+  await assert.rejects(() => down.next("g"), (error) => {
+    assert.equal(error.code, "BACKEND_UNAVAILABLE");
+    assert.equal(error.retryable, true);
+    return true;
+  });
 
   // Aucun client => garde explicite.
   const noClient = new SupabaseTicketCounterRepository({ supabase: null });

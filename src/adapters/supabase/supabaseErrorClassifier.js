@@ -144,6 +144,14 @@ function toPersistenceError(error, metadata = {}) {
       return new PersistenceError({ code: ErrorCode.PERSISTENCE_PERMISSION_DENIED, metadata: safeMetadata, cause: error });
     case SupabaseErrorCategory.CONFLICT:
       return new PersistenceError({ code: ErrorCode.PERSISTENCE_CONFLICT, metadata: safeMetadata, cause: error });
+    // 4F-2a — décision B : NOT_FOUND, VALIDATION_FAILED et UNKNOWN restent
+    // regroupés sous PERSISTENCE_FAILED. Ce mapping est rendu EXPLICITE ici
+    // plutôt que de dépendre d'un `default` implicite : les trois catégories
+    // conservent leur signal dans `metadata.classification`, mais aucune ne
+    // reçoit de code d'erreur dédié (pas de nouveau code ErrorCode).
+    case SupabaseErrorCategory.NOT_FOUND:
+    case SupabaseErrorCategory.VALIDATION_FAILED:
+    case SupabaseErrorCategory.UNKNOWN:
     default:
       return new PersistenceError({
         code: ErrorCode.PERSISTENCE_FAILED,
