@@ -98,8 +98,15 @@ class ErrorResponder {
 
   translate(error, context) {
     if (typeof context?.t === "function") {
-      const translated = context.t(error.translationKey, error.metadata);
-      if (translated && translated !== error.translationKey) return translated;
+      try {
+        const translated = context.t(error.translationKey, error.metadata);
+        if (translated && translated !== error.translationKey) return translated;
+      } catch {
+        // 4F-3a — une clé de traduction absente (ex. clé de module servie par un
+        // répondeur ne possédant que l'i18n core, qui lève TranslationMissingError)
+        // ne doit JAMAIS empêcher la réponse d'erreur. On replie alors sur le
+        // message générique du code, jamais sur l'exception.
+      }
     }
     return FALLBACK_MESSAGES[error.code] || FALLBACK_MESSAGES[ErrorCode.INTERNAL_ERROR];
   }
