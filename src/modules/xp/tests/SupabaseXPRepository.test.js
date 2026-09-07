@@ -672,6 +672,65 @@ test("B3 — l'XP survit à la recréation du runtime", async () => {
   assert.equal(result.previousLevel, 0);
 });
 
+// ─────────────────────────────────────────────────────────────────────────
+// B4-a — persistance du cooldown après recréation du runtime.
+//
+// B3 a rendu le gain persistant (XP survit au redémarrage via member_xp).
+// B4-a verrouille la PERSISTANCE DU COOLDOWN : la garde locale
+// (XPService.cooldowns, une Map en mémoire) est vidée à chaque recréation,
+// mais l'autorité est `last_xp_at` EN BASE. Deux runtimes successifs sur la
+// même table doivent donc refuser un gain tant que le cooldown court encore,
+// puis l'accorder une fois le délai écoulé.
+// ─────────────────────────────────────────────────────────────────────────
+
+test("B4-a — le cooldown XP Supabase persiste après recréation du runtime", async () => {
+  const fake = createFakeSupabase();
+  const { createXPRuntime } = require("../runtime/createXPRuntime");
+  // xp_cooldown = 60 s : le cooldown est ACTIF (contrairement au test B3
+  // « l'XP survit », qui utilise 0 et ne prouve donc rien sur le cooldown).
+  const configService = { read: async () => ({ xp_enabled: true, xp_per_message: 15, xp_cooldown: 60 }) };
+  const message = { guild: { id: "g" }, author: { id: "u", bot: false }, channel: { id: "c" } };
+
+  // Horloge contrôlée : service ET dépôt raisonnent sur le même instant.
+  let now = 0;
+  const makeRuntime = () => createXPRuntime({
+    configService,
+    repository: new SupabaseXPRepository({ supabase: fake.client, clock: () => now }),
+    clock: () => now,
+  });
+
+  // 1. Premier runtime : le gain est accordé et pose last_xp_at en base.
+  const first = makeRuntime();
+  const firstResult = await first.handleMessage(message);
+  assert.equal(firstResult.code, "XP_GAINED");
+  assert.equal(firstResult.xp, 15);
+
+  const storedAtGain = fake.rows.get("g:u").last_xp_at;
+  assert.equal(typeof storedAtGain, "string", "last_xp_at doit être réellement horodaté en base");
+
+  // 2. +30 s : toujours dans le cooldown de 60 s.
+  now = 30_000;
+
+  // Recréation COMPLÈTE du runtime (nouveau service, nouvelle Map cooldowns)
+  // sur la MÊME base : la valeur last_xp_at stockée est rejouée depuis le
+  // dépôt, pas depuis une mémoire de service.
+  const second = makeRuntime();
+  assert.equal(fake.rows.get("g:u").last_xp_at, storedAtGain,
+    "la valeur last_xp_at rejouée doit être celle persistée, inchangée par la recréation");
+
+  const blocked = await second.handleMessage(message);
+  assert.equal(blocked.handled, false);
+  assert.equal(blocked.code, "XP_COOLDOWN", "un gain doit être refusé tant que le cooldown persiste");
+  assert.equal(fake.rows.get("g:u").xp, 15, "aucun XP ne doit être accordé pendant le cooldown persistant");
+
+  // 3. +60 s : le cooldown a expiré → le gain est de nouveau accordé.
+  now = 60_000;
+  const third = makeRuntime();
+  const granted = await third.handleMessage(message);
+  assert.equal(granted.code, "XP_GAINED", "après expiration du cooldown, le gain redevient possible");
+  assert.equal(granted.xp, 30, "15 + 15 = 30, le gain post-expiration est cumulé");
+});
+
 test("B3 — Analytics lit le même dépôt que le chemin d'écriture", async () => {
   const databaseModule = require("../../../config/database");
   const original = databaseModule.supabaseAdmin;
