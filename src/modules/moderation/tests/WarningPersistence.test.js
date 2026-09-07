@@ -28,6 +28,7 @@ const {
   WarningsUnavailableError,
   WARNINGS_TABLE,
 } = require("../persistence/SupabaseWarningRepository");
+const { ErrorCode, BackendUnavailableError } = require("../../../core/errors");
 const { WarningService } = require("../services/WarningService");
 const { registerModeration } = require("../register");
 const {
@@ -275,16 +276,95 @@ test("Supabase : 42P01 sur SELECT devient WarningsUnavailableError", async () =>
   assert.equal(thrown.code, "WARNINGS_UNAVAILABLE");
 });
 
-test("Supabase : une erreur autre que 42P01 est relancée telle quelle", async () => {
+test("Supabase : une erreur autre que 42P01 est classée, jamais relancée telle quelle", async () => {
   const permissionDenied = { code: "42501", message: "permission denied for table warnings" };
   const fake = createFakeSupabase({ errors: { insert: permissionDenied } });
   const repository = new SupabaseWarningRepository({ supabase: fake.client });
 
-  let thrown;
-  await repository.createWarning({ guildId: "g1", userId: "u1", moderatorId: "m1" }).catch((e) => { thrown = e; });
+  await assert.rejects(
+    () => repository.createWarning({ guildId: "g1", userId: "u1", moderatorId: "m1" }),
+    (error) => {
+      assert.equal(error instanceof WarningsUnavailableError, false, "42501 n'est pas une table absente");
+      assert.equal(error.code, ErrorCode.PERSISTENCE_PERMISSION_DENIED);
+      assert.equal(error.metadata.classification, "PERMISSION_DENIED");
+      assert.equal(error.metadata.operation, "createWarning");
+      assert.equal(error.metadata.resource, "warnings");
+      assert.equal(error.cause, permissionDenied, "l'erreur PostgREST brute doit être conservée en cause");
+      return true;
+    },
+  );
+});
 
-  assert.equal(thrown, permissionDenied, "une erreur de permission n'est pas une table absente");
-  assert.equal(thrown instanceof WarningsUnavailableError, false);
+// ─────────────────────────────────────────────── 4I — classification (4)
+
+test("4I : une coupure réseau sur INSERT devient BackendUnavailableError (retryable)", async () => {
+  const network = { code: "ECONNREFUSED", message: "fetch failed" };
+  const fake = createFakeSupabase({ errors: { insert: network } });
+  const repository = new SupabaseWarningRepository({ supabase: fake.client });
+
+  await assert.rejects(
+    () => repository.createWarning({ guildId: "g1", userId: "u1", moderatorId: "m1" }),
+    (error) => {
+      assert.ok(error instanceof BackendUnavailableError);
+      assert.equal(error.code, ErrorCode.BACKEND_UNAVAILABLE);
+      assert.equal(error.retryable, true);
+      assert.equal(error.metadata.operation, "createWarning");
+      assert.equal(error.metadata.resource, "warnings");
+      assert.equal(error.cause, network);
+      return true;
+    },
+  );
+});
+
+test("4I : un conflit (23505) sur INSERT devient PERSISTENCE_CONFLICT", async () => {
+  const conflict = { code: "23505", message: "duplicate key value violates unique constraint" };
+  const fake = createFakeSupabase({ errors: { insert: conflict } });
+  const repository = new SupabaseWarningRepository({ supabase: fake.client });
+
+  await assert.rejects(
+    () => repository.createWarning({ guildId: "g1", userId: "u1", moderatorId: "m1" }),
+    (error) => {
+      assert.equal(error.code, ErrorCode.PERSISTENCE_CONFLICT);
+      assert.equal(error.metadata.classification, "CONFLICT");
+      assert.equal(error.metadata.operation, "createWarning");
+      assert.equal(error.cause, conflict);
+      return true;
+    },
+  );
+});
+
+test("4I : une validation (22P02) sur INSERT devient PERSISTENCE_FAILED", async () => {
+  const validation = { code: "22P02", message: "invalid input syntax for type bigint" };
+  const fake = createFakeSupabase({ errors: { insert: validation } });
+  const repository = new SupabaseWarningRepository({ supabase: fake.client });
+
+  await assert.rejects(
+    () => repository.createWarning({ guildId: "g1", userId: "u1", moderatorId: "m1" }),
+    (error) => {
+      assert.equal(error.code, ErrorCode.PERSISTENCE_FAILED);
+      assert.equal(error.metadata.classification, "VALIDATION_FAILED");
+      assert.equal(error.metadata.operation, "createWarning");
+      assert.equal(error.cause, validation);
+      return true;
+    },
+  );
+});
+
+test("4I : une erreur sur SELECT est classée elle aussi (42501 → PERSISTENCE_PERMISSION_DENIED)", async () => {
+  const permissionDenied = { code: "42501", message: "permission denied for table warnings" };
+  const fake = createFakeSupabase({ errors: { select: permissionDenied } });
+  const repository = new SupabaseWarningRepository({ supabase: fake.client });
+
+  await assert.rejects(
+    () => repository.listWarnings("g1", "u1"),
+    (error) => {
+      assert.equal(error.code, ErrorCode.PERSISTENCE_PERMISSION_DENIED);
+      assert.equal(error.metadata.operation, "listWarnings");
+      assert.equal(error.metadata.resource, "warnings");
+      assert.equal(error.cause, permissionDenied);
+      return true;
+    },
+  );
 });
 
 test("Supabase : listWarnings filtre, ordonne et borne la limite à 200", async () => {

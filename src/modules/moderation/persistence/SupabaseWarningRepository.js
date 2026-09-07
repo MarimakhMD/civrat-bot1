@@ -7,6 +7,7 @@ const {
   DEFAULT_LIST_LIMIT,
   MAX_LIST_LIMIT,
 } = require("./WarningRepository");
+const { toPersistenceError } = require("../../../adapters/supabase/supabaseErrorClassifier");
 
 /**
  * B1 — Dépôt des warnings sur public.warnings (Supabase).
@@ -93,7 +94,7 @@ class SupabaseWarningRepository extends WarningRepository {
 
     if (error) {
       if (isUndefinedTable(error)) throw new WarningsUnavailableError(error);
-      throw error;
+      throw toPersistenceError(error, { operation: "createWarning", resource: "warnings" });
     }
     return toDomainRow(data);
   }
@@ -121,7 +122,7 @@ class SupabaseWarningRepository extends WarningRepository {
 
     if (error) {
       if (isUndefinedTable(error)) throw new WarningsUnavailableError(error);
-      throw error;
+      throw toPersistenceError(error, { operation: "listWarnings", resource: "warnings" });
     }
     return (Array.isArray(data) ? data : []).map(toDomainRow);
   }
