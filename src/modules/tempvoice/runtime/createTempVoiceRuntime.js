@@ -3,11 +3,12 @@
 const { TempVoiceService } = require("../services/TempVoiceService");
 const { DiscordTempVoiceTransport } = require("../../../adapters/discord/DiscordTempVoiceTransport");
 
-function createTempVoiceRuntime({ configService, transportFactory, tempChannels } = {}) {
+function createTempVoiceRuntime({ configService, transportFactory, tempChannels, repository } = {}) {
   if (!configService || typeof configService.read !== "function") {
     throw new TypeError("createTempVoiceRuntime requires configService");
   }
   const channels = tempChannels instanceof Set ? tempChannels : new Set();
+  const repo = repository || null;
   const makeTransport = typeof transportFactory === "function" ? transportFactory : (guild) => new DiscordTempVoiceTransport({ guild });
 
   return Object.freeze({
@@ -19,7 +20,9 @@ function createTempVoiceRuntime({ configService, transportFactory, tempChannels 
       const newChannelId = newState && newState.channelId ? newState.channelId : null;
       const oldChannelId = oldState && oldState.channelId ? oldState.channelId : null;
       const transport = makeTransport(guild);
-      const service = new TempVoiceService({ transport, config, tempChannels: channels });
+      // B5-b — le service reçoit le dépôt durable ET le guildId, pour persister
+      // avec un cloisonnement strict par guilde.
+      const service = new TempVoiceService({ transport, config, tempChannels: channels, repository: repo, guildId: guild.id });
 
       // Join lobby → create temp
       if (newChannelId && service.isLobby(newChannelId)) {
@@ -33,6 +36,7 @@ function createTempVoiceRuntime({ configService, transportFactory, tempChannels 
       return { handled: false, code: "NOT_TEMPVOICE" };
     },
     _channels: channels,
+    _repository: repo,
   });
 }
 
