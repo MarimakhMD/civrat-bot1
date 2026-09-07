@@ -1,6 +1,6 @@
 "use strict";
 
-const { TicketConfigKey: Key, TicketComponentId: Id } = require("../configuration/ticketConstants");
+const { TicketConfigKey: Key, TicketComponentId: Id, TicketCategory } = require("../configuration/ticketConstants");
 const { TicketPremiumConfigKey: PKey } = require("../configuration/ticketPremiumConstants");
 const { TicketPermissionService } = require("./TicketPermissionService");
 const { resolveButtonTarget } = require("../persistence/TicketPanelRepository");
@@ -259,8 +259,9 @@ class TicketService {
       channel_id: channel.id,
       // M8 — décision validée : `category` reste "support" et n'est PAS
       // refactorisé dans cette étape. L'origine réelle du ticket est portée par
-      // panel_id ; nettoyer `category` est un chantier distinct.
-      category: "support",
+      // panel_id ; nettoyer `category` est un chantier distinct (F1).
+      // F1 — la valeur est centralisée dans TicketCategory.SUPPORT.
+      category: TicketCategory.SUPPORT,
       status: "open",
       closed: false,
       // M8 — panel ayant ouvert le ticket. null quand l'ouverture ne vient

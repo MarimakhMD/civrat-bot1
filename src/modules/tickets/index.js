@@ -19,4 +19,6 @@ module.exports = {
   ...require("./configuration/ticketPremiumDefaults"),
   ...require("./configuration/ticketPremiumConfigSchema"),
   ...require("./configuration/ticketPremiumValidation"),
+  // F1 — valeur de la colonne tickets.category (label de catégorie V1).
+  TicketCategory: require("./configuration/ticketConstants").TicketCategory,
 };

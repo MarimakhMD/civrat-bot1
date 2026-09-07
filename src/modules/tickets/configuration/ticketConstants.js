@@ -88,6 +88,16 @@ const DISCORD_ID_PATTERN = /^\d{15,22}$/;
 /** Styles de bouton acceptés. `link` est EXCLU : il n'a pas de customId. */
 const PANEL_BUTTON_STYLES = Object.freeze(["primary", "secondary", "success", "danger"]);
 
+/**
+ * F1 — valeur de la colonne `tickets.category`.
+ *
+ * Label de catégorie de ticket, V1 : `"support"` est la seule valeur écrite.
+ * La colonne est NOT NULL et n'est jamais relue par le code (l'origine réelle
+ * d'un ticket est portée par `panel_id` depuis M8) ; la valeur est centralisée
+ * ici plutôt que laissée en littéral inline dans TicketService.
+ */
+const TicketCategory = Object.freeze({ SUPPORT: "support" });
+
 module.exports = {
   TicketConfigKey,
   TicketComponentId,
@@ -95,4 +105,5 @@ module.exports = {
   MAX_BUTTONS_PER_PANEL,
   DISCORD_ID_PATTERN,
   PANEL_BUTTON_STYLES,
+  TicketCategory,
 };

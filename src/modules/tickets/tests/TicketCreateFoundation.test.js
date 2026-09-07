@@ -4,7 +4,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { InteractionRegistry } = require("../../../core/interactions");
 const { registerTickets } = require("../register");
-const { TicketComponentId: Id } = require("../configuration/ticketConstants");
+const { TicketComponentId: Id, TicketCategory } = require("../configuration/ticketConstants");
 const { TicketService } = require("../services/TicketService");
 const { SupabaseTicketRepository } = require("../persistence/SupabaseTicketRepository");
 const { handleTicketCreate } = require("../interactions/ticketCreateRoute");
@@ -108,8 +108,8 @@ test("no open ticket creates a schema-compatible Supabase record", async () => {
     // M8 — `panel_id` rejoint le schéma. null quand l'ouverture ne vient
     // d'aucun panel ; la colonne est nullable et les tickets antérieurs à M8
     // restent null (aucun backfill). `category` reste "support" : décision
-    // validée, il n'est PAS refactorisé dans M8.
-    assert.deepEqual(fixture.createdRecord, { guild_id: "guild", user_id: "member", channel_id: "channel-1", category: "support", status: "open", closed: false, panel_id: null });
+    // validée, il n'est PAS refactorisé dans M8. F1 centralise la valeur.
+    assert.deepEqual(fixture.createdRecord, { guild_id: "guild", user_id: "member", channel_id: "channel-1", category: TicketCategory.SUPPORT, status: "open", closed: false, panel_id: null });
 });
 
 test("Supabase persistence failure is structured and rolls back the created channel", async () => {
@@ -119,6 +119,11 @@ test("Supabase persistence failure is structured and rolls back the created chan
   assert.equal(fixture.channelCreates, 1);
   // P13 (B2) : le salon créé avant l'échec de persistance est compensé.
   assert.deepEqual(fixture.deleted, ["channel-1"]);
+});
+
+test("F1 — TicketCategory.SUPPORT vaut exactement \"support\" (colonne tickets.category)", () => {
+  assert.equal(TicketCategory.SUPPORT, "support");
+  assert.ok(Object.isFrozen(TicketCategory));
 });
 
 test("Supabase repository creates records and surfaces insert errors", async () => {

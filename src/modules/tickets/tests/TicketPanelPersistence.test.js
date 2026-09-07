@@ -26,7 +26,7 @@ const {
 } = require("../persistence/SupabaseTicketPanelRepository");
 const { TicketPanelService } = require("../services/TicketPanelService");
 const { TicketService } = require("../services/TicketService");
-const { MAX_PANELS_PER_GUILD, MAX_BUTTONS_PER_PANEL } = require("../configuration/ticketConstants");
+const { MAX_PANELS_PER_GUILD, MAX_BUTTONS_PER_PANEL, TicketCategory } = require("../configuration/ticketConstants");
 const { rows } = require("../../../adapters/discord/DiscordResponseTransport");
 
 const CAT = "111111111111111111";
@@ -442,7 +442,7 @@ test("M8 ticket: panel_id is written and the button target drives the category",
   const result = await service.createTicket({ guildId: "g", member: { id: "u1" }, panelId: panel.id, buttonIndex: 1 });
   assert.equal(result.code, "TICKET_CREATED");
   assert.equal(state.record.panel_id, panel.id);
-  assert.equal(state.record.category, "support", "category reste \"support\" : décision M8 validée");
+  assert.equal(state.record.category, TicketCategory.SUPPORT, "category reste \"support\" : décision M8 validée");
 
   const { service: s2, state: st2 } = makeTicketFixture({ panelRepository });
   await s2.createTicket({ guildId: "g", member: { id: "u2" }, panelId: panel.id, buttonIndex: 0 });
