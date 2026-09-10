@@ -1,4 +1,4 @@
-const { guildConfigService } = require("../services/guildConfig");
+const guildConfigService = require("../services/guildConfig");
 const { getLogsRuntime } = require("../modules/logs/runtime/getLogsRuntime");
 const logger = require("../utils/logger");
 module.exports = {

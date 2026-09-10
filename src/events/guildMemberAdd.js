@@ -24,8 +24,15 @@ module.exports = {
     await require("../modules/autorole/runtime/getAutoRoleRuntime").getAutoRoleRuntime().handleMemberJoined(member);
     // 2. Welcome Message
     await require("../runtime/getWelcomeGoodbyeRuntime").getWelcomeGoodbyeRuntime().handleMemberAdded(member);
-    // 3. Captcha reminder (best effort; DMs can be closed)
-    await require("../modules/captcha/runtime/getCaptchaRuntime").getCaptchaRuntime().handleMemberJoined(member);
+    // 3. Captcha reminder (best effort; DMs can be closed). Le module CAPTCHA
+    // reste gelé : on isole seulement son échec afin qu'il ne bloque pas le
+    // log d'arrivée exécuté en aval (étape 4).
+    try {
+      await require("../modules/captcha/runtime/getCaptchaRuntime").getCaptchaRuntime().handleMemberJoined(member);
+    } catch (error) {
+      // 4F-1 — observabilité : best-effort conservé.
+      logger.warn("Captcha member join handling failed", { event: "captcha_join_failed", guildId: member?.guild?.id || null, error: error?.message || String(error) });
+    }
     // 4. Invite Tracking — Phase 11 : respecte le toggle /settings Invites.
     //    Comportement historique préservé par défaut : la clé absente (guilde
     //    jamais configurée) laisse le tracking actif ; seul un opt-out explicite
