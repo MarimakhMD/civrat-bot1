@@ -63,9 +63,14 @@ async function previewLogs(context) {
   });
   const channelId = config[Key.MESSAGES_DELETE] || null;
   const result = await context.delivery.deliver({ ...entry, channelId });
-  const view = channelId
-    ? { content: context.t("logs.previewSent", { channel: `<#${channelId}>` }), components: [] }
-    : { content: context.t("logs.previewNoChannel"), components: [] };
+  // Distingue trois issues : aucun salon configuré, envoi réussi, échec de
+  // livraison (salon supprimé / bot sans permission). Jamais d'annonce de
+  // succès quand la livraison a réellement échoué.
+  const view = !channelId
+    ? { content: context.t("logs.previewNoChannel"), components: [] }
+    : result.delivered
+      ? { content: context.t("logs.previewSent", { channel: `<#${channelId}>` }), components: [] }
+      : { content: context.t("logs.previewFailed"), components: [] };
   await context.envelope.transport.reply({ view, ephemeral: true });
   return result;
 }

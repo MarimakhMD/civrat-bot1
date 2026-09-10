@@ -67,8 +67,8 @@ test("logsView renders each configured channel as a mention", () => {
   });
   assert.ok(view.content.includes("<#123>"), "configured messages channel must be rendered");
   assert.ok(view.content.includes("<#456>"), "configured members channel must be rendered");
-  assert.ok(view.content.includes("logs.messages"));
-  assert.ok(view.content.includes("logs.members"));
+  assert.ok(view.content.includes("logs.categoryMessages"));
+  assert.ok(view.content.includes("logs.categoryMembers"));
 });
 
 test("logsView renders unconfigured categories as not-configured", () => {
@@ -162,7 +162,7 @@ test("invitations category is part of the logs view", () => {
     t: (key) => key,
     config: { invitations_log_channel_id: "inv-chan" },
   });
-  assert.ok(view.content.includes("logs.invitations"));
+  assert.ok(view.content.includes("logs.categoryInvitations"));
   assert.ok(view.content.includes("<#inv-chan>"));
 });
 
@@ -235,4 +235,60 @@ test("disabling a category through the runtime persists null and reflects in the
   captured = {};
   assert.equal(await runtime.tryHandle(button(`${Id.DISABLE_PREFIX}:${LogsCategory.MODERATION}`, captured)), true);
   assert.equal(legacy._config.log_moderation_channel_id, null);
+});
+
+// ── 11 — Aperçu bout à bout à travers le runtime (wiring réel) ─────────────
+// Ces tests cliquent réellement le bouton PREVIEW via le router, et non pas en
+// appelant previewLogs() directement : ils prouvent que mapper/delivery
+// injectés par registerLogs atteignent bien le handler (régression du crash
+// "Cannot read properties of undefined (reading 'map')").
+test("preview button through the runtime delivers a real test to the configured channel", async () => {
+  const sent = [];
+  const legacy = legacyConfigService({ logs_enabled: true, log_message_delete_channel_id: "123" });
+  const runtime = createGuildSettingsRuntime({ legacyConfigService: legacy });
+  const captured = {};
+  const interaction = button(Id.PREVIEW, captured);
+  // DiscordLogsTransport lit context.envelope.discordMember.guild.
+  interaction.member.guild = {
+    channels: { cache: { get: (id) => ({ isTextBased: () => true, send: async (m) => sent.push(m) }) } },
+  };
+  const handled = await runtime.tryHandle(interaction);
+  assert.equal(handled, true);
+  assert.equal(sent.length, 1, "the preview must actually send a test message");
+  // Le t du runtime est le vrai i18n (locale fr) : le message de succès est
+  // traduit, on vérifie donc la mention du salon, pas la clé brute.
+  assert.ok(captured.reply.content.includes("<#123>"), "must report the sent channel");
+});
+
+test("preview button through the runtime with no channel does not send and does not crash", async () => {
+  const legacy = legacyConfigService({ logs_enabled: true });
+  const runtime = createGuildSettingsRuntime({ legacyConfigService: legacy });
+  const captured = {};
+  const interaction = button(Id.PREVIEW, captured);
+  const handled = await runtime.tryHandle(interaction);
+  assert.equal(handled, true);
+  assert.ok(typeof captured.reply.content === "string" && captured.reply.content.length > 0, "must reply without crashing");
+  assert.ok(!captured.reply.content.includes("<#"), "no channel mention when nothing is configured");
+});
+
+// ── 12 — Libellés d'accueil des 8 catégories (FR/EN) ───────────────────────
+test("the 8 category display labels exist in both locales", () => {
+  const fr = require("../translations/fr.json");
+  const en = require("../translations/en.json");
+  const { LogsCategoryLabelKey } = require("../configuration/logsCategories");
+  assert.equal(Object.keys(LogsCategoryLabelKey).length, 8);
+  for (const key of Object.values(LogsCategoryLabelKey)) {
+    const [, name] = key.split(".");
+    assert.equal(typeof fr.logs[name], "string", `${key} missing in fr.json`);
+    assert.ok(fr.logs[name].length > 0, `${key} empty in fr.json`);
+    assert.equal(typeof en.logs[name], "string", `${key} missing in en.json`);
+    assert.ok(en.logs[name].length > 0, `${key} empty in en.json`);
+  }
+});
+
+test("logsView lists the 8 categories with their display label", () => {
+  const view = logsView({ t: (key) => key, config: { logs_enabled: true } });
+  for (const labelKey of ["logs.categoryMessages", "logs.categoryMessagesEdit", "logs.categoryMembers", "logs.categoryMembersLeave", "logs.categoryModeration", "logs.categoryRoles", "logs.categoryChannels", "logs.categoryInvitations"]) {
+    assert.ok(view.content.includes(labelKey), `main view missing ${labelKey}`);
+  }
 });

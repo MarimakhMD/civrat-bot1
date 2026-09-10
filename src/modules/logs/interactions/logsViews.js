@@ -1,7 +1,7 @@
 "use strict";
 
 const { LogsComponentId: Id } = require("../configuration/logsConstants");
-const { LogsCategory, LogsCategoryChannelKey } = require("../configuration/logsCategories");
+const { LogsCategory, LogsCategoryChannelKey, LogsCategoryLabelKey } = require("../configuration/logsCategories");
 
 // Affiche un salon configuré, ou le libellé « non configuré ».
 function channelLabel(t, channelId) {
@@ -15,7 +15,7 @@ function logsView({ t, config }) {
   const enabled = Boolean(config.logs_enabled);
   const lines = Object.values(LogsCategory).map((category) => {
     const key = LogsCategoryChannelKey[category];
-    return `${t(`logs.${category}`)} — ${channelLabel(t, config[key])}`;
+    return `${t(LogsCategoryLabelKey[category])} → ${channelLabel(t, config[key])}`;
   });
   return {
     title: t("logs.title"),
@@ -37,7 +37,7 @@ function channelView({ t, category, config }) {
   return {
     content: [
       t("logs.selectChannel"),
-      `${t(`logs.${category}`)} — ${t("logs.currentChannel")}: ${channelLabel(t, channelId)}`,
+      `${t(LogsCategoryLabelKey[category])} — ${t("logs.currentChannel")}: ${channelLabel(t, channelId)}`,
     ].join("\n"),
     components: [
       { type: "channel-select", customId: `${Id.CHANNEL_PREFIX}:${category}`, placeholder: t("logs.selectChannel"), channelTypes: [0] },
