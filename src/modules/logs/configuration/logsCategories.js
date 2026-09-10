@@ -38,4 +38,19 @@ const LogsCategoryChannelKey = Object.freeze({
   [LogsCategory.INVITATIONS]: "invitations_log_channel_id",
 });
 
-module.exports = { LogsCategory, LogsCategoryChannelKey };
+// Libellé D'ACCUEIL de chaque catégorie (emoji + nom descriptif), affiché dans
+// la liste principale /settings → Logs. Distinct des clés `logs.<categorie>`
+// (utilisées par le select de catégorie) : le libellé d'accueil est plus
+// parlant que le libellé court du select.
+const LogsCategoryLabelKey = Object.freeze({
+  [LogsCategory.MESSAGES]: "logs.categoryMessages",
+  [LogsCategory.MESSAGES_EDIT]: "logs.categoryMessagesEdit",
+  [LogsCategory.MEMBERS]: "logs.categoryMembers",
+  [LogsCategory.MEMBERS_LEAVE]: "logs.categoryMembersLeave",
+  [LogsCategory.MODERATION]: "logs.categoryModeration",
+  [LogsCategory.ROLES]: "logs.categoryRoles",
+  [LogsCategory.CHANNELS]: "logs.categoryChannels",
+  [LogsCategory.INVITATIONS]: "logs.categoryInvitations",
+});
+
+module.exports = { LogsCategory, LogsCategoryChannelKey, LogsCategoryLabelKey };
