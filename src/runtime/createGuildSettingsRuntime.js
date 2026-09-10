@@ -30,7 +30,8 @@ const { CaptchaVerificationService } = require("../modules/captcha/services/Capt
 const { DiscordCaptchaTransport } = require("../adapters/discord/DiscordCaptchaTransport");
 const captchaEn = require("../modules/captcha/translations/en.json");
 const captchaFr = require("../modules/captcha/translations/fr.json");
-const { LogsConfigService, registerLogs } = require("../modules/logs");
+const { LogsConfigService, LogsEventMapper, LogsDeliveryService, registerLogs } = require("../modules/logs");
+const { DiscordLogsTransport } = require("../adapters/discord/DiscordLogsTransport");
 const logsEn = require("../modules/logs/translations/en.json");
 const logsFr = require("../modules/logs/translations/fr.json");
 const { AutoRoleService, registerAutoRole } = require("../modules/autorole");
@@ -156,7 +157,17 @@ function createGuildSettingsRuntime({ legacyConfigService, logger = null }) {
   const welcomeTemplateRegistry = new WelcomeTemplateRegistry(); welcomeTemplateRegistry.discover();
   const imagePipeline = new WelcomeImagePipeline({ renderer: new WelcomeImageRenderer({ resourceCache: new WelcomeResourceCache() }), theme: imageTheme });
   registerAutoRole({ registry, service: new AutoRoleService({ guildConfigResolver }) });
-  registerLogs({ registry, service: new LogsConfigService({ guildConfigResolver }), settingsHome });
+  registerLogs({
+    registry,
+    service: new LogsConfigService({ guildConfigResolver }),
+    // Le mapper est sans état ; la livraison dépend de la guilde de
+    // l'interaction, donc `delivery` est une factory résolue à la demande.
+    mapper: new LogsEventMapper(),
+    delivery: (context) => new LogsDeliveryService({
+      transport: new DiscordLogsTransport({ guild: context.envelope.discordMember?.guild ?? null }),
+    }),
+    settingsHome,
+  });
   const captchaConfigService = new CaptchaConfigService({ guildConfigResolver });
   const ticketConfigService = new TicketConfigService({ guildConfigResolver });
   // Le resolver Tickets et tous les autres consommateurs Premium partagent le
