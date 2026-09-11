@@ -36,3 +36,43 @@ test("P0.4: guildMemberAdd isole l'appel captcha dans un try/catch", () => {
   assert.match(src.slice(0, idx), /try\s*\{/, "un try { précède l'appel captcha");
   assert.match(src.slice(idx), /\}\s*catch/, "un } catch suit l'appel captcha");
 });
+
+// ───────────────────────────────────────────────────────────────
+// Join/Leave — isolation : une erreur d'onboarding ne doit pas
+// empêcher le log d'arrivée ; un membre partiel ne doit pas bloquer
+// le log de départ.
+// ───────────────────────────────────────────────────────────────
+
+test("Join: autorole et le log d'arrivée sont chacun isolés, inviteResult réutilisé", () => {
+  const src = fs.readFileSync("src/events/guildMemberAdd.js", "utf8");
+  assert.match(src, /autorole_join_failed/, "autorole isolé avec un log ciblé");
+  assert.match(src, /member_join_log_failed/, "le log d'arrivée est isolé");
+  assert.match(src, /handleMemberJoined\(member, inviteResult, inviterStats\)/, "inviteResult est réutilisé (pas de recalcul API)");
+  const idx = src.indexOf(".handleMemberJoined(member, inviteResult, inviterStats)");
+  assert.ok(idx > 0, "l'appel au log d'arrivée est présent");
+  assert.match(src.slice(0, idx), /try\s*\{/, "un try { précède le log d'arrivée");
+  assert.match(src.slice(idx), /\}\s*catch/, "un } catch suit le log d'arrivée");
+});
+
+test("Leave: le log de départ est tenté en premier et isolé (goodbye isolé aussi)", () => {
+  const src = fs.readFileSync("src/events/guildMemberRemove.js", "utf8");
+  assert.match(src, /member_leave_log_failed/, "le log de départ est isolé");
+  assert.match(src, /goodbye_failed/, "le goodbye est isolé");
+  const leaveIdx = src.indexOf(".handleMemberLeft(member)");
+  const goodbyeIdx = src.indexOf(".handleMemberRemoved(member)");
+  assert.ok(leaveIdx > 0, "l'appel handleMemberLeft est présent");
+  assert.ok(goodbyeIdx > 0, "l'appel goodbye est présent");
+  assert.ok(leaveIdx < goodbyeIdx, "le log de départ est tenté AVANT le goodbye");
+  assert.match(src, /member\.user\?\.bot/, "handleInviteDecrement tolère un membre partiel (user null)");
+});
+
+test("adaptGuildMember tolère un membre partiel (user null) sans lever", () => {
+  const { adaptGuildMember } = require("../../src/adapters/discord/DiscordGuildMemberAdapter");
+  const adapted = adaptGuildMember({ guild: { id: "G", name: "Srv", memberCount: 10 }, id: "M", user: null });
+  assert.equal(adapted.userId, "M");
+  assert.equal(adapted.user, null);
+  assert.equal(adapted.username, null);
+  assert.equal(adapted.avatarUrl, null);
+  assert.equal(adapted.memberCount, 10);
+  assert.equal(adapted.guildId, "G");
+});

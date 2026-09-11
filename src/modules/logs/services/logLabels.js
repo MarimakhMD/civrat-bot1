@@ -50,4 +50,56 @@ function executorLabel(entry) {
   return userLabel(entry.executor);
 }
 
-module.exports = { UNKNOWN, userLabel, memberLabel, channelLabel, roleLabel, executorLabel };
+// Mention Discord du membre (`<@id>`) : toujours disponible tant que l'id est
+// connu, même pour un membre partiel.
+function memberMention(member) {
+  if (!member || !member.id) return null;
+  return `<@${member.id}>`;
+}
+
+// Libellé « membre » : mention + tag si le tag est réellement disponible,
+// sinon mention seule, sinon id seul. Jamais de tag inventé.
+function memberDisplayLabel(member) {
+  if (!member || typeof member !== "object") return null;
+  const mention = memberMention(member);
+  const tag = member.user && typeof member.user.tag === "string" && member.user.tag
+    ? member.user.tag
+    : null;
+  if (mention && tag) return `${mention} \`${tag}\``;
+  if (mention) return mention;
+  if (member.id) return String(member.id);
+  return null;
+}
+
+// Date de création du compte Discord au format ISO (AAAA-MM-JJ), ou `null` si
+// indisponible (utilisateur absent sur un membre partiel).
+function accountCreatedAt(member) {
+  const createdAt = member && member.user && member.user.createdAt;
+  if (!createdAt) return null;
+  const date = new Date(createdAt);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toISOString().slice(0, 10);
+}
+
+// URL d'avatar réelle du membre, ou `null` (aucun fallback inventé).
+function avatarUrl(member) {
+  if (!member || !member.user || typeof member.user.displayAvatarURL !== "function") return null;
+  try {
+    return member.user.displayAvatarURL({ extension: "png", size: 256 }) || null;
+  } catch {
+    return null;
+  }
+}
+
+module.exports = {
+  UNKNOWN,
+  userLabel,
+  memberLabel,
+  channelLabel,
+  roleLabel,
+  executorLabel,
+  memberMention,
+  memberDisplayLabel,
+  accountCreatedAt,
+  avatarUrl,
+};

@@ -208,6 +208,84 @@ test("P1c: who absent → champ omis ; who null → « inconnu » (jamais d'iden
 });
 
 // ───────────────────────────────────────────────────────────────
+// Charte couleur + thumbnail + rendu membre (Join/Leave)
+// ───────────────────────────────────────────────────────────────
+
+function hexColor(embed) {
+  const c = embed.color;
+  return `#${c.toString(16).padStart(6, "0").toUpperCase()}`;
+}
+
+test("charte: member_joined → VERT, thumbnail avatar, champs membre dédiés dans l'ordre", async () => {
+  const { guild, sent } = makeGuild();
+  const transport = new DiscordLogsTransport({ guild });
+  await transport.deliver({
+    channelId: "CH",
+    title: "logs.memberJoined",
+    action: "member_joined",
+    details: {
+      member: "<@M> `Nouveau`",
+      memberId: "M",
+      createdAt: "2024-05-01",
+      invite: "abc",
+      inviter: "<@I> `Inviteur`",
+      inviterStats: 7,
+      memberCount: 42,
+      avatarUrl: "https://cdn.discord/avatars/M.png",
+    },
+  });
+  const embed = deliveredEmbed(sent);
+  assert.equal(hexColor(embed), "#2ECC71");
+  assert.equal(embed.thumbnail.url, "https://cdn.discord/avatars/M.png");
+  assert.deepEqual(embed.fields.map((f) => f.name), [
+    "👤 Membre", "🆔 ID", "📅 Compte créé", "🔗 Invitation utilisée", "🛡️ Invité par", "📊 Invitations du recruteur", "👥 Membres",
+  ]);
+  assert.equal(embed.fields.find((f) => f.name === "👤 Membre").value, "<@M> `Nouveau`");
+  assert.equal(embed.fields.find((f) => f.name === "📊 Invitations du recruteur").value, "7");
+});
+
+test("charte: member_left → ROUGE, champs membre dédiés, createdAt/avatar absents omis", async () => {
+  const { guild, sent } = makeGuild();
+  const transport = new DiscordLogsTransport({ guild });
+  await transport.deliver({
+    channelId: "CH",
+    title: "logs.memberLeft",
+    action: "member_left",
+    details: { member: "<@M>", memberId: "M", createdAt: null, memberCount: 41, avatarUrl: null },
+  });
+  const embed = deliveredEmbed(sent);
+  assert.equal(hexColor(embed), "#E74C3C");
+  assert.equal(embed.thumbnail, undefined);
+  assert.deepEqual(embed.fields.map((f) => f.name), ["👤 Membre", "🆔 ID", "👥 Membres restants"]);
+  assert.equal(embed.fields.find((f) => f.name === "👤 Membre").value, "<@M>");
+});
+
+test("charte: couleurs représentatives (rouge/vert/orange/bleu) sans avatar", async () => {
+  const { guild, sent } = makeGuild();
+  const transport = new DiscordLogsTransport({ guild });
+  const cases = [
+    ["message_deleted", "#E74C3C"],
+    ["role_created", "#2ECC71"],
+    ["message_updated", "#E67E22"],
+    ["invite_used", "#3498DB"],
+  ];
+  for (const [action, expected] of cases) {
+    await transport.deliver({ channelId: "CH", title: "logs.x", action, details: { target: "X" } });
+  }
+  assert.equal(sent.length, cases.length);
+  for (let i = 0; i < cases.length; i++) {
+    assert.equal(hexColor(sent[i].embeds[0].toJSON()), cases[i][1]);
+  }
+});
+
+test("charte: entry.color explicite reste prioritaire sur la couleur de l'action", async () => {
+  const { guild, sent } = makeGuild();
+  const transport = new DiscordLogsTransport({ guild });
+  await transport.deliver({ channelId: "CH", title: "logs.x", action: "member_joined", color: "#123456", details: { memberId: "M" } });
+  assert.equal(hexColor(sent[0].embeds[0].toJSON()), "#123456");
+});
+
+// ───────────────────────────────────────────────────────────────
 // Garde salon inchangée
 // ───────────────────────────────────────────────────────────────
 

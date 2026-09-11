@@ -20,8 +20,24 @@ module.exports = {
     const config = await guildConfigService.getGuildConfig(member.guild.id);
     if (!config) return;
 
-    await require("../runtime/getWelcomeGoodbyeRuntime").getWelcomeGoodbyeRuntime().handleMemberRemoved(member);
-    await require("../modules/logs/runtime/getLogsRuntime").getLogsRuntime().handleMemberLeft(member);
+    // Log de départ : tenté en PREMIER et isolé. Un membre partiel (user null)
+    // ou un échec du goodbye ne doit jamais empêcher l'émission de ce log.
+    try {
+      await require("../modules/logs/runtime/getLogsRuntime").getLogsRuntime().handleMemberLeft(member);
+    } catch (error) {
+      // 4F-1 — observabilité : best-effort conservé.
+      logger.warn("Member leave log failed", { event: "member_leave_log_failed", guildId: member?.guild?.id || null, error: error?.message || String(error) });
+    }
+
+    // Goodbye : isolé — un membre partiel (user null) ne doit plus faire
+    // planter le traitement (cf. adaptGuildMember désormais null-safe).
+    try {
+      await require("../runtime/getWelcomeGoodbyeRuntime").getWelcomeGoodbyeRuntime().handleMemberRemoved(member);
+    } catch (error) {
+      // 4F-1 — observabilité : best-effort conservé.
+      logger.warn("Goodbye handling failed", { event: "goodbye_failed", guildId: member?.guild?.id || null, error: error?.message || String(error) });
+    }
+
     await handleKickDetection(member, config);
     await handleInviteDecrement(member, config);
   },
@@ -56,7 +72,8 @@ async function handleInviteDecrement(member, config) {
   // Phase 11 : garde alignée sur guildMemberAdd — défaut « activé » (tracking
   // historique inconditionnel), opt-out explicite uniquement.
   if (config.invitations_enabled === false) return;
-  if (member.user.bot) return;
+  // Membre partiel : `member.user` vaut null au départ, ne pas planter.
+  if (member.user?.bot) return;
 
   try {
     // Discord audit entries can arrive just after guildMemberRemove. Do not count a kick as a voluntary invite departure.

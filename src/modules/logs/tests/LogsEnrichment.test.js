@@ -103,7 +103,7 @@ test("suppression groupée : résumé des auteurs + extraits, avec compteur", as
 // P1a — arrivée avec invitation
 // ───────────────────────────────────────────────────────────────
 
-test("arrivée : inviteur en `who`, code en `invite`, date d'arrivée ISO", async () => {
+test("arrivée : mention+tag, id, compte créé, invitation, invité par, stats, membres", async () => {
   const { config, mapper, service, delivery, delivered } = makeDeps({
     logs_enabled: true,
     log_member_join_channel_id: "c",
@@ -111,27 +111,44 @@ test("arrivée : inviteur en `who`, code en `invite`, date d'arrivée ISO", asyn
   const client = { users: { cache: new Map([["I", { id: "I", tag: "Inviteur" }]]) } };
   const member = {
     id: "M",
-    guild: { id: "G", client },
-    user: { id: "M", tag: "Nouveau" },
-    joinedAt: new Date("2026-09-11T10:00:00.000Z"),
+    guild: { id: "G", client, memberCount: 42 },
+    user: {
+      id: "M",
+      tag: "Nouveau",
+      createdAt: new Date("2024-05-01T00:00:00.000Z"),
+      displayAvatarURL: () => "https://cdn.discord/avatars/M.png",
+    },
   };
-  await handleMemberJoined({ member, inviteResult: { code: "abc", inviter: "I" }, config, mapper, service, delivery });
+  await handleMemberJoined({ member, inviteResult: { code: "abc", inviter: "I" }, inviterStats: 7, config, mapper, service, delivery });
   const d = delivered[0].details;
-  assert.equal(d.who, "Inviteur (I)");
+  assert.equal(d.member, "<@M> `Nouveau`");
+  assert.equal(d.memberId, "M");
+  assert.equal(d.createdAt, "2024-05-01");
   assert.equal(d.invite, "abc");
-  assert.equal(d.joinedAt, "2026-09-11T10:00:00.000Z");
-  assert.equal(d.target, "Nouveau (M)");
+  assert.equal(d.inviter, "<@I> `Inviteur`");
+  assert.equal(d.inviterStats, 7);
+  assert.equal(d.memberCount, 42);
+  assert.equal(d.avatarUrl, "https://cdn.discord/avatars/M.png");
 });
 
-test("arrivée sans inviteur fiable : `who` omis, jamais inventé", async () => {
+test("arrivée sans inviteur fiable : invitation/invité par/stats omis, jamais inventés", async () => {
   const { config, mapper, service, delivery, delivered } = makeDeps({
     logs_enabled: true,
     log_member_join_channel_id: "c",
   });
-  const member = { id: "M", guild: { id: "G", client: { users: { cache: new Map() } } }, user: { id: "M", tag: "Nouveau" }, joinedAt: null };
+  const member = {
+    id: "M",
+    guild: { id: "G", client: { users: { cache: new Map() } } },
+    user: { id: "M", tag: "Nouveau", createdAt: new Date("2024-05-01T00:00:00.000Z") },
+  };
   await handleMemberJoined({ member, inviteResult: null, config, mapper, service, delivery });
-  assert.equal(delivered[0].details.who, undefined);
-  assert.equal(delivered[0].details.invite, null);
+  const d = delivered[0].details;
+  assert.equal(d.invite, null);
+  assert.equal(d.inviter, null);
+  assert.equal(d.inviterStats, null);
+  assert.equal(d.member, "<@M> `Nouveau`");
+  assert.equal(d.memberId, "M");
+  assert.equal(d.avatarUrl, null);
 });
 
 // ───────────────────────────────────────────────────────────────

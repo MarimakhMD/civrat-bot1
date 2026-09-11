@@ -77,12 +77,36 @@ test("handleMessageUpdated logue un message partiel sans lever", async () => {
 // P0.3 — membre partiel au départ.
 // ───────────────────────────────────────────────────────────────
 
-test("handleMemberLeft logue un membre partiel (user null) sans lever", async () => {
+test("handleMemberLeft logue un membre partiel (user null) sans lever ni inventer", async () => {
   const { config, mapper, service, delivery, delivered } = makeDeps(ENABLED);
   const member = { guild: { id: "G" }, id: "M", user: null };
   const result = await handleMemberLeft({ member, config, mapper, service, delivery });
   assert.equal(result.delivered, true);
   assert.equal(delivered[0].details.memberId, "M");
+  assert.equal(delivered[0].details.member, "<@M>");
+  assert.equal(delivered[0].details.createdAt, null);
+  assert.equal(delivered[0].details.avatarUrl, null);
+});
+
+test("handleMemberLeft logue un membre complet (tag, compte créé, avatar, membres restants)", async () => {
+  const { config, mapper, service, delivery, delivered } = makeDeps(ENABLED);
+  const member = {
+    guild: { id: "G", memberCount: 41 },
+    id: "M",
+    user: {
+      bot: false,
+      tag: "Alice",
+      createdAt: new Date("2023-01-15T00:00:00.000Z"),
+      displayAvatarURL: () => "https://cdn.discord/avatars/M.png",
+    },
+  };
+  const result = await handleMemberLeft({ member, config, mapper, service, delivery });
+  assert.equal(result.delivered, true);
+  assert.equal(delivered[0].details.member, "<@M> `Alice`");
+  assert.equal(delivered[0].details.memberId, "M");
+  assert.equal(delivered[0].details.createdAt, "2023-01-15");
+  assert.equal(delivered[0].details.avatarUrl, "https://cdn.discord/avatars/M.png");
+  assert.equal(delivered[0].details.memberCount, 41);
 });
 
 test("handleMemberLeft ignore les bots (user connu)", async () => {

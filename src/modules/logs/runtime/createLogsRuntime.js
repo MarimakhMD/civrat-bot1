@@ -33,8 +33,8 @@ function createLogsRuntime({ guildConfigResolver }) {
     handleMessageUpdated: async (message, oldMessage) =>
       handleMessageUpdated({ message, oldMessage, config: await guildConfigResolver.get(message.guild.id), ...deps(message.guild) }),
 
-    handleMemberJoined: async (member, inviteResult) =>
-      handleMemberJoined({ member, inviteResult, config: await guildConfigResolver.get(member.guild.id), ...deps(member.guild) }),
+    handleMemberJoined: async (member, inviteResult, inviterStats) =>
+      handleMemberJoined({ member, inviteResult, inviterStats, config: await guildConfigResolver.get(member.guild.id), ...deps(member.guild) }),
 
     handleMemberLeft: async (member) =>
       handleMemberLeft({ member, config: await guildConfigResolver.get(member.guild.id), ...deps(member.guild) }),
