@@ -118,6 +118,35 @@ test("LogsDeliveryService journalise l'échec de transport", async () => {
   assert.equal(warnings[0].meta.action, "message_deleted");
 });
 
+test("LogsDeliveryService journalise le détail complet d'un DiscordAPIError", async () => {
+  const warnings = [];
+  const logger = { warn: (msg, meta) => warnings.push({ msg, meta }) };
+  const rawError = { code: 50035, message: "Invalid Form Body", errors: { embeds: { "0": { title: { _errors: [{ code: "BASE_TYPE_REQUIRED", message: "This field is required" }] } } } } };
+  const requestBody = { json: { embeds: [{ title: "x" }] } };
+  const apiError = Object.assign(new Error("Received one or more errors"), {
+    code: 50035,
+    status: 400,
+    errors: rawError.errors,
+    rawError,
+    requestBody,
+  });
+  const service = new LogsDeliveryService({
+    transport: { deliver: async () => { throw apiError; } },
+    logger,
+  });
+  const result = await service.deliver({ channelId: "C", category: "channels", action: "channel_created" });
+  assert.equal(result.delivered, false);
+  assert.equal(result.reason, "LOG_TRANSPORT_FAILED");
+  assert.equal(warnings.length, 1);
+  const meta = warnings[0].meta;
+  assert.equal(meta.error, "Received one or more errors");
+  assert.equal(meta.code, 50035);
+  assert.equal(meta.status, 400);
+  assert.deepEqual(meta.errors, rawError.errors);
+  assert.deepEqual(meta.rawError, rawError);
+  assert.deepEqual(meta.requestBody, requestBody);
+});
+
 test("LogsDeliveryService sans logger n'échoue pas silencieusement à tort (retour explicite)", async () => {
   const service = new LogsDeliveryService({ transport: { deliver: async () => { throw new Error("boom"); } } });
   const result = await service.deliver({ channelId: "C" });
