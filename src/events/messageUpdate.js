@@ -10,7 +10,9 @@ module.exports = {
       // (non partiels) : pour un message partiel, `content` vaut null des deux
       // côtés et masquerait une édition réelle.
       if (!newMessage.partial && !oldMessage.partial && oldMessage.content === newMessage.content) return;
-      await getLogsRuntime().handleMessageUpdated(newMessage);
+      // P1a — transmettre l'ancien message pour renseigner Avant/Après sans
+      // aucun appel supplémentaire (les deux sont déjà disponibles ici).
+      await getLogsRuntime().handleMessageUpdated(newMessage, oldMessage);
     } catch (error) {
       // 4F-1 — observabilité : best-effort conservé.
       logger.warn("messageUpdate handling failed", { event: "message_update_failed", guildId: newMessage?.guild?.id || null, error: error?.message || String(error) });

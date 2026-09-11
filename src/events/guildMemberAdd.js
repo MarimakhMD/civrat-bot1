@@ -41,7 +41,7 @@ module.exports = {
     const inviteResult = invitesEnabled ? await handleInviteTracking(member, config) : null;
     if (invitesEnabled) await handleInviteJoinLog(member, config, inviteResult);
     // 4. Join Log
-    await require("../modules/logs/runtime/getLogsRuntime").getLogsRuntime().handleMemberJoined(member);
+    await require("../modules/logs/runtime/getLogsRuntime").getLogsRuntime().handleMemberJoined(member, inviteResult);
     // 5. Security Center (modern Foundation → Runtime → Transport/Logs, no legacy securityService)
     try {
       await require("../modules/security/runtime/getSecurityRuntime").getSecurityRuntime().handleMemberJoined(member);
@@ -115,5 +115,6 @@ async function handleInviteJoinLog(member, config, inviteResult) {
   if (!inviteResult?.inviter) return;
   await require("../modules/logs/runtime/getLogsRuntime").getLogsRuntime().handleInviteEvent({
     guild: member.guild, config, action: "invite_used", inviteCode: inviteResult.code,
+    inviter: inviteResult.inviter,
   });
 }

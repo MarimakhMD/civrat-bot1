@@ -40,7 +40,7 @@ test("handleMessageDeleted logue un message complet avec son auteur", async () =
   const result = await handleMessageDeleted({ message, config, mapper, service, delivery });
   assert.equal(result.delivered, true);
   assert.equal(delivered.length, 1);
-  assert.equal(delivered[0].details.authorId, "A");
+  assert.equal(delivered[0].details.who, "A");
   assert.equal(delivered[0].details.messageId, "MSG");
   assert.equal(delivered[0].channelId, "LOGCH");
 });
@@ -53,7 +53,7 @@ test("handleMessageDeleted logue un message partiel (author null) sans fabriquer
   assert.equal(delivered.length, 1);
   assert.equal(delivered[0].details.messageId, "MSG");
   assert.equal(delivered[0].details.channelId, "CH");
-  assert.equal(delivered[0].details.authorId, null);
+  assert.equal(delivered[0].details.who, null);
 });
 
 test("handleMessageDeleted ignore les messages de bots (auteur connu)", async () => {
@@ -70,7 +70,7 @@ test("handleMessageUpdated logue un message partiel sans lever", async () => {
   const result = await handleMessageUpdated({ message, config, mapper, service, delivery });
   assert.equal(result.delivered, true);
   assert.equal(delivered[0].details.messageId, "MSG");
-  assert.equal(delivered[0].details.authorId, null);
+  assert.equal(delivered[0].details.who, null);
 });
 
 // ───────────────────────────────────────────────────────────────

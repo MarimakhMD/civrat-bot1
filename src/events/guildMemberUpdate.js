@@ -3,10 +3,10 @@
 // ═══════════════════════════════════════════════════
 // FIX: Original had 2 separate listeners. Now merged.
 
-const { EmbedBuilder } = require("discord.js");
+const { AuditLogEvent } = require("discord.js");
 const guildConfigService = require("../services/guildConfig");
-const { fetchAuditLog } = require("../utils/auditLogCache");
-const logger = require("../utils/logger");
+const { resolveAuditActor } = require("../utils/auditLogActor");
+const { memberLabel, roleLabel } = require("../modules/logs/services/logLabels");
 
 module.exports = {
   name: "guildMemberUpdate",
@@ -23,6 +23,13 @@ module.exports = {
 };
 
 async function handleRoleChanges(oldMember, newMember, config) {
+  // P1b — un seul audit log pour le lot (cible = le membre), puis réutilisé.
+  const actor = await resolveAuditActor({
+    guild: newMember.guild,
+    type: AuditLogEvent.MemberRoleUpdate,
+    targetId: newMember.id,
+  });
+
   const addedRoles = newMember.roles.cache.filter((role) => !oldMember.roles.cache.has(role.id));
   for (const role of addedRoles.values()) {
     await require("../modules/logs/runtime/getLogsRuntime")
@@ -33,6 +40,8 @@ async function handleRoleChanges(oldMember, newMember, config) {
         action: "member_role_added",
         roleId: role.id,
         memberId: newMember.id,
+        target: roleLabel(role),
+        who: actor.executor,
       });
   }
 
@@ -46,6 +55,8 @@ async function handleRoleChanges(oldMember, newMember, config) {
         action: "member_role_removed",
         roleId: role.id,
         memberId: newMember.id,
+        target: roleLabel(role),
+        who: actor.executor,
       });
   }
 }
@@ -68,6 +79,13 @@ async function handleTimeout(oldMember, newMember, config) {
 
   if (!action) return;
 
+  // P1b — exécutant/raison résolus via Audit Log, cible = le membre.
+  const actor = await resolveAuditActor({
+    guild: newMember.guild,
+    type: AuditLogEvent.MemberUpdate,
+    targetId: newMember.id,
+  });
+
   await require("../modules/logs/runtime/getLogsRuntime")
     .getLogsRuntime()
     .handleModerationEvent({
@@ -75,5 +93,9 @@ async function handleTimeout(oldMember, newMember, config) {
       config,
       action,
       targetId: newMember.id,
+      target: memberLabel(newMember),
+      reason: actor.reason,
+      moderator: actor.executor,
+      moderatorId: actor.executorId,
     });
 }

@@ -1,5 +1,7 @@
 "use strict";
 
+const { userLabel, channelLabel } = require("../services/logLabels");
+
 async function handleMessageDeleted({ message, config, mapper, service, delivery }) {
   if (!config.logs_enabled || !message.guild || message.author?.bot) return null;
   const entry = mapper.map({
@@ -8,12 +10,15 @@ async function handleMessageDeleted({ message, config, mapper, service, delivery
     category: "messages",
     action: "message_deleted",
     title: "logs.messageDeleted",
-    // Pour un message partiel (hors cache), `author` vaut null : on n'invente
-    // rien, on conserve ce qui est réellement disponible.
+    // `who` vaut null pour un message partiel (hors cache) : le transport
+    // affichera « inconnu ». Le contenu supprimé n'est conservé que s'il est
+    // réellement disponible (jamais inventé).
     details: {
-      messageId: message.id,
-      channelId: message.channelId,
-      authorId: message.author?.id ?? null,
+      who: userLabel(message.author),
+      channel: channelLabel(message.channel),
+      before: message.content || null,
+      messageId: message.id || null,
+      channelId: message.channelId || null,
     },
   });
   const channelId = service.resolveDestination(entry, config);

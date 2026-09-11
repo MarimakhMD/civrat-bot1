@@ -1,6 +1,8 @@
 "use strict";
 
-async function handleMessageUpdated({ message, config, mapper, service, delivery }) {
+const { userLabel, channelLabel } = require("../services/logLabels");
+
+async function handleMessageUpdated({ message, oldMessage, config, mapper, service, delivery }) {
   if (!config.logs_enabled || !message.guild || message.author?.bot) return null;
   const entry = mapper.map({
     guildId: message.guild.id,
@@ -8,12 +10,15 @@ async function handleMessageUpdated({ message, config, mapper, service, delivery
     category: "messages",
     action: "message_updated",
     title: "logs.messageUpdated",
-    // Pour un message partiel, `author`/`content` peuvent être indisponibles :
-    // on conserve uniquement les identifiants connus, sans inventer de données.
+    // Avant/Après seulement si les contenus sont réellement disponibles
+    // (messages non partiels) ; sinon omis, jamais inventés.
     details: {
-      messageId: message.id,
-      channelId: message.channelId,
-      authorId: message.author?.id ?? null,
+      who: userLabel(message.author),
+      channel: channelLabel(message.channel),
+      before: oldMessage?.content || null,
+      after: message.content || null,
+      messageId: message.id || null,
+      channelId: message.channelId || null,
     },
   });
   return delivery.deliver({ ...entry, channelId: service.resolveDestination(entry, config) });

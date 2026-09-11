@@ -5,7 +5,10 @@
 
 const guildConfigService = require("../services/guildConfig");
 const inviteService = require("../services/inviteService");
+const { AuditLogEvent } = require("discord.js");
 const { fetchAuditLog } = require("../utils/auditLogCache");
+const { resolveAuditActor } = require("../utils/auditLogActor");
+const { memberLabel } = require("../modules/logs/services/logLabels");
 const logger = require("../utils/logger");
 const { getLogsRuntime } = require("../modules/logs/runtime/getLogsRuntime");
 
@@ -29,14 +32,19 @@ async function handleKickDetection(member, config) {
 
   setTimeout(async () => {
     try {
-      const entry = await fetchAuditLog(member.guild, 20);
-      if (!entry || entry.target.id !== member.id) return;
+      // P1b — résolution stricte : exécutant/raison récupérés uniquement si
+      // l'entrée d'audit vise bien ce membre.
+      const actor = await resolveAuditActor({ guild: member.guild, type: AuditLogEvent.MemberKick, targetId: member.id });
 
       await getLogsRuntime().handleModerationEvent({
         guild: member.guild,
         config,
         action: "member_kicked",
         targetId: member.id,
+        target: memberLabel(member),
+        reason: actor.reason,
+        moderator: actor.executor,
+        moderatorId: actor.executorId,
       });
     } catch (error) {
       logger.warn(`Kick log detection failed: ${error.message}`);

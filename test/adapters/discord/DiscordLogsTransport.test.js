@@ -98,9 +98,13 @@ test("P1: les détails deviennent des fields, valeurs nulles/vides ignorées", a
   });
   const embed = deliveredEmbed(sent);
   assert.ok(Array.isArray(embed.fields), "fields présents");
-  assert.equal(embed.fields.length, 4);
+  // P1c — les identifiants sont regroupés dans un unique champ « 🆔 IDs »,
+  // puis les clés restantes sont rendues telles quelles.
+  assert.equal(embed.fields.length, 3);
   const names = embed.fields.map((f) => f.name);
-  assert.deepEqual(names, ["messageId", "channelId", "count", "bot"]);
+  assert.deepEqual(names, ["🆔 IDs", "count", "bot"]);
+  const idsField = embed.fields.find((f) => f.name === "🆔 IDs");
+  assert.equal(idsField.value, "message: MSG\nsalon: CH");
   const countField = embed.fields.find((f) => f.name === "count");
   assert.equal(countField.value, "5");
   const botField = embed.fields.find((f) => f.name === "bot");
@@ -144,6 +148,63 @@ test("P1: détails non-objet (null / array / absent) ne produisent aucun field",
     const embed = payload.embeds[0].toJSON();
     assert.equal(embed.fields, undefined);
   }
+});
+
+// ───────────────────────────────────────────────────────────────
+// P1c — ordre canonique des champs et « inconnu »
+// ───────────────────────────────────────────────────────────────
+
+test("P1c: l'ordre canonique Qui/Cible/Salon/Avant/Après/Raison/Invitation est respecté, puis les IDs", async () => {
+  const { guild, sent } = makeGuild();
+  const transport = new DiscordLogsTransport({ guild });
+  await transport.deliver({
+    channelId: "CH",
+    title: "logs.member_kicked",
+    details: {
+      after: "après",
+      who: "Modérateur (M1)",
+      reason: "spam",
+      target: "Cible (U1)",
+      before: "avant",
+      channel: "#général",
+      invite: "abc123",
+      targetId: "U1",
+      moderatorId: "M1",
+    },
+  });
+  const embed = deliveredEmbed(sent);
+  const names = embed.fields.map((f) => f.name);
+  assert.deepEqual(names, [
+    "👤 Qui",
+    "🎯 Cible",
+    "📁 Salon",
+    "📝 Avant",
+    "✏️ Après",
+    "💬 Raison",
+    "🔗 Invitation",
+    "🆔 IDs",
+  ]);
+  const ids = embed.fields.find((f) => f.name === "🆔 IDs");
+  assert.equal(ids.value, "cible: U1\nmodérateur: M1");
+});
+
+test("P1c: who absent → champ omis ; who null → « inconnu » (jamais d'identité inventée)", async () => {
+  const { guild, sent } = makeGuild();
+  const transport = new DiscordLogsTransport({ guild });
+  await transport.deliver({
+    channelId: "CH",
+    title: "logs.a",
+    details: { target: "Cible (U1)" },
+  });
+  await transport.deliver({
+    channelId: "CH",
+    title: "logs.b",
+    details: { target: "Cible (U1)", who: null },
+  });
+  assert.equal(sent.length, 2);
+  const [first, second] = sent.map((p) => p.embeds[0].toJSON());
+  assert.equal(first.fields.find((f) => f.name === "👤 Qui"), undefined);
+  assert.equal(second.fields.find((f) => f.name === "👤 Qui").value, "inconnu");
 });
 
 // ───────────────────────────────────────────────────────────────
