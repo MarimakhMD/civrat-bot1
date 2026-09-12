@@ -1,6 +1,6 @@
 "use strict";
 
-const { userLabel, channelLabel } = require("../services/logLabels");
+const { userLabel, channelLabel, avatarUrl } = require("../services/logLabels");
 
 async function handleMessageDeleted({ message, config, mapper, service, delivery }) {
   if (!config.logs_enabled || !message.guild || message.author?.bot) return null;
@@ -19,6 +19,7 @@ async function handleMessageDeleted({ message, config, mapper, service, delivery
       before: message.content || null,
       messageId: message.id || null,
       channelId: message.channelId || null,
+      avatarUrl: avatarUrl(message.author),
     },
   });
   const channelId = service.resolveDestination(entry, config);

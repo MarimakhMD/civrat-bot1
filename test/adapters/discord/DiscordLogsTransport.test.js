@@ -286,6 +286,198 @@ test("charte: entry.color explicite reste prioritaire sur la couleur de l'action
 });
 
 // ───────────────────────────────────────────────────────────────
+// Rendu DÉDIÉ par action : champs, ordre et couleur
+// ───────────────────────────────────────────────────────────────
+
+async function render(transport, action, details, color = null) {
+  const { guild, sent } = makeGuild();
+  const t = transport || new DiscordLogsTransport({ guild });
+  await t.deliver({ channelId: "CH", title: "logs.x", action, color, details });
+  return sent[0].embeds[0].toJSON();
+}
+
+const RENDER_CASES = [
+  {
+    name: "message_deleted",
+    action: "message_deleted",
+    color: "#E74C3C",
+    details: { who: "Alice (A)", channel: "#général (CH)", before: "bonjour", messageId: "MSG", channelId: "CH", avatarUrl: "https://cdn.discord/avatars/A.png" },
+    fields: ["👤 Auteur", "📁 Salon", "🗑️ Contenu supprimé", "🆔 Message", "🆔 Salon"],
+  },
+  {
+    name: "message_updated",
+    action: "message_updated",
+    color: "#E67E22",
+    details: { who: "Alice (A)", channel: "#général (CH)", before: "ancien", after: "nouveau", messageId: "MSG" },
+    fields: ["👤 Auteur", "📁 Salon", "📝 Avant", "✏️ Après", "🆔 Message"],
+  },
+  {
+    name: "messages_bulk_deleted",
+    action: "messages_bulk_deleted",
+    color: "#E74C3C",
+    details: { channel: "#général (CH)", count: 12, before: "Alice (A) : bonjour" },
+    fields: ["📁 Salon", "🔢 Nombre de messages", "📝 Messages supprimés"],
+  },
+  {
+    name: "member_banned",
+    action: "member_banned",
+    color: "#E74C3C",
+    details: { target: "<@U> `Alice`", targetId: "U", who: "Modo (M1)", reason: "spam" },
+    fields: ["👤 Membre", "🆔 ID", "🛡️ Modérateur", "💬 Raison"],
+  },
+  {
+    name: "member_unbanned",
+    action: "member_unbanned",
+    color: "#2ECC71",
+    details: { target: "<@U> `Alice`", targetId: "U", who: "Modo (M1)" },
+    fields: ["👤 Membre", "🆔 ID", "🛡️ Auteur"],
+  },
+  {
+    name: "member_kicked",
+    action: "member_kicked",
+    color: "#E67E22",
+    details: { target: "<@U> `Alice`", targetId: "U", who: "Modo (M1)", reason: "insultes" },
+    fields: ["👤 Membre", "🆔 ID", "🛡️ Modérateur", "💬 Raison"],
+  },
+  {
+    name: "member_timed_out",
+    action: "member_timed_out",
+    color: "#E67E22",
+    details: { target: "<@U> `Alice`", targetId: "U", duration: "10 min", who: "Modo (M1)", reason: "spam" },
+    fields: ["👤 Membre", "🆔 ID", "⏱️ Durée", "🛡️ Modérateur", "💬 Raison"],
+  },
+  {
+    name: "member_untimeout",
+    action: "member_untimeout",
+    color: "#2ECC71",
+    details: { target: "<@U> `Alice`", targetId: "U", who: "Modo (M1)" },
+    fields: ["👤 Membre", "🆔 ID", "🛡️ Auteur"],
+  },
+  {
+    name: "role_created",
+    action: "role_created",
+    color: "#2ECC71",
+    details: { target: "@Modérateur (R1)", roleId: "R1", who: "Modo (M1)" },
+    fields: ["🎭 Rôle", "🆔 ID", "🛡️ Auteur"],
+  },
+  {
+    name: "role_deleted",
+    action: "role_deleted",
+    color: "#E74C3C",
+    details: { target: "@Modérateur (R1)", roleId: "R1", who: "Modo (M1)" },
+    fields: ["🎭 Rôle", "🆔 ID", "🛡️ Auteur"],
+  },
+  {
+    name: "role_updated",
+    action: "role_updated",
+    color: "#E67E22",
+    details: { target: "@Modérateur (R1)", roleId: "R1", before: "Modérateur", after: "Admin", who: "Modo (M1)" },
+    fields: ["🎭 Rôle", "🆔 ID", "📝 Avant", "✏️ Après", "🛡️ Auteur"],
+  },
+  {
+    name: "member_role_added",
+    action: "member_role_added",
+    color: "#2ECC71",
+    details: { member: "<@U> `Alice`", target: "@Membre (R2)", who: "Modo (M1)" },
+    fields: ["👤 Membre", "🎭 Rôle ajouté", "🛡️ Auteur"],
+  },
+  {
+    name: "member_role_removed",
+    action: "member_role_removed",
+    color: "#E74C3C",
+    details: { member: "<@U> `Alice`", target: "@Membre (R2)", who: "Modo (M1)" },
+    fields: ["👤 Membre", "🎭 Rôle retiré", "🛡️ Auteur"],
+  },
+  {
+    name: "channel_created",
+    action: "channel_created",
+    color: "#2ECC71",
+    details: { target: "#général (C1)", channelType: "Texte", channelId: "C1", who: "Modo (M1)" },
+    fields: ["📁 Salon", "🏷️ Type", "🆔 ID", "🛡️ Auteur"],
+  },
+  {
+    name: "channel_deleted",
+    action: "channel_deleted",
+    color: "#E74C3C",
+    details: { target: "#général (C1)", channelType: "Texte", channelId: "C1", who: "Modo (M1)" },
+    fields: ["📁 Salon", "🏷️ Type", "🆔 ID", "🛡️ Auteur"],
+  },
+  {
+    name: "channel_updated",
+    action: "channel_updated",
+    color: "#E67E22",
+    details: { target: "#général (C1)", before: "général", after: "général-public", who: "Modo (M1)" },
+    fields: ["📁 Salon", "📝 Avant", "✏️ Après", "🛡️ Auteur"],
+  },
+  {
+    name: "thread_created",
+    action: "thread_created",
+    color: "#2ECC71",
+    details: { target: "#sujet (T1)", parent: "#général (C1)", channelId: "T1", who: "Modo (M1)" },
+    fields: ["🧵 Fil", "📁 Salon parent", "🆔 ID", "🛡️ Auteur"],
+  },
+  {
+    name: "thread_deleted",
+    action: "thread_deleted",
+    color: "#E74C3C",
+    details: { target: "#sujet (T1)", parent: "#général (C1)", channelId: "T1", who: "Modo (M1)" },
+    fields: ["🧵 Fil", "📁 Salon parent", "🆔 ID", "🛡️ Auteur"],
+  },
+  {
+    name: "invite_created",
+    action: "invite_created",
+    color: "#3498DB",
+    details: { invite: "abc", who: "Alice (A1)", channel: "#général (C1)", expiresAt: "2026-09-12T10:00:00.000Z", uses: 3, maxUses: 10 },
+    fields: ["🔗 Code", "🛡️ Créateur", "📁 Salon", "⏳ Expiration", "🔢 Utilisations", "🔢 Utilisations max"],
+  },
+  {
+    name: "invite_deleted",
+    action: "invite_deleted",
+    color: "#E74C3C",
+    details: { invite: "abc", who: "Alice (A1)", channel: "#général (C1)" },
+    fields: ["🔗 Code", "🛡️ Créateur", "📁 Salon"],
+  },
+  {
+    name: "invite_used",
+    action: "invite_used",
+    color: "#3498DB",
+    details: { member: "<@U> `Nouveau`", invite: "abc", who: "<@I> `Alice`", avatarUrl: "https://cdn.discord/avatars/U.png" },
+    fields: ["👤 Membre", "🔗 Invitation", "🛡️ Invité par"],
+  },
+  {
+    name: "member_nickname_changed",
+    action: "member_nickname_changed",
+    color: "#E67E22",
+    details: { member: "<@U> `Alice`", before: "alice", after: "Alice2", memberId: "U" },
+    fields: ["👤 Membre", "📝 Ancien pseudo", "✏️ Nouveau pseudo"],
+  },
+];
+
+for (const c of RENDER_CASES) {
+  test(`rendu dédié: ${c.name} → champs et couleur`, async () => {
+    const embed = await render(null, c.action, c.details);
+    assert.equal(hexColor(embed), c.color);
+    assert.deepEqual(embed.fields.map((f) => f.name), c.fields, `${c.name}: ordre des champs`);
+  });
+}
+
+test("rendu dédié: un champ absent/null est omis (modérateur inconnu → pas de champ)", async () => {
+  const embed = await render(null, "member_banned", { target: "<@U> `Alice`", targetId: "U", who: null, reason: null });
+  assert.deepEqual(embed.fields.map((f) => f.name), ["👤 Membre", "🆔 ID"]);
+});
+
+test("rendu dédié: avatar réel en thumbnail, jamais en field", async () => {
+  const embed = await render(null, "invite_used", {
+    member: "<@U> `Nouveau`",
+    invite: "abc",
+    who: "<@I> `Alice`",
+    avatarUrl: "https://cdn.discord/avatars/U.png",
+  });
+  assert.equal(embed.thumbnail.url, "https://cdn.discord/avatars/U.png");
+  assert.equal(embed.fields.some((f) => f.name === "avatarUrl"), false);
+});
+
+// ───────────────────────────────────────────────────────────────
 // Garde salon inchangée
 // ───────────────────────────────────────────────────────────────
 

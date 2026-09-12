@@ -1,6 +1,6 @@
 "use strict";
 
-const { memberLabel } = require("../services/logLabels");
+const { memberDisplayLabel, avatarUrl } = require("../services/logLabels");
 
 async function handleMemberNicknameChanged({ oldMember, newMember, config, mapper, service, delivery }) {
   if (!config.logs_enabled || oldMember.nickname === newMember.nickname) return null;
@@ -13,10 +13,11 @@ async function handleMemberNicknameChanged({ oldMember, newMember, config, mappe
     // Pas de `who` : un membre peut modifier son propre pseudo, l'auteur n'est
     // donc pas attribuable de façon fiable sans Audit Log (non effectué ici).
     details: {
-      target: memberLabel(newMember),
+      member: memberDisplayLabel(newMember),
       before: oldMember.nickname || null,
       after: newMember.nickname || null,
       memberId: newMember.id || null,
+      avatarUrl: avatarUrl(newMember),
     },
   });
   return delivery.deliver({ ...entry, channelId: service.resolveDestination(entry, config) });

@@ -7,9 +7,11 @@ async function handleRoleEvent({
   roleId,
   memberId = null,
   target = null,
+  member = null,
   who = undefined,
   before = null,
   after = null,
+  avatarUrl = null,
   mapper,
   service,
   delivery,
@@ -20,8 +22,10 @@ async function handleRoleEvent({
   if (roleId) details.roleId = roleId;
   if (memberId) details.memberId = memberId;
   if (target) details.target = target;
+  if (member) details.member = member;
   if (before) details.before = before;
   if (after) details.after = after;
+  if (avatarUrl) details.avatarUrl = avatarUrl;
   // `who` = auteur de l'action, résolu via Audit Log par l'appelant. Absent →
   // omis ; null → « inconnu » (jamais d'identité inventée).
   if (who !== undefined) details.who = who;

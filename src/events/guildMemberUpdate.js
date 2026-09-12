@@ -6,7 +6,7 @@
 const { AuditLogEvent } = require("discord.js");
 const guildConfigService = require("../services/guildConfig");
 const { resolveAuditActor } = require("../utils/auditLogActor");
-const { memberLabel, roleLabel } = require("../modules/logs/services/logLabels");
+const { memberDisplayLabel, roleLabel, avatarUrl, formatDuration } = require("../modules/logs/services/logLabels");
 
 module.exports = {
   name: "guildMemberUpdate",
@@ -41,7 +41,9 @@ async function handleRoleChanges(oldMember, newMember, config) {
         roleId: role.id,
         memberId: newMember.id,
         target: roleLabel(role),
+        member: memberDisplayLabel(newMember),
         who: actor.executor,
+        avatarUrl: avatarUrl(newMember),
       });
   }
 
@@ -56,7 +58,9 @@ async function handleRoleChanges(oldMember, newMember, config) {
         roleId: role.id,
         memberId: newMember.id,
         target: roleLabel(role),
+        member: memberDisplayLabel(newMember),
         who: actor.executor,
+        avatarUrl: avatarUrl(newMember),
       });
   }
 }
@@ -86,6 +90,12 @@ async function handleTimeout(oldMember, newMember, config) {
     targetId: newMember.id,
   });
 
+  // Durée : différence entre l'échéance du timeout et l'instant présent,
+  // uniquement lorsque le membre vient d'être timeouté (jamais inventée).
+  const duration = action === "member_timed_out" && newTimeout
+    ? formatDuration(newTimeout - Date.now())
+    : null;
+
   await require("../modules/logs/runtime/getLogsRuntime")
     .getLogsRuntime()
     .handleModerationEvent({
@@ -93,9 +103,11 @@ async function handleTimeout(oldMember, newMember, config) {
       config,
       action,
       targetId: newMember.id,
-      target: memberLabel(newMember),
+      target: memberDisplayLabel(newMember),
       reason: actor.reason,
       moderator: actor.executor,
       moderatorId: actor.executorId,
+      duration,
+      avatarUrl: avatarUrl(newMember),
     });
 }

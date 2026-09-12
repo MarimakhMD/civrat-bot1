@@ -39,17 +39,17 @@ function createLogsRuntime({ guildConfigResolver }) {
     handleMemberLeft: async (member) =>
       handleMemberLeft({ member, config: await guildConfigResolver.get(member.guild.id), ...deps(member.guild) }),
 
-    handleModerationEvent: async ({ guild, config, action, targetId, reason, moderatorId, target, moderator }) =>
-      handleModerationEvent({ guild, config: config || await guildConfigResolver.get(guild.id), action, targetId, reason, moderatorId, target, moderator, ...deps(guild) }),
+    handleModerationEvent: async ({ guild, config, action, targetId, reason, moderatorId, target, moderator, duration, avatarUrl }) =>
+      handleModerationEvent({ guild, config: config || await guildConfigResolver.get(guild.id), action, targetId, reason, moderatorId, target, moderator, duration, avatarUrl, ...deps(guild) }),
 
-    handleRoleEvent: async ({ guild, config, action, roleId, memberId, target, who, before, after }) =>
-      handleRoleEvent({ guild, config: config || await guildConfigResolver.get(guild.id), action, roleId, memberId, target, who, before, after, ...deps(guild) }),
+    handleRoleEvent: async ({ guild, config, action, roleId, memberId, target, member, who, before, after, avatarUrl }) =>
+      handleRoleEvent({ guild, config: config || await guildConfigResolver.get(guild.id), action, roleId, memberId, target, member, who, before, after, avatarUrl, ...deps(guild) }),
 
-    handleChannelEvent: async ({ channel, config, action, target, who, before, after }) =>
-      handleChannelEvent({ channel, config: config || await guildConfigResolver.get(channel.guild.id), action, target, who, before, after, ...deps(channel.guild) }),
+    handleChannelEvent: async ({ channel, config, action, target, who, before, after, parent }) =>
+      handleChannelEvent({ channel, config: config || await guildConfigResolver.get(channel.guild.id), action, target, who, before, after, parent, ...deps(channel.guild) }),
 
-    handleInviteEvent: async ({ guild, config, action, inviteCode, inviter, channel, expiresAt, uses, maxUses }) =>
-      handleInviteEvent({ guild, config: config || await guildConfigResolver.get(guild.id), action, inviteCode, inviter, channel, expiresAt, uses, maxUses, ...deps(guild) }),
+    handleInviteEvent: async ({ guild, config, action, inviteCode, inviter, channel, expiresAt, uses, maxUses, member, avatarUrl }) =>
+      handleInviteEvent({ guild, config: config || await guildConfigResolver.get(guild.id), action, inviteCode, inviter, channel, expiresAt, uses, maxUses, member, avatarUrl, ...deps(guild) }),
 
     handleMessageBulkDeleted: async (messages, config) =>
       handleMessageBulkDeleted({ messages, config, ...deps(messages.first().guild) }),

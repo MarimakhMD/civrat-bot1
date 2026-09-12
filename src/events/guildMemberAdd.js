@@ -10,6 +10,7 @@ try {
   guildConfigService = { getGuildConfig: async () => ({}) };
 }
 const inviteService = require("../services/inviteService");
+const { memberDisplayLabel, inviterDisplayLabel, avatarUrl } = require("../modules/logs/services/logLabels");
 const logger = require("../utils/logger");
 
 module.exports = {
@@ -140,8 +141,13 @@ async function handleInviteTracking(member, config) {
 async function handleInviteJoinLog(member, config, inviteResult) {
   if (!inviteResult?.inviter) return;
   await require("../modules/logs/runtime/getLogsRuntime").getLogsRuntime().handleInviteEvent({
-    guild: member.guild, config, action: "invite_used", inviteCode: inviteResult.code,
-    inviter: inviteResult.inviter,
+    guild: member.guild,
+    config,
+    action: "invite_used",
+    inviteCode: inviteResult.code,
+    inviter: inviterDisplayLabel(member, inviteResult.inviter),
+    member: memberDisplayLabel(member),
+    avatarUrl: avatarUrl(member),
   });
 }
 

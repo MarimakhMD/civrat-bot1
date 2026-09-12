@@ -2,6 +2,7 @@ const { AuditLogEvent } = require("discord.js");
 const guildConfigService = require("../services/guildConfig");
 const inviteService = require("../services/inviteService");
 const { getLogsRuntime } = require("../modules/logs/runtime/getLogsRuntime");
+const { channelLabel } = require("../modules/logs/services/logLabels");
 const { resolveAuditActor } = require("../utils/auditLogActor");
 
 module.exports = {
@@ -20,6 +21,7 @@ module.exports = {
       action: "invite_deleted",
       inviteCode: invite.code,
       inviter: actor.executor,
+      channel: invite.channel ? channelLabel(invite.channel) : null,
     });
   },
 };

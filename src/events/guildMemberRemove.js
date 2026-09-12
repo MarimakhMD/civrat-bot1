@@ -8,7 +8,7 @@ const inviteService = require("../services/inviteService");
 const { AuditLogEvent } = require("discord.js");
 const { fetchAuditLog } = require("../utils/auditLogCache");
 const { resolveAuditActor } = require("../utils/auditLogActor");
-const { memberLabel } = require("../modules/logs/services/logLabels");
+const { memberDisplayLabel, avatarUrl } = require("../modules/logs/services/logLabels");
 const logger = require("../utils/logger");
 const { getLogsRuntime } = require("../modules/logs/runtime/getLogsRuntime");
 
@@ -57,10 +57,11 @@ async function handleKickDetection(member, config) {
         config,
         action: "member_kicked",
         targetId: member.id,
-        target: memberLabel(member),
+        target: memberDisplayLabel(member),
         reason: actor.reason,
         moderator: actor.executor,
         moderatorId: actor.executorId,
+        avatarUrl: avatarUrl(member),
       });
     } catch (error) {
       logger.warn(`Kick log detection failed: ${error.message}`);

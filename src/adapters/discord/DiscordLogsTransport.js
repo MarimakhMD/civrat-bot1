@@ -39,8 +39,7 @@ const LOG_COLORS = Object.freeze({
   invite_used: "#3498DB",
 });
 
-// Ordre de rendu des champs canoniques. Le transport mappe les clés
-// sémantiques de `details` vers des libellés uniformes, dans cet ordre.
+// Ordre de rendu des champs canoniques (chemin générique uniquement).
 const CANONICAL_FIELDS = Object.freeze([
   ["who", "👤 Qui"],
   ["target", "🎯 Cible"],
@@ -51,7 +50,7 @@ const CANONICAL_FIELDS = Object.freeze([
   ["invite", "🔗 Invitation"],
 ]);
 
-// Clés d'identifiants regroupées dans un unique champ « 🆔 IDs ».
+// Clés d'identifiants regroupées dans un unique champ « 🆔 IDs » (générique).
 const ID_FIELDS = Object.freeze([
   ["messageId", "message"],
   ["channelId", "salon"],
@@ -63,7 +62,11 @@ const ID_FIELDS = Object.freeze([
   ["userId", "utilisateur"],
 ]);
 
-// Rendu DÉDIÉ des logs de membre (ordre et libellés explicites).
+// ─────────────────────────────────────────────────────────────
+// Rendus DÉDIÉS par action : ordre et libellés adaptés à l'action.
+// Les champs absents ou vides sont omis (jamais inventés) ; `avatarUrl`
+// est consommé en thumbnail et n'apparaît jamais comme field.
+// ─────────────────────────────────────────────────────────────
 const MEMBER_JOIN_FIELDS = Object.freeze([
   ["member", "👤 Membre"],
   ["memberId", "🆔 ID"],
@@ -81,9 +84,183 @@ const MEMBER_LEAVE_FIELDS = Object.freeze([
   ["memberCount", "👥 Membres restants"],
 ]);
 
+const MESSAGE_DELETED_FIELDS = Object.freeze([
+  ["who", "👤 Auteur"],
+  ["channel", "📁 Salon"],
+  ["before", "🗑️ Contenu supprimé"],
+  ["messageId", "🆔 Message"],
+  ["channelId", "🆔 Salon"],
+]);
+
+const MESSAGE_UPDATED_FIELDS = Object.freeze([
+  ["who", "👤 Auteur"],
+  ["channel", "📁 Salon"],
+  ["before", "📝 Avant"],
+  ["after", "✏️ Après"],
+  ["messageId", "🆔 Message"],
+]);
+
+const MESSAGES_BULK_DELETED_FIELDS = Object.freeze([
+  ["channel", "📁 Salon"],
+  ["count", "🔢 Nombre de messages"],
+  ["before", "📝 Messages supprimés"],
+]);
+
+const MEMBER_BANNED_FIELDS = Object.freeze([
+  ["target", "👤 Membre"],
+  ["targetId", "🆔 ID"],
+  ["who", "🛡️ Modérateur"],
+  ["reason", "💬 Raison"],
+]);
+
+const MEMBER_UNBANNED_FIELDS = Object.freeze([
+  ["target", "👤 Membre"],
+  ["targetId", "🆔 ID"],
+  ["who", "🛡️ Auteur"],
+]);
+
+const MEMBER_KICKED_FIELDS = Object.freeze([
+  ["target", "👤 Membre"],
+  ["targetId", "🆔 ID"],
+  ["who", "🛡️ Modérateur"],
+  ["reason", "💬 Raison"],
+]);
+
+const MEMBER_TIMED_OUT_FIELDS = Object.freeze([
+  ["target", "👤 Membre"],
+  ["targetId", "🆔 ID"],
+  ["duration", "⏱️ Durée"],
+  ["who", "🛡️ Modérateur"],
+  ["reason", "💬 Raison"],
+]);
+
+const MEMBER_UNTIMEOUT_FIELDS = Object.freeze([
+  ["target", "👤 Membre"],
+  ["targetId", "🆔 ID"],
+  ["who", "🛡️ Auteur"],
+]);
+
+const ROLE_CREATED_FIELDS = Object.freeze([
+  ["target", "🎭 Rôle"],
+  ["roleId", "🆔 ID"],
+  ["who", "🛡️ Auteur"],
+]);
+
+const ROLE_DELETED_FIELDS = Object.freeze([
+  ["target", "🎭 Rôle"],
+  ["roleId", "🆔 ID"],
+  ["who", "🛡️ Auteur"],
+]);
+
+const ROLE_UPDATED_FIELDS = Object.freeze([
+  ["target", "🎭 Rôle"],
+  ["roleId", "🆔 ID"],
+  ["before", "📝 Avant"],
+  ["after", "✏️ Après"],
+  ["who", "🛡️ Auteur"],
+]);
+
+const MEMBER_ROLE_ADDED_FIELDS = Object.freeze([
+  ["member", "👤 Membre"],
+  ["target", "🎭 Rôle ajouté"],
+  ["who", "🛡️ Auteur"],
+]);
+
+const MEMBER_ROLE_REMOVED_FIELDS = Object.freeze([
+  ["member", "👤 Membre"],
+  ["target", "🎭 Rôle retiré"],
+  ["who", "🛡️ Auteur"],
+]);
+
+const CHANNEL_CREATED_FIELDS = Object.freeze([
+  ["target", "📁 Salon"],
+  ["channelType", "🏷️ Type"],
+  ["channelId", "🆔 ID"],
+  ["who", "🛡️ Auteur"],
+]);
+
+const CHANNEL_DELETED_FIELDS = Object.freeze([
+  ["target", "📁 Salon"],
+  ["channelType", "🏷️ Type"],
+  ["channelId", "🆔 ID"],
+  ["who", "🛡️ Auteur"],
+]);
+
+const CHANNEL_UPDATED_FIELDS = Object.freeze([
+  ["target", "📁 Salon"],
+  ["before", "📝 Avant"],
+  ["after", "✏️ Après"],
+  ["who", "🛡️ Auteur"],
+]);
+
+const THREAD_CREATED_FIELDS = Object.freeze([
+  ["target", "🧵 Fil"],
+  ["parent", "📁 Salon parent"],
+  ["channelId", "🆔 ID"],
+  ["who", "🛡️ Auteur"],
+]);
+
+const THREAD_DELETED_FIELDS = Object.freeze([
+  ["target", "🧵 Fil"],
+  ["parent", "📁 Salon parent"],
+  ["channelId", "🆔 ID"],
+  ["who", "🛡️ Auteur"],
+]);
+
+const INVITE_CREATED_FIELDS = Object.freeze([
+  ["invite", "🔗 Code"],
+  ["who", "🛡️ Créateur"],
+  ["channel", "📁 Salon"],
+  ["expiresAt", "⏳ Expiration"],
+  ["uses", "🔢 Utilisations"],
+  ["maxUses", "🔢 Utilisations max"],
+]);
+
+const INVITE_DELETED_FIELDS = Object.freeze([
+  ["invite", "🔗 Code"],
+  ["who", "🛡️ Créateur"],
+  ["channel", "📁 Salon"],
+]);
+
+const INVITE_USED_FIELDS = Object.freeze([
+  ["member", "👤 Membre"],
+  ["invite", "🔗 Invitation"],
+  ["who", "🛡️ Invité par"],
+  ["channel", "📁 Salon"],
+]);
+
+const MEMBER_NICKNAME_CHANGED_FIELDS = Object.freeze([
+  ["member", "👤 Membre"],
+  ["before", "📝 Ancien pseudo"],
+  ["after", "✏️ Nouveau pseudo"],
+  ["who", "🛡️ Auteur"],
+]);
+
 const ACTION_FIELDS = Object.freeze({
   member_joined: MEMBER_JOIN_FIELDS,
   member_left: MEMBER_LEAVE_FIELDS,
+  message_deleted: MESSAGE_DELETED_FIELDS,
+  message_updated: MESSAGE_UPDATED_FIELDS,
+  messages_bulk_deleted: MESSAGES_BULK_DELETED_FIELDS,
+  member_banned: MEMBER_BANNED_FIELDS,
+  member_unbanned: MEMBER_UNBANNED_FIELDS,
+  member_kicked: MEMBER_KICKED_FIELDS,
+  member_timed_out: MEMBER_TIMED_OUT_FIELDS,
+  member_untimeout: MEMBER_UNTIMEOUT_FIELDS,
+  role_created: ROLE_CREATED_FIELDS,
+  role_deleted: ROLE_DELETED_FIELDS,
+  role_updated: ROLE_UPDATED_FIELDS,
+  member_role_added: MEMBER_ROLE_ADDED_FIELDS,
+  member_role_removed: MEMBER_ROLE_REMOVED_FIELDS,
+  channel_created: CHANNEL_CREATED_FIELDS,
+  channel_deleted: CHANNEL_DELETED_FIELDS,
+  channel_updated: CHANNEL_UPDATED_FIELDS,
+  thread_created: THREAD_CREATED_FIELDS,
+  thread_deleted: THREAD_DELETED_FIELDS,
+  invite_created: INVITE_CREATED_FIELDS,
+  invite_deleted: INVITE_DELETED_FIELDS,
+  invite_used: INVITE_USED_FIELDS,
+  member_nickname_changed: MEMBER_NICKNAME_CHANGED_FIELDS,
 });
 
 const CANONICAL_KEYS = new Set(CANONICAL_FIELDS.map(([key]) => key));
@@ -118,7 +295,7 @@ class DiscordLogsTransport {
     const thumbnail = normalizeText(entry.details && entry.details.avatarUrl);
     if (thumbnail) embed.setThumbnail(thumbnail);
 
-    // P1c — rendu uniforme de `entry.details` (dédié pour les logs de membre).
+    // Rendu dédié par action, sinon rendu générique.
     const fields = buildFields(entry);
     if (fields.length > 0) embed.addFields(fields);
 

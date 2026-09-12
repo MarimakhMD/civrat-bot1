@@ -2,7 +2,7 @@
 
 const { AuditLogEvent } = require("discord.js");
 const { getLogsRuntime } = require("../modules/logs/runtime/getLogsRuntime");
-const { userLabel } = require("../modules/logs/services/logLabels");
+const { memberDisplayLabel, avatarUrl } = require("../modules/logs/services/logLabels");
 const { resolveAuditActor } = require("../utils/auditLogActor");
 
 module.exports = {
@@ -14,9 +14,10 @@ module.exports = {
       guild: ban.guild,
       action: "member_unbanned",
       targetId: ban.user.id,
-      target: userLabel(ban.user),
+      target: memberDisplayLabel(ban.user),
       moderator: actor.executor,
       moderatorId: actor.executorId,
+      avatarUrl: avatarUrl(ban.user),
     });
   },
 };

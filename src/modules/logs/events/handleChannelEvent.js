@@ -1,14 +1,16 @@
 "use strict";
 
-const { channelLabel } = require("../services/logLabels");
+const { channelLabel, channelTypeLabel } = require("../services/logLabels");
 
-async function handleChannelEvent({ channel, config, action, target = null, who = undefined, before = null, after = null, mapper, service, delivery }) {
+async function handleChannelEvent({ channel, config, action, target = null, who = undefined, before = null, after = null, parent = null, mapper, service, delivery }) {
   if (!config.logs_enabled) return null;
 
   const details = {
     target: target || channelLabel(channel),
     channelId: channel.id || null,
+    channelType: channelTypeLabel(channel),
   };
+  if (parent) details.parent = parent;
   if (before) details.before = before;
   if (after) details.after = after;
   // `who` = auteur de l'action, résolu via Audit Log par l'appelant.

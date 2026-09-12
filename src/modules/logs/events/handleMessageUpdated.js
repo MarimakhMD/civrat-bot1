@@ -1,6 +1,6 @@
 "use strict";
 
-const { userLabel, channelLabel } = require("../services/logLabels");
+const { userLabel, channelLabel, avatarUrl } = require("../services/logLabels");
 
 async function handleMessageUpdated({ message, oldMessage, config, mapper, service, delivery }) {
   if (!config.logs_enabled || !message.guild || message.author?.bot) return null;
@@ -19,6 +19,7 @@ async function handleMessageUpdated({ message, oldMessage, config, mapper, servi
       after: message.content || null,
       messageId: message.id || null,
       channelId: message.channelId || null,
+      avatarUrl: avatarUrl(message.author),
     },
   });
   return delivery.deliver({ ...entry, channelId: service.resolveDestination(entry, config) });

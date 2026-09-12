@@ -10,6 +10,8 @@ async function handleInviteEvent({
   expiresAt = null,
   uses = null,
   maxUses = null,
+  member = null,
+  avatarUrl = null,
   mapper,
   service,
   delivery,
@@ -19,6 +21,8 @@ async function handleInviteEvent({
   const details = {
     invite: inviteCode || null,
   };
+  if (member) details.member = member;
+  if (avatarUrl) details.avatarUrl = avatarUrl;
   if (channel) details.channel = channel;
   if (expiresAt) details.expiresAt = expiresAt;
   if (uses !== null && uses !== undefined) details.uses = uses;
