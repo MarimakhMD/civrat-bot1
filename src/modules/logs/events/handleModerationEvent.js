@@ -1,5 +1,7 @@
 "use strict";
 
+const { localizeTitle } = require("../services/logTitles");
+
 async function handleModerationEvent({
   guild,
   config,
@@ -38,7 +40,7 @@ async function handleModerationEvent({
     channelKey: "log_moderation_channel_id",
     category: "moderation",
     action,
-    title: `logs.${action}`,
+    title: localizeTitle(config, `logs.${action}`),
     details,
   });
   return delivery.deliver({ ...entry, channelId: service.resolveDestination(entry, config) });

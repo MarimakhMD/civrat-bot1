@@ -1,6 +1,7 @@
 "use strict";
 
 const { userLabel, channelLabel } = require("../services/logLabels");
+const { localizeTitle } = require("../services/logTitles");
 
 const MAX_SUMMARY_MESSAGES = 10;
 const MAX_EXCERPT_LENGTH = 120;
@@ -13,7 +14,7 @@ async function handleMessageBulkDeleted({ messages, config, mapper, service, del
     channelKey: "log_message_delete_channel_id",
     category: "messages",
     action: "messages_bulk_deleted",
-    title: "logs.messagesBulkDeleted",
+    title: localizeTitle(config, "logs.messagesBulkDeleted"),
     details: {
       channel: channelLabel(first.channel),
       before: summarizeMessages(messages),

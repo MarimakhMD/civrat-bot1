@@ -1,5 +1,7 @@
 "use strict";
 
+const { localizeTitle } = require("../services/logTitles");
+
 async function handleInviteEvent({
   guild,
   config,
@@ -36,7 +38,7 @@ async function handleInviteEvent({
     channelKey: "invitations_log_channel_id",
     category: "invitations",
     action,
-    title: `logs.${action}`,
+    title: localizeTitle(config, `logs.${action}`),
     details,
   });
   return delivery.deliver({ ...entry, channelId: service.resolveDestination(entry, config) });

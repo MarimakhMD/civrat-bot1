@@ -1,6 +1,7 @@
 "use strict";
 
 const { memberDisplayLabel, accountCreatedAt, avatarUrl } = require("../services/logLabels");
+const { localizeTitle } = require("../services/logTitles");
 
 async function handleMemberLeft({ member, config, mapper, service, delivery }) {
   if (!config.logs_enabled) return null;
@@ -23,7 +24,7 @@ async function handleMemberLeft({ member, config, mapper, service, delivery }) {
     channelKey: "log_member_leave_channel_id",
     category: "members",
     action: "member_left",
-    title: "logs.memberLeft",
+    title: localizeTitle(config, "logs.memberLeft"),
     details,
   });
   return delivery.deliver({ ...entry, channelId: service.resolveDestination(entry, config) });

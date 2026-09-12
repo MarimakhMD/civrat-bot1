@@ -1,6 +1,7 @@
 "use strict";
 
 const { userLabel, channelLabel, avatarUrl } = require("../services/logLabels");
+const { localizeTitle } = require("../services/logTitles");
 
 async function handleMessageUpdated({ message, oldMessage, config, mapper, service, delivery }) {
   if (!config.logs_enabled || !message.guild || message.author?.bot) return null;
@@ -9,7 +10,7 @@ async function handleMessageUpdated({ message, oldMessage, config, mapper, servi
     channelKey: "log_message_edit_channel_id",
     category: "messages",
     action: "message_updated",
-    title: "logs.messageUpdated",
+    title: localizeTitle(config, "logs.messageUpdated"),
     // Avant/Après seulement si les contenus sont réellement disponibles
     // (messages non partiels) ; sinon omis, jamais inventés.
     details: {

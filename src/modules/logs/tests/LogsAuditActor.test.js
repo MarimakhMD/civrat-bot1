@@ -81,3 +81,68 @@ test("resolveAuditActor sans exécuteur renvoie des champs null", async () => {
   assert.equal(result.executorId, null);
   assert.equal(result.reason, "r");
 });
+
+// ───────────────────────────────────────────────────────────────
+// Delta de rôles autoritaire ($add / $remove) — jamais le cache
+// ───────────────────────────────────────────────────────────────
+
+const { resolveRoleDelta, roleDelta } = require("../../../utils/auditLogActor");
+
+test("roleDelta extrait les rôles ajoutés ($add) et retirés ($remove)", () => {
+  const { added, removed } = roleDelta([
+    { key: "$add", new: [{ id: "R1", name: "Modo" }] },
+    { key: "$remove", new: [{ id: "R2", name: "Old" }] },
+  ]);
+  assert.deepEqual(added, [{ id: "R1", name: "Modo" }]);
+  assert.deepEqual(removed, [{ id: "R2", name: "Old" }]);
+});
+
+test("roleDelta ignore les clés inconnues et gère changes null/non-tableau", () => {
+  assert.deepEqual(roleDelta(null), { added: [], removed: [] });
+  assert.deepEqual(roleDelta(undefined), { added: [], removed: [] });
+  assert.deepEqual(roleDelta([{ key: "nick", new: "x" }]), { added: [], removed: [] });
+});
+
+test("resolveRoleDelta renvoie le delta exact + exécutant quand la cible correspond", async () => {
+  _clearCache();
+  const guild = makeGuild(
+    {
+      target: { id: "U1" },
+      executor: { id: "M1", tag: "Modo" },
+      reason: "r",
+      changes: [
+        { key: "$add", new: [{ id: "R1", name: "Modo" }] },
+        { key: "$remove", new: [{ id: "R2", name: "Old" }] },
+      ],
+    },
+    "g-role-ok",
+  );
+  const result = await resolveRoleDelta({ guild, type: 25, memberId: "U1" });
+  assert.equal(result.executor, "Modo (M1)");
+  assert.equal(result.executorId, "M1");
+  assert.equal(result.reason, "r");
+  assert.deepEqual(result.addedRoles, [{ id: "R1", name: "Modo" }]);
+  assert.deepEqual(result.removedRoles, [{ id: "R2", name: "Old" }]);
+});
+
+test("resolveRoleDelta sans entrée → listes vides (jamais de faux delta)", async () => {
+  _clearCache();
+  const guild = makeGuild(null, "g-role-empty");
+  const result = await resolveRoleDelta({ guild, type: 25, memberId: "U1" });
+  assert.deepEqual(result.addedRoles, []);
+  assert.deepEqual(result.removedRoles, []);
+  assert.equal(result.executor, null);
+  assert.equal(result.executorId, null);
+  assert.equal(result.reason, null);
+});
+
+test("resolveRoleDelta filtre une entrée appartenant à une AUTRE cible", async () => {
+  _clearCache();
+  const guild = makeGuild(
+    { target: { id: "AUTRE" }, changes: [{ key: "$add", new: [{ id: "R1", name: "X" }] }] },
+    "g-role-other",
+  );
+  const result = await resolveRoleDelta({ guild, type: 25, memberId: "U1" });
+  assert.deepEqual(result.addedRoles, []);
+  assert.deepEqual(result.removedRoles, []);
+});

@@ -5,7 +5,7 @@
 
 const { AuditLogEvent } = require("discord.js");
 const guildConfigService = require("../services/guildConfig");
-const { resolveAuditActor } = require("../utils/auditLogActor");
+const { resolveAuditActor, resolveRoleDelta } = require("../utils/auditLogActor");
 const { memberDisplayLabel, roleLabel, avatarUrl, formatDuration } = require("../modules/logs/services/logLabels");
 
 module.exports = {
@@ -23,15 +23,21 @@ module.exports = {
 };
 
 async function handleRoleChanges(oldMember, newMember, config) {
-  // P1b — un seul audit log pour le lot (cible = le membre), puis réutilisé.
-  const actor = await resolveAuditActor({
+  // Laisse Discord écrire l'entrée d'audit (même temporisation que la
+  // détection de kick) : le delta de rôles est ensuite lu depuis l'audit log,
+  // PAS depuis la différence de caches — fragile sur membre partiel (caches
+  // vides → tous les rôles apparaissent comme « ajoutés »).
+  await new Promise((resolve) => setTimeout(resolve, 1000));
+
+  // Delta autoritaire ($add / $remove) + exécutant, en UNE lecture d'audit.
+  const delta = await resolveRoleDelta({
     guild: newMember.guild,
     type: AuditLogEvent.MemberRoleUpdate,
-    targetId: newMember.id,
+    memberId: newMember.id,
   });
 
-  const addedRoles = newMember.roles.cache.filter((role) => !oldMember.roles.cache.has(role.id));
-  for (const role of addedRoles.values()) {
+  for (const role of delta.addedRoles) {
+    if (!role || !role.id) continue;
     await require("../modules/logs/runtime/getLogsRuntime")
       .getLogsRuntime()
       .handleRoleEvent({
@@ -42,13 +48,13 @@ async function handleRoleChanges(oldMember, newMember, config) {
         memberId: newMember.id,
         target: roleLabel(role),
         member: memberDisplayLabel(newMember),
-        who: actor.executor,
+        who: delta.executor,
         avatarUrl: avatarUrl(newMember),
       });
   }
 
-  const removedRoles = oldMember.roles.cache.filter((role) => !newMember.roles.cache.has(role.id));
-  for (const role of removedRoles.values()) {
+  for (const role of delta.removedRoles) {
+    if (!role || !role.id) continue;
     await require("../modules/logs/runtime/getLogsRuntime")
       .getLogsRuntime()
       .handleRoleEvent({
@@ -59,7 +65,7 @@ async function handleRoleChanges(oldMember, newMember, config) {
         memberId: newMember.id,
         target: roleLabel(role),
         member: memberDisplayLabel(newMember),
-        who: actor.executor,
+        who: delta.executor,
         avatarUrl: avatarUrl(newMember),
       });
   }

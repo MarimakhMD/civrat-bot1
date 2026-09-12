@@ -1,6 +1,7 @@
 "use strict";
 
 const { userLabel, channelLabel, avatarUrl } = require("../services/logLabels");
+const { localizeTitle } = require("../services/logTitles");
 
 async function handleMessageDeleted({ message, config, mapper, service, delivery }) {
   if (!config.logs_enabled || !message.guild || message.author?.bot) return null;
@@ -9,7 +10,7 @@ async function handleMessageDeleted({ message, config, mapper, service, delivery
     channelKey: "log_message_delete_channel_id",
     category: "messages",
     action: "message_deleted",
-    title: "logs.messageDeleted",
+    title: localizeTitle(config, "logs.messageDeleted"),
     // `who` vaut null pour un message partiel (hors cache) : le transport
     // affichera « inconnu ». Le contenu supprimé n'est conservé que s'il est
     // réellement disponible (jamais inventé).

@@ -1,6 +1,7 @@
 "use strict";
 
 const { channelLabel, channelTypeLabel } = require("../services/logLabels");
+const { localizeTitle } = require("../services/logTitles");
 
 async function handleChannelEvent({ channel, config, action, target = null, who = undefined, before = null, after = null, parent = null, mapper, service, delivery }) {
   if (!config.logs_enabled) return null;
@@ -21,7 +22,7 @@ async function handleChannelEvent({ channel, config, action, target = null, who 
     channelKey: "log_channel_update_channel_id",
     category: "channels",
     action,
-    title: `logs.${action}`,
+    title: localizeTitle(config, `logs.${action}`),
     details,
   });
   return delivery.deliver({ ...entry, channelId: service.resolveDestination(entry, config) });

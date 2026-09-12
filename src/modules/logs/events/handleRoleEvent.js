@@ -1,5 +1,7 @@
 "use strict";
 
+const { localizeTitle } = require("../services/logTitles");
+
 async function handleRoleEvent({
   guild,
   config,
@@ -35,7 +37,7 @@ async function handleRoleEvent({
     channelKey: "log_role_update_channel_id",
     category: "roles",
     action,
-    title: `logs.${action}`,
+    title: localizeTitle(config, `logs.${action}`),
     details,
   });
   return delivery.deliver({ ...entry, channelId: service.resolveDestination(entry, config) });
