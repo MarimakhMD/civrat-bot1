@@ -1,6 +1,7 @@
 const { AuditLogEvent } = require("discord.js");
 const { getLogsRuntime } = require("../modules/logs/runtime/getLogsRuntime");
 const { resolveAuditActor } = require("../utils/auditLogActor");
+const guildConfigService = require("../services/guildConfig");
 const logger = require("../utils/logger");
 
 module.exports = {
@@ -9,13 +10,20 @@ module.exports = {
   async execute(channel) {
     try {
       if (!channel.guild) return;
-      const actor = await resolveAuditActor({ guild: channel.guild, type: AuditLogEvent.ChannelDelete, targetId: channel.id });
-      await getLogsRuntime().handleChannelEvent({
-        channel,
-        config: await require("../services/guildConfig").getGuildConfig(channel.guild.id),
-        action: "channel_deleted",
-        who: actor.executor,
-      });
+      // PHASE 1 — la config est lue AVANT l'Audit Log : si les logs sont
+      // coupés, aucune requête API n'est émise pour un log qui sera jeté.
+      const config = await guildConfigService.getGuildConfig(channel.guild.id);
+
+      if (config?.logs_enabled) {
+        const actor = await resolveAuditActor({ guild: channel.guild, type: AuditLogEvent.ChannelDelete, targetId: channel.id });
+        await getLogsRuntime().handleChannelEvent({
+          channel,
+          config,
+          action: "channel_deleted",
+          who: actor.executor,
+        });
+      }
+
       try {
         await require("../modules/security/runtime/getSecurityRuntime").getSecurityRuntime().handleChannelDelete(channel);
       } catch (error) {

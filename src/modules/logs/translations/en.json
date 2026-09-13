@@ -67,6 +67,25 @@
     "thread_deleted": "🗑️ Thread deleted",
     "invite_created": "🔗 Invite created",
     "invite_deleted": "🗑️ Invite deleted",
-    "invite_used": "🔗 Invite used"
+    "invite_used": "🔗 Invite used",
+    "ticket_created": "🎫 Ticket created",
+    "ticket_closed": "🔒 Ticket closed",
+    "ticket_reopened": "🔓 Ticket reopened",
+    "ticket_deleted": "🗑️ Ticket deleted",
+    "ticket_renamed": "✏️ Ticket renamed",
+    "ticket_claimed": "🙋 Ticket claimed",
+    "ticket_member_added": "➕ Member added to ticket",
+    "ticket_member_removed": "➖ Member removed from ticket",
+    "ticket_creation_rolled_back": "↩️ Ticket creation rolled back",
+    "ticket_creation_orphan": "⚠️ Orphan ticket detected",
+    "captcha_verified": "✅ CAPTCHA verified",
+    "captcha_verification_failed": "❌ CAPTCHA verification failed",
+    "giveaway_created": "🎁 Giveaway created",
+    "giveaway_drawn": "🏆 Giveaway drawn",
+    "suggestion_created": "💡 Suggestion created",
+    "suggestion_approved": "✅ Suggestion approved",
+    "suggestion_rejected": "❌ Suggestion rejected",
+    "suggestion_deleted": "🗑️ Suggestion deleted",
+    "xp_level_up": "⬆️ Level up reached"
   }
 }
