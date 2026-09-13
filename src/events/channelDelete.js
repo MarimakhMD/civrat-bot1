@@ -1,12 +1,21 @@
+const { AuditLogEvent } = require("discord.js");
 const { getLogsRuntime } = require("../modules/logs/runtime/getLogsRuntime");
+const { resolveAuditActor } = require("../utils/auditLogActor");
 const logger = require("../utils/logger");
+
 module.exports = {
   name: "channelDelete",
   once: false,
   async execute(channel) {
     try {
       if (!channel.guild) return;
-      await getLogsRuntime().handleChannelEvent({ channel, config: await require("../services/guildConfig").getGuildConfig(channel.guild.id), action: "channel_deleted" });
+      const actor = await resolveAuditActor({ guild: channel.guild, type: AuditLogEvent.ChannelDelete, targetId: channel.id });
+      await getLogsRuntime().handleChannelEvent({
+        channel,
+        config: await require("../services/guildConfig").getGuildConfig(channel.guild.id),
+        action: "channel_deleted",
+        who: actor.executor,
+      });
       try {
         await require("../modules/security/runtime/getSecurityRuntime").getSecurityRuntime().handleChannelDelete(channel);
       } catch (error) {

@@ -1,4 +1,7 @@
+const { AuditLogEvent } = require("discord.js");
 const { getLogsRuntime } = require("../modules/logs/runtime/getLogsRuntime");
+const { roleLabel } = require("../modules/logs/services/logLabels");
+const { resolveAuditActor } = require("../utils/auditLogActor");
 const logger = require("../utils/logger");
 
 module.exports = {
@@ -6,11 +9,14 @@ module.exports = {
   once: false,
   async execute(role) {
     try {
+      const actor = await resolveAuditActor({ guild: role.guild, type: AuditLogEvent.RoleCreate, targetId: role.id });
       await getLogsRuntime().handleRoleEvent({
         guild: role.guild,
         config: await require("../services/guildConfig").getGuildConfig(role.guild.id),
         action: "role_created",
         roleId: role.id,
+        target: roleLabel(role),
+        who: actor.executor,
       });
       try {
         await require("../modules/security/runtime/getSecurityRuntime").getSecurityRuntime().handleRoleCreate(role);

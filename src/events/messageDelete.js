@@ -5,7 +5,7 @@ module.exports = {
   once: false,
   async execute(message) {
     try {
-      if (!message.guild || !message.author || message.author.bot) return;
+      if (!message.guild || message.author?.bot) return;
       await getLogsRuntime().handleMessageDeleted(message);
     } catch (error) {
       // 4F-1 — observabilité : best-effort conservé.

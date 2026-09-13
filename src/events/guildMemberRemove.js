@@ -5,7 +5,10 @@
 
 const guildConfigService = require("../services/guildConfig");
 const inviteService = require("../services/inviteService");
+const { AuditLogEvent } = require("discord.js");
 const { fetchAuditLog } = require("../utils/auditLogCache");
+const { resolveAuditActor } = require("../utils/auditLogActor");
+const { memberDisplayLabel, avatarUrl } = require("../modules/logs/services/logLabels");
 const logger = require("../utils/logger");
 const { getLogsRuntime } = require("../modules/logs/runtime/getLogsRuntime");
 
@@ -17,8 +20,24 @@ module.exports = {
     const config = await guildConfigService.getGuildConfig(member.guild.id);
     if (!config) return;
 
-    await require("../runtime/getWelcomeGoodbyeRuntime").getWelcomeGoodbyeRuntime().handleMemberRemoved(member);
-    await require("../modules/logs/runtime/getLogsRuntime").getLogsRuntime().handleMemberLeft(member);
+    // Log de départ : tenté en PREMIER et isolé. Un membre partiel (user null)
+    // ou un échec du goodbye ne doit jamais empêcher l'émission de ce log.
+    try {
+      await require("../modules/logs/runtime/getLogsRuntime").getLogsRuntime().handleMemberLeft(member);
+    } catch (error) {
+      // 4F-1 — observabilité : best-effort conservé.
+      logger.warn("Member leave log failed", { event: "member_leave_log_failed", guildId: member?.guild?.id || null, error: error?.message || String(error) });
+    }
+
+    // Goodbye : isolé — un membre partiel (user null) ne doit plus faire
+    // planter le traitement (cf. adaptGuildMember désormais null-safe).
+    try {
+      await require("../runtime/getWelcomeGoodbyeRuntime").getWelcomeGoodbyeRuntime().handleMemberRemoved(member);
+    } catch (error) {
+      // 4F-1 — observabilité : best-effort conservé.
+      logger.warn("Goodbye handling failed", { event: "goodbye_failed", guildId: member?.guild?.id || null, error: error?.message || String(error) });
+    }
+
     await handleKickDetection(member, config);
     await handleInviteDecrement(member, config);
   },
@@ -29,14 +48,20 @@ async function handleKickDetection(member, config) {
 
   setTimeout(async () => {
     try {
-      const entry = await fetchAuditLog(member.guild, 20);
-      if (!entry || entry.target.id !== member.id) return;
+      // P1b — résolution stricte : exécutant/raison récupérés uniquement si
+      // l'entrée d'audit vise bien ce membre.
+      const actor = await resolveAuditActor({ guild: member.guild, type: AuditLogEvent.MemberKick, targetId: member.id });
 
       await getLogsRuntime().handleModerationEvent({
         guild: member.guild,
         config,
         action: "member_kicked",
         targetId: member.id,
+        target: memberDisplayLabel(member),
+        reason: actor.reason,
+        moderator: actor.executor,
+        moderatorId: actor.executorId,
+        avatarUrl: avatarUrl(member),
       });
     } catch (error) {
       logger.warn(`Kick log detection failed: ${error.message}`);
@@ -48,7 +73,8 @@ async function handleInviteDecrement(member, config) {
   // Phase 11 : garde alignée sur guildMemberAdd — défaut « activé » (tracking
   // historique inconditionnel), opt-out explicite uniquement.
   if (config.invitations_enabled === false) return;
-  if (member.user.bot) return;
+  // Membre partiel : `member.user` vaut null au départ, ne pas planter.
+  if (member.user?.bot) return;
 
   try {
     // Discord audit entries can arrive just after guildMemberRemove. Do not count a kick as a voluntary invite departure.

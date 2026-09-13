@@ -10,6 +10,7 @@ try {
   guildConfigService = { getGuildConfig: async () => ({}) };
 }
 const inviteService = require("../services/inviteService");
+const { memberDisplayLabel, inviterDisplayLabel, avatarUrl } = require("../modules/logs/services/logLabels");
 const logger = require("../utils/logger");
 
 module.exports = {
@@ -20,21 +21,54 @@ module.exports = {
     const config = await guildConfigService.getGuildConfig(member.guild.id);
     if (!config) return;
 
-    // 1. Auto Role
-    await require("../modules/autorole/runtime/getAutoRoleRuntime").getAutoRoleRuntime().handleMemberJoined(member);
-    // 2. Welcome Message
-    await require("../runtime/getWelcomeGoodbyeRuntime").getWelcomeGoodbyeRuntime().handleMemberAdded(member);
-    // 3. Captcha reminder (best effort; DMs can be closed)
-    await require("../modules/captcha/runtime/getCaptchaRuntime").getCaptchaRuntime().handleMemberJoined(member);
+    // 1. Auto Role — isolé : un échec d'onboarding ne doit pas empêcher les
+    //    étapes suivantes, en particulier le log d'arrivée (étape 4).
+    try {
+      await require("../modules/autorole/runtime/getAutoRoleRuntime").getAutoRoleRuntime().handleMemberJoined(member);
+    } catch (error) {
+      // 4F-1 — observabilité : best-effort conservé.
+      logger.warn("AutoRole member join handling failed", { event: "autorole_join_failed", guildId: member?.guild?.id || null, error: error?.message || String(error) });
+    }
+    // 2. Welcome Message — isolé de la même façon.
+    try {
+      await require("../runtime/getWelcomeGoodbyeRuntime").getWelcomeGoodbyeRuntime().handleMemberAdded(member);
+    } catch (error) {
+      // 4F-1 — observabilité : best-effort conservé.
+      logger.warn("Welcome member join handling failed", { event: "welcome_join_failed", guildId: member?.guild?.id || null, error: error?.message || String(error) });
+    }
+    // 3. Captcha reminder (best effort; DMs can be closed). Le module CAPTCHA
+    // reste gelé : on isole seulement son échec afin qu'il ne bloque pas le
+    // log d'arrivée exécuté en aval (étape 4).
+    try {
+      await require("../modules/captcha/runtime/getCaptchaRuntime").getCaptchaRuntime().handleMemberJoined(member);
+    } catch (error) {
+      // 4F-1 — observabilité : best-effort conservé.
+      logger.warn("Captcha member join handling failed", { event: "captcha_join_failed", guildId: member?.guild?.id || null, error: error?.message || String(error) });
+    }
     // 4. Invite Tracking — Phase 11 : respecte le toggle /settings Invites.
     //    Comportement historique préservé par défaut : la clé absente (guilde
     //    jamais configurée) laisse le tracking actif ; seul un opt-out explicite
     //    (invitations_enabled === false) le désactive (attribution ET log).
     const invitesEnabled = config.invitations_enabled !== false;
     const inviteResult = invitesEnabled ? await handleInviteTracking(member, config) : null;
-    if (invitesEnabled) await handleInviteJoinLog(member, config, inviteResult);
-    // 4. Join Log
-    await require("../modules/logs/runtime/getLogsRuntime").getLogsRuntime().handleMemberJoined(member);
+    if (invitesEnabled) {
+      try {
+        await handleInviteJoinLog(member, config, inviteResult);
+      } catch (error) {
+        // 4F-1 — observabilité : best-effort conservé.
+        logger.warn("Invite join log failed", { event: "invite_join_log_failed", guildId: member?.guild?.id || null, error: error?.message || String(error) });
+      }
+    }
+    // 4. Join Log — toujours tenté, indépendamment des étapes d'onboarding
+    //    ci-dessus. `inviteResult` est réutilisé tel quel (aucun appel API
+    //    supplémentaire) ; seules les stats du recruteur sont lues en plus.
+    try {
+      const inviterStats = await resolveInviterStats(member, inviteResult);
+      await require("../modules/logs/runtime/getLogsRuntime").getLogsRuntime().handleMemberJoined(member, inviteResult, inviterStats);
+    } catch (error) {
+      // 4F-1 — observabilité : best-effort conservé.
+      logger.warn("Member join log failed", { event: "member_join_log_failed", guildId: member?.guild?.id || null, error: error?.message || String(error) });
+    }
     // 5. Security Center (modern Foundation → Runtime → Transport/Logs, no legacy securityService)
     try {
       await require("../modules/security/runtime/getSecurityRuntime").getSecurityRuntime().handleMemberJoined(member);
@@ -107,6 +141,26 @@ async function handleInviteTracking(member, config) {
 async function handleInviteJoinLog(member, config, inviteResult) {
   if (!inviteResult?.inviter) return;
   await require("../modules/logs/runtime/getLogsRuntime").getLogsRuntime().handleInviteEvent({
-    guild: member.guild, config, action: "invite_used", inviteCode: inviteResult.code,
+    guild: member.guild,
+    config,
+    action: "invite_used",
+    inviteCode: inviteResult.code,
+    inviter: inviterDisplayLabel(member, inviteResult.inviter),
+    member: memberDisplayLabel(member),
+    avatarUrl: avatarUrl(member),
   });
+}
+
+// 📊 Invitations du recruteur — best-effort, seulement si l'inviteur est
+// réellement connu. `null` sinon (champ omis au rendu, jamais inventé).
+async function resolveInviterStats(member, inviteResult) {
+  const inviterId = inviteResult && inviteResult.inviter;
+  if (!inviterId) return null;
+  try {
+    const stats = await inviteService.getInviteStats(inviterId, member.guild.id);
+    return typeof stats?.current === "number" ? stats.current : null;
+  } catch (error) {
+    logger.warn("Inviter stats resolution failed", { event: "inviter_stats_failed", guildId: member?.guild?.id || null, error: error?.message || String(error) });
+    return null;
+  }
 }
