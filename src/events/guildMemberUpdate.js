@@ -98,6 +98,31 @@ function normalizeTimestamp(value) {
 }
 
 /**
+ * PHASE 1 (correctif 4) — l'état « avant » est-il fiable ?
+ *
+ * CIVRAT démarre avec `Partials.GuildMember` : un membre peut entrer en cache
+ * depuis un payload partiel (réaction, thread, voix) qui ne porte NI `nick` NI
+ * `communication_disabled_until`. `GuildMember` initialise alors ces champs à
+ * `null` — un défaut de constructeur, pas la valeur réelle.
+ *
+ * Conséquence mesurée avec discord.js 14.27 : un membre partiel dont le vrai
+ * pseudo est « Alice », à qui l'on ajoute UNIQUEMENT un rôle, produit
+ * `oldMember.nickname === null` puis `newMember.nickname === "Alice"` →
+ * faux log « Pseudo modifié ».
+ *
+ * `GuildMember#partial` (`joinedTimestamp === null`) est le marqueur exact de
+ * cet état. Quand il est vrai, on ne sait PAS ce qui a changé : on ne journalise
+ * ni pseudo ni timeout — jamais de donnée inventée. Le delta de rôles, lui,
+ * passe par l'Audit Log, qui reste autoritaire.
+ *
+ * Les doubles de test qui ne modélisent pas `partial` ne sont pas considérés
+ * comme partiels : seul `partial === true` (valeur discord.js) déclenche la garde.
+ */
+function isPartialMember(member) {
+  return Boolean(member && member.partial === true);
+}
+
+/**
  * Fige l'intégralité de l'état de l'événement, de façon synchrone.
  *
  * @returns {Readonly<{memberId:string|null, memberLabel:string|null,
@@ -112,17 +137,24 @@ function captureMemberUpdate(oldMember, newMember) {
   const beforeTimeout = normalizeTimestamp(oldMember && oldMember.communicationDisabledUntilTimestamp);
   const afterTimeout = normalizeTimestamp(newMember && newMember.communicationDisabledUntilTimestamp);
 
+  // Correctif 4 — sur un membre partiel, les champs « avant » sont des défauts
+  // de constructeur : toute comparaison produirait un faux changement.
+  const beforeReliable = !isPartialMember(oldMember);
+
   return Object.freeze({
     memberId: (newMember && newMember.id) || (oldMember && oldMember.id) || null,
     // Libellés et avatar résolus MAINTENANT : ce sont des valeurs de l'événement.
     memberLabel: memberDisplayLabel(newMember),
     memberAvatarUrl: avatarUrl(newMember),
+    beforeReliable,
     beforeNickname,
     afterNickname,
-    nicknameChanged: beforeNickname !== afterNickname,
+    nicknameChanged: beforeReliable && beforeNickname !== afterNickname,
     beforeTimeout,
     afterTimeout,
-    timeoutChanged: beforeTimeout !== afterTimeout,
+    timeoutChanged: beforeReliable && beforeTimeout !== afterTimeout,
+    // Les rôles ne dépendent pas du cache « avant » : la voie Audit Log est
+    // autoritaire, y compris sur membre partiel.
     rolesChanged: roleSetChanged(oldMember, newMember),
   });
 }
@@ -171,13 +203,23 @@ async function handleRoleChanges(event, guild, config, occurredAt) {
   });
 
   if (deltas.length === 0) {
-    logger.warn("Member role change could not be correlated to the audit log", {
-      event: "LOG_ROLE_DELTA_UNRESOLVED",
-      guildId: guild.id,
-      memberId: event.memberId,
-      auditAvailable: available,
-      reason: reason || "NO_MATCHING_ENTRY",
-    });
+    // Rien n'est inventé. Le diagnostic reste émis quand la lecture a échoué
+    // (permission manquante, rate limit) ou quand l'état « avant » était
+    // fiable — donc qu'un vrai changement de rôles a bien eu lieu.
+    //
+    // Sur un membre PARTIEL dont l'état « avant » est inconnu, l'arrivée du
+    // premier payload complet fait passer `_roles` de [] à la liste réelle :
+    // le delta de caches signale un changement alors qu'aucun rôle n'a été
+    // attribué. Ce cas n'est pas une anomalie, on ne le journalise pas.
+    if (!available || event.beforeReliable) {
+      logger.warn("Member role change could not be correlated to the audit log", {
+        event: "LOG_ROLE_DELTA_UNRESOLVED",
+        guildId: guild.id,
+        memberId: event.memberId,
+        auditAvailable: available,
+        reason: reason || "NO_MATCHING_ENTRY",
+      });
+    }
     return;
   }
 

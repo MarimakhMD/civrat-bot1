@@ -145,13 +145,41 @@ function isFresh(entry, occurredAt, maxAgeMs = MAX_ENTRY_AGE_MS) {
   return timestamp >= occurredAt - maxAgeMs && timestamp <= occurredAt + CLOCK_SKEW_MS;
 }
 
+/**
+ * Identifiant de la cible d'une entrée d'audit.
+ *
+ * PHASE 1 (correctif 4) — `entry.target` n'est PAS fiable.
+ *
+ * discord.js résout la cible d'une entrée `User` (tous les types < 30 : kick,
+ * ban, pseudo, timeout, rôles) ainsi :
+ *
+ *   this.target = guild.client.options.partials.includes(Partials.User)
+ *     ? guild.client.users._add({ id: data.target_id })
+ *     : (guild.client.users.cache.get(data.target_id) ?? null);
+ *
+ * CIVRAT démarre avec `partials: [Message, Channel, GuildMember]` — SANS
+ * `Partials.User`. Dès que l'utilisateur visé n'est pas déjà dans
+ * `client.users.cache`, `entry.target` vaut donc **null** et toute corrélation
+ * échouait en « NO_MATCHING_ENTRY » alors que l'entrée était bien présente.
+ *
+ * `entry.targetId` vient du payload brut (`data.target_id`) et est TOUJOURS
+ * renseigné : c'est la seule base de comparaison fiable.
+ */
+function entryTargetId(entry) {
+  if (!entry) return null;
+  if (entry.targetId !== undefined && entry.targetId !== null) return String(entry.targetId);
+  const target = entry.target;
+  if (target && target.id !== undefined && target.id !== null) return String(target.id);
+  return null;
+}
+
 /** Correspondance stricte de cible : par identifiant, ou par code (invitations). */
 function matchesTarget(entry, targetId, targetCode) {
   if (targetCode !== null && targetCode !== undefined) {
     return Boolean(entry && entry.target && entry.target.code === targetCode);
   }
   if (targetId !== null && targetId !== undefined) {
-    return Boolean(entry && entry.target && entry.target.id === targetId);
+    return entryTargetId(entry) === String(targetId);
   }
   return false;
 }
@@ -425,6 +453,7 @@ module.exports = {
   isUntimeoutEntry,
   findChange,
   matchesTarget,
+  entryTargetId,
   isFresh,
   entryTimestamp,
   _resetConsumed,
