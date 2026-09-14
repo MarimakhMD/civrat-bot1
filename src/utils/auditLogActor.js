@@ -20,14 +20,29 @@
  * cas où le registre est vide (redémarrage du bot).
  */
 
-const { fetchAuditLogEntries } = require("./auditLogCache");
+const { fetchAuditLogEntries, readAuditLog } = require("./auditLogCache");
 const { executorLabel } = require("../modules/logs/services/logLabels");
 
 /** Âge maximal d'une entrée pour rester attribuable à un événement. */
 const MAX_ENTRY_AGE_MS = 30_000;
 
-/** Tolérance d'horloge : une entrée peut être légèrement postérieure à l'événement. */
-const CLOCK_SKEW_MS = 10_000;
+/**
+ * Tolérance d'horloge : une entrée peut être postérieure à l'événement.
+ *
+ * PHASE 1 (correctif 2) — passée de 10 s à 60 s.
+ *
+ * `entryTimestamp` vient de l'horloge de Discord, `occurredAt` de celle du
+ * conteneur. Une dérive de plus de 10 s (courante sans NTP) faisait rejeter
+ * TOUTES les entrées comme « trop récentes » : plus aucun log corrélé, sans
+ * aucune trace.
+ *
+ * Cet élargissement ne rouvre PAS le risque d'attribuer une ancienne action :
+ * la borne qui protège de cela est `MAX_ENTRY_AGE_MS` (côté passé), inchangée à
+ * 30 s, renforcée par le registre d'entrées consommées. Verrouillé par
+ * `test/phase1/audit-correlation-window.test.js` : un `MemberKick` de 5 min ne
+ * peut toujours pas être réattribué.
+ */
+const CLOCK_SKEW_MS = 60_000;
 
 /** Durée pendant laquelle une entrée consommée reste mémorisée. */
 const CONSUMED_TTL_MS = 10 * 60 * 1000;
@@ -342,7 +357,7 @@ async function resolveRoleDelta({ guild, type, memberId, occurredAt = Date.now()
 
 /**
  * Tous les changements de rôles attribuables à CE membre, du plus ancien au
- * plus récent, chacun consommé une seule fois.
+ * plus récent, chacun consommé une seule fois — avec l'état de la lecture.
  *
  * C'est ce qui rend corrects les deux scénarios de concurrence :
  *  • plusieurs membres modifiés dans la même fenêtre → chacun reçoit SES
@@ -350,13 +365,21 @@ async function resolveRoleDelta({ guild, type, memberId, occurredAt = Date.now()
  *  • plusieurs modifications du même membre → un log par modification, au lieu
  *    d'un seul log rejoué ou d'un delta fusionné à tort.
  *
- * Si le delta n'est pas déterminable (aucune entrée exploitable), la liste est
- * vide : rien n'est inventé.
+ * `available: false` signifie que l'Audit Log était ILLISIBLE (permission
+ * manquante, rate limit) : `deltas` est vide et rien n'est inventé, mais
+ * l'appelant peut produire un diagnostic au lieu de se taire. `reason`
+ * différencie ce cas d'une liste réellement vide (`NO_MATCHING_ENTRY` est alors
+ * laissé à l'appelant).
+ *
+ * @returns {Promise<{deltas: object[], available: boolean, reason: string|null,
+ *   examined: number}>}
  */
-async function resolveRoleDeltas({ guild, type, memberId, occurredAt = Date.now(), maxAgeMs = MAX_ENTRY_AGE_MS }) {
-  if (!guild || !memberId) return [];
+async function resolveRoleDeltasDetailed({ guild, type, memberId, occurredAt = Date.now(), maxAgeMs = MAX_ENTRY_AGE_MS }) {
+  if (!guild || !memberId) {
+    return { deltas: [], available: false, reason: "TARGET_UNAVAILABLE", examined: 0 };
+  }
 
-  const entries = await fetchAuditLogEntries(guild, type);
+  const { entries, available, reason } = await readAuditLog(guild, type);
   const selected = [];
 
   for (const entry of entries) {
@@ -368,12 +391,26 @@ async function resolveRoleDeltas({ guild, type, memberId, occurredAt = Date.now(
     selected.push(entry);
   }
 
-  // `fetchAuditLogEntries` rend les entrées de la plus récente à la plus
-  // ancienne : on inverse pour journaliser dans l'ordre chronologique réel.
+  // `readAuditLog` rend les entrées de la plus récente à la plus ancienne :
+  // on inverse pour journaliser dans l'ordre chronologique réel.
   selected.reverse();
 
   for (const entry of selected) markConsumed(guild.id, type, entry);
-  return selected.map((entry) => ({ ...describeRoleDelta(entry), entryId: entry.id || null }));
+  return {
+    deltas: selected.map((entry) => ({ ...describeRoleDelta(entry), entryId: entry.id || null })),
+    available,
+    reason,
+    examined: entries.length,
+  };
+}
+
+/**
+ * Rétrocompatible : seuls les deltas. Préférer `resolveRoleDeltasDetailed`,
+ * qui distingue « Audit Log illisible » d'« aucune entrée correspondante ».
+ */
+async function resolveRoleDeltas(options) {
+  const result = await resolveRoleDeltasDetailed(options);
+  return result.deltas;
 }
 
 module.exports = {
@@ -382,6 +419,7 @@ module.exports = {
   resolveTimeoutAction,
   resolveRoleDelta,
   resolveRoleDeltas,
+  resolveRoleDeltasDetailed,
   roleDelta,
   isTimeoutEntry,
   isUntimeoutEntry,

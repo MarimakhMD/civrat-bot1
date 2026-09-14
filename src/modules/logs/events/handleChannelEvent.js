@@ -20,10 +20,14 @@ async function handleChannelEvent({
 }) {
   if (!config.logs_enabled) return null;
 
+  // La langue est résolue UNE fois : elle pilote le titre, les libellés de
+  // champs ET les valeurs rendues (type de salon).
+  const language = resolveLanguage(config);
+
   const details = {
     target: target || channelLabel(channel),
     channelId: channel.id || null,
-    channelType: channelTypeLabel(channel),
+    channelType: channelTypeLabel(channel, language),
   };
   if (parent) details.parent = parent;
   if (before) details.before = before;

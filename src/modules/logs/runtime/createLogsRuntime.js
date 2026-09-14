@@ -81,8 +81,14 @@ function createLogsRuntime({ guildConfigResolver }) {
     handleMessageBulkDeleted: async (messages, config) =>
       handleMessageBulkDeleted({ messages, config, ...deps(messages.first().guild) }),
 
-    handleMemberNicknameChanged: async ({ oldMember, newMember, config }) =>
-      handleMemberNicknameChanged({ oldMember, newMember, config, ...deps(newMember.guild) }),
+    // PHASE 1 (correctif 1) — l'appelant passe des VALEURS d'événement figées
+    // (`member`, `before`, `after`, `avatarUrl`, `guild`) et non plus les objets
+    // vivants. La forme historique `{ oldMember, newMember }` reste acceptée.
+    handleMemberNicknameChanged: async (payload) =>
+      handleMemberNicknameChanged({
+        ...payload,
+        ...deps(payload.guild || (payload.newMember && payload.newMember.guild) || null),
+      }),
 
     handleCaptchaEvent: async ({ guild, config, action, memberId, roleId }) =>
       handleCaptchaEvent({ guild, config: config || await guildConfigResolver.get(guild.id), action, memberId, roleId, ...deps(guild) }),

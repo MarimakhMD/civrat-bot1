@@ -24,6 +24,7 @@ const {
   isFresh,
   AuditLogEventType,
   MAX_ENTRY_AGE_MS,
+  CLOCK_SKEW_MS,
   _resetConsumed,
 } = require("../auditLogActor");
 const { _clearCache } = require("../auditLogCache");
@@ -293,7 +294,12 @@ test("PHASE1: isFresh borne l'âge dans les deux sens", () => {
   const now = Date.now();
   assert.equal(isFresh({ createdAt: new Date(now) }, now), true);
   assert.equal(isFresh({ createdAt: new Date(now - MAX_ENTRY_AGE_MS - 1) }, now), false, "trop ancien");
-  assert.equal(isFresh({ createdAt: new Date(now + 60_000) }, now), false, "trop récent (horloge décalée)");
+  assert.equal(isFresh({ createdAt: new Date(now - MAX_ENTRY_AGE_MS + 1) }, now), true, "juste dans la fenêtre passée");
+  // Correctif 2 — la tolérance d'horloge côté FUTUR est passée de 10 s à 60 s
+  // (dérive du conteneur sans NTP). Les deux bornes sont vérifiées : la garde
+  // reste active au-delà, elle n'a pas été supprimée.
+  assert.equal(isFresh({ createdAt: new Date(now + CLOCK_SKEW_MS) }, now), true, "limite de tolérance acceptée");
+  assert.equal(isFresh({ createdAt: new Date(now + CLOCK_SKEW_MS + 1) }, now), false, "trop récent (horloge décalée)");
   assert.equal(isFresh({ target: { id: "X" } }, now), true, "entrée sans horodatage : garde inapplicable");
 });
 
