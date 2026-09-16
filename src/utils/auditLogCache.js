@@ -62,18 +62,39 @@ function cacheKey(guildId, type) {
 }
 
 /**
- * Normalise la réponse de `guild.fetchAuditLogs()` en tableau.
+ * Normalise la réponse de `guild.fetchAuditLogs()` en tableau d'ENTRÉES.
  *
- * discord.js renvoie une `Collection` (qui expose `filter`). Certains mocks de
- * test n'exposent que `first()` : on accepte les deux formes plutôt que de
- * casser au premier objet partiel.
+ * PHASE 1 (correctif 5) — `Collection` ÉTEND `Map`.
+ *
+ * `guild.fetchAuditLogs()` renvoie un `GuildAuditLogs` dont `entries` est une
+ * `Collection<Snowflake, GuildAuditLogsEntry>` (`GuildAuditLogs.js:79-83`).
+ * `Collection#filter` renvoie une `Collection`, et étendre une `Map` produit des
+ * PAIRES `[clé, valeur]` — pas ses valeurs. L'ancienne version :
+ *
+ *     const list = entries.filter(() => true);        // → une Collection
+ *     return Array.isArray(list) ? list : [...list];  // → [...Map] = PAIRES
+ *
+ * transmettait donc à toutes les gardes le tableau `["15498839…", entry]` au
+ * lieu de l'entrée : `entryTargetId()` y valait `null`, `entry.changes` y était
+ * `undefined`. Résultat mesuré sur Discord : AUCUN log de rôle, avec
+ * `LOG_ROLE_DELTA_UNRESOLVED / NO_MATCHING_ENTRY` et `auditAvailable: true` —
+ * l'entrée était pourtant présente et satisfaisait chaque garde séparément.
+ * Même effet sur le timeout, le kick, le ban et les invitations : l'auteur
+ * n'était jamais résolu.
+ *
+ * `values()` est la seule itération correcte d'une `Collection`, et elle est
+ * aussi valable pour un tableau (les harnais de test en fournissent). Les
+ * doubles qui n'exposent que `first()` restent acceptés.
  */
 function toEntryArray(logs) {
   const entries = logs && logs.entries;
   if (!entries) return [];
+  if (Array.isArray(entries)) return entries;
+  if (typeof entries.values === "function") return [...entries.values()];
   if (typeof entries.filter === "function") {
     const list = entries.filter(() => true);
-    return Array.isArray(list) ? list : [...list];
+    if (Array.isArray(list)) return list;
+    return typeof list.values === "function" ? [...list.values()] : [...list];
   }
   const first = typeof entries.first === "function" ? entries.first() : null;
   return first ? [first] : [];

@@ -277,12 +277,41 @@ async function handleTimeout(event, guild, config, occurredAt) {
       ? "member_untimeout"
       : null;
 
-  if (!action) return;
+  // PHASE 1 (correctif 5) — AUCUN CHEMIN SILENCIEUX.
+  //
+  // Le timeout était la seule des trois branches à pouvoir disparaître sans
+  // laisser de trace : les trois `return` ci-dessous sortaient sans log NI
+  // diagnostic. Sur Discord réel, un timeout appliqué ne produisait rien et
+  // rien n'indiquait pourquoi. Chaque sortie est désormais tracée, au niveau
+  // adapté à sa nature : `warn` pour un cas non résolu, `info` pour un cas
+  // attendu et déjà couvert ailleurs.
+
+  if (!action) {
+    // `communication_disabled_until` a changé sans pose ni levée nette : une
+    // durée prolongée ou raccourcie. Rien n'est inventé, mais on ne se tait pas.
+    logger.warn("Member timeout event ignored: no explicit timeout transition", {
+      event: "LOG_TIMEOUT_TRANSITION_UNKNOWN",
+      guildId: guild.id,
+      memberId: event.memberId,
+      beforeTimeout: event.beforeTimeout,
+      afterTimeout: event.afterTimeout,
+    });
+    return;
+  }
 
   // PHASE 1 — déduplication : un timeout appliqué par AutoMod a déjà produit
   // son log métier (`automod`, avec la règle violée). L'événement Discord qui
-  // en découle n'est pas une seconde action : on ne le rejoue pas.
-  if (consumeSelfAction("timeout", guild.id, event.memberId)) return;
+  // en découle n'est pas une seconde action : on ne le rejoue pas. Ce n'est pas
+  // une anomalie → `info`, pas `warn`.
+  if (consumeSelfAction("timeout", guild.id, event.memberId)) {
+    logger.info("Member timeout event skipped: applied by the bot", {
+      event: "LOG_TIMEOUT_SELF_ACTION",
+      guildId: guild.id,
+      memberId: event.memberId,
+      action,
+    });
+    return;
+  }
 
   // Exécutant/raison résolus sur une entrée dont les `changes` portent
   // réellement `communication_disabled_until`. Sans ce filtre, une entrée de
@@ -293,6 +322,21 @@ async function handleTimeout(event, guild, config, occurredAt) {
     action,
     occurredAt,
   });
+
+  // Le timeout a BIEN eu lieu — c'est l'événement gateway qui le dit. L'absence
+  // d'entrée d'audit ne retire que l'auteur et la raison : le log part, avec
+  // `who` à « inconnu », et le motif est journalisé. Une lecture d'Audit Log
+  // impossible (permission, rate limit) est déjà signalée par
+  // `AUDIT_LOG_READ_FAILED` dans `auditLogCache.js`.
+  if (!actor.matched) {
+    logger.warn("Member timeout could not be correlated to the audit log", {
+      event: "LOG_TIMEOUT_UNRESOLVED",
+      guildId: guild.id,
+      memberId: event.memberId,
+      action,
+      reason: "NO_MATCHING_ENTRY",
+    });
+  }
 
   // Durée : différence entre l'échéance du timeout (celle de CET événement) et
   // l'instant présent, uniquement lorsque le membre vient d'être timeouté.
