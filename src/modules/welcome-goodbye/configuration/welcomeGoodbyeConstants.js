@@ -14,5 +14,10 @@ const WelcomeGoodbyeLogType = Object.freeze({ WELCOME_SENT:"WELCOME_SENT", WELCO
 // Free (PREMIUM_REQUIRED) ni une panne de backend (ENTITLEMENT_UNAVAILABLE),
 // et les journaux doivent permettre de distinguer les trois.
 const WelcomeCardSkipReason = Object.freeze({ IMAGE_DISABLED: "WELCOME_IMAGE_DISABLED" });
-const PlaceholderName = Object.freeze({ USER:"user", MENTION:"mention", USERNAME:"username", DISPLAY_NAME:"displayname", USER_ID:"userid", SERVER:"server", MEMBER_COUNT:"membercount", JOIN_DATE:"joindate" });
+// PHASE 2 (B2/B3) — les noms canoniques restent en minuscules (compatibilité
+// avec les messages déjà enregistrés en base), mais le renderer compare désormais
+// SANS tenir compte de la casse : `{memberCount}` et `{membercount}` résolvent
+// tous les deux. `ACCOUNT_AGE`, `DATE` et `TIME` étaient calculés par
+// l'adaptateur sans aucun provider correspondant : ils restaient littéraux.
+const PlaceholderName = Object.freeze({ USER:"user", MENTION:"mention", USERNAME:"username", DISPLAY_NAME:"displayname", USER_ID:"userid", SERVER:"server", MEMBER_COUNT:"membercount", JOIN_DATE:"joindate", ACCOUNT_AGE:"accountage", DATE:"date", TIME:"time" });
 module.exports = { WelcomeGoodbyeConfigKey, WelcomeGoodbyeComponentId, WelcomeGoodbyeEvent, WelcomeGoodbyeLogType, WelcomeCardSkipReason, PlaceholderName };

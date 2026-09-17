@@ -3,6 +3,10 @@ const { normalizeWelcomeDeliveryError } = require("./WelcomeDeliveryError");
 const { buildWelcomeCardRequest } = require("../image/pipeline/buildWelcomeCardRequest");
 const { EntitlementDecision, EntitlementFeature } = require("../../../core/entitlements");
 const { WelcomeGoodbyeConfigKey: Key, WelcomeGoodbyeLogType: LogType, WelcomeCardSkipReason: SkipReason } = require("../configuration/welcomeGoodbyeConstants");
+// PHASE 2 (B5/B6) — défauts localisés et chemin de rendu unique. La logique
+// Premium (carte Welcome) ci-dessous n'est PAS modifiée.
+const { resolveConfiguredMessage, resolveWelcomeDmMessage } = require("../configuration/welcomeGoodbyeDefaults");
+const { renderDeliveryPayload } = require("./welcomePayload");
 const DEFAULT_TEMPLATE_ID = "template-1";
 class WelcomeDeliveryService {
   // Phase 2 (P6) — `entitlementService` rejoint la composition. Il reste
@@ -10,14 +14,28 @@ class WelcomeDeliveryService {
   // traitée comme un backend indisponible (fail-closed) : sans preuve
   // d'entitlement, la carte Premium n'est pas générée.
   constructor({renderer,logService=null,imagePipeline=null,templateRegistry=null,entitlementService=null}){this.renderer=renderer;this.logService=logService;this.imagePipeline=imagePipeline;this.templateRegistry=templateRegistry;this.entitlementService=entitlementService;}
-  async welcome(member,config,transport){return this.#deliver(member,config,transport,{enabled:Key.WELCOME_ENABLED,channel:Key.WELCOME_CHANNEL,message:Key.WELCOME_MESSAGE,embed:Key.WELCOME_EMBED,color:Key.WELCOME_COLOR,type:LogType.WELCOME_SENT,image:true});}
-  async goodbye(member,config,transport,options={}){return this.#deliver(member,config,transport,{enabled:Key.GOODBYE_ENABLED,channel:Key.GOODBYE_CHANNEL,message:Key.GOODBYE_MESSAGE,embed:Key.GOODBYE_EMBED,color:Key.GOODBYE_COLOR,type:LogType.GOODBYE_SENT,image:false},options);}
-  async dm(member,config,transport){if(!config[Key.WELCOME_DM])return null;const content=this.renderer.render(config[Key.WELCOME_DM_MESSAGE]||config[Key.WELCOME_MESSAGE],member);try{await transport.sendDirectMessage(member.userId,{content});return this.logService?.delivery({type:LogType.WELCOME_DM_SENT,guildId:member.guildId})||{type:LogType.WELCOME_DM_SENT};}catch(error){this.logService?.failure({type:LogType.DELIVERY_UNAVAILABLE,guildId:member.guildId,reason:error.message});throw normalizeWelcomeDeliveryError(error,{guildId:member.guildId});}}
-  async #deliver(member,config,transport,definition,{dryRun=false}={}){if(!config[definition.enabled])return null;const content=this.renderer.render(config[definition.message],member);const payload={content,embed:config[definition.embed]?{color:config[definition.color],description:content}:null};if(dryRun)return payload;
+  async welcome(member,config,transport,options={}){return this.#deliver(member,config,transport,{enabled:Key.WELCOME_ENABLED,channel:Key.WELCOME_CHANNEL,message:Key.WELCOME_MESSAGE,embed:Key.WELCOME_EMBED,color:Key.WELCOME_COLOR,type:LogType.WELCOME_SENT,kind:"welcome",image:true},options);}
+  async goodbye(member,config,transport,options={}){return this.#deliver(member,config,transport,{enabled:Key.GOODBYE_ENABLED,channel:Key.GOODBYE_CHANNEL,message:Key.GOODBYE_MESSAGE,embed:Key.GOODBYE_EMBED,color:Key.GOODBYE_COLOR,type:LogType.GOODBYE_SENT,kind:"goodbye",image:false},options);}
+  // PHASE 2 (B6) — le DM n'est JAMAIS envoyé vide : message DM configuré, sinon
+  // message Welcome configuré, sinon défaut dans la langue de la guilde. Un
+  // contenu absent ou vide ne peut donc plus empêcher la tentative de DM.
+  async dm(member,config,transport){
+    if(!config[Key.WELCOME_DM])return null;
+    const message=resolveWelcomeDmMessage(config);
+    const content=this.renderer.render(message,member);
+    try{await transport.sendDirectMessage(member.userId,{content});return this.logService?.delivery({type:LogType.WELCOME_DM_SENT,guildId:member.guildId})||{type:LogType.WELCOME_DM_SENT};}catch(error){this.logService?.failure({type:LogType.DELIVERY_UNAVAILABLE,guildId:member.guildId,reason:error.reason||error.message});throw normalizeWelcomeDeliveryError(error,{guildId:member.guildId});}
+  }
+  // PHASE 2 (B5/B6) — le payload est produit par le chemin de rendu UNIQUE
+  // (`welcomePayload`), le même que celui des aperçus et des boutons de test.
+  async #deliver(member,config,transport,definition,{dryRun=false}={}){
+    if(!config[definition.enabled])return null;
+    const message=resolveConfiguredMessage(config,definition.message,definition.kind);
+    const payload=renderDeliveryPayload({renderer:this.renderer,message,context:member,embedEnabled:Boolean(config[definition.embed]),color:config[definition.color]});
+    if(dryRun)return payload;
     // Card attachment: Welcome only, never Goodbye. Card generation failures
     // must never block the text/embed delivery.
-    if(definition.image===true){const files=await this.#buildCardFiles(member,config,content);if(files)payload.files=files;}
-    try{const result=await transport.sendChannelMessage(config[definition.channel],payload);return this.logService?.delivery({type:definition.type,guildId:member.guildId})||result;}catch(error){this.logService?.failure({type:LogType.DELIVERY_UNAVAILABLE,guildId:member.guildId,reason:error.message});throw normalizeWelcomeDeliveryError(error,{guildId:member.guildId});}}
+    if(definition.image===true){const files=await this.#buildCardFiles(member,config,payload.content);if(files)payload.files=files;}
+    try{const result=await transport.sendChannelMessage(config[definition.channel],payload);return this.logService?.delivery({type:definition.type,guildId:member.guildId})||result;}catch(error){this.logService?.failure({type:LogType.DELIVERY_UNAVAILABLE,guildId:member.guildId,reason:error.reason||error.message});throw normalizeWelcomeDeliveryError(error,{guildId:member.guildId});}}
   // Phase 2 (P6) — niveau réel de contrôle : la carte Welcome est une
   // fonctionnalité Premium (WELCOME_IMAGE). Le bouton d'aperçu était déjà
   // gardé (register.js), mais la LIVRAISON à chaque arrivée de membre ne
