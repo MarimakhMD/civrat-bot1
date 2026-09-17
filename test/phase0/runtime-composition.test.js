@@ -30,8 +30,12 @@ const KNOWN_PERMISSIONS = new Set(Object.values(PermissionName));
 // ─────────────────────────────────────────────────────────────────────────────
 const EXPECTED_EVENT_COUNT = 22;
 const EXPECTED_MODULE_COMMAND_COUNT = 21;
+// PHASE 2 (UI-2) — BUTTON passe de 131 à 132 : ajout du contrôle
+// `civrat:v1:welcome-goodbye:toggle-welcome-image`, qui expose dans le menu
+// Welcome le toggle `welcome_image_enabled` déjà géré par le backend. Aucun
+// autre type de route n'est modifié (SELECT_MENU et MODAL inchangés).
 const EXPECTED_ROUTE_COUNTS = Object.freeze({
-  [InteractionKind.BUTTON]: 131,
+  [InteractionKind.BUTTON]: 132,
   [InteractionKind.SELECT_MENU]: 21,
   [InteractionKind.MODAL]: 27,
 });

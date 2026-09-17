@@ -23,11 +23,18 @@ function settingsView({ t }) {
   };
 }
 
-// Sous-vue Welcome : 12 contrôles + retour à la section (5 lignes max).
+// Sous-vue Welcome : 13 contrôles + retour à la section (5 lignes max).
+//
+// Placement du toggle Image Welcome : le transport regroupe les boutons
+// consécutifs par lignes de 5 et isole chaque select dans sa ligne. Avec 10
+// boutons puis 2 selects, la vue occupait déjà exactement 5 lignes. Le toggle
+// est donc placé APRÈS les deux selects, où il partage la dernière ligne avec
+// « Retour » — ajouter un 11e bouton au bloc initial aurait produit 6 lignes et
+// fait échouer le rendu.
 function welcomeView({ t, config }) {
   return {
     title: t(Key.TITLE),
-    content: t("welcomeGoodbye.welcomeSection"),
+    content: `${t("welcomeGoodbye.welcomeSection")}\n${t("welcomeGoodbye.welcomeImagePremiumNotice")}`,
     components: [
       button(Id.TOGGLE_WELCOME, t(config.welcome_enabled ? "welcomeGoodbye.disableWelcome" : "welcomeGoodbye.enableWelcome"), config.welcome_enabled ? "success" : "secondary"),
       button(Id.WELCOME_MESSAGE, t("welcomeGoodbye.welcomeMessage"), "secondary"),
@@ -41,6 +48,11 @@ function welcomeView({ t, config }) {
       button(Id.TEST_WELCOME, t("welcomeGoodbye.testWelcome"), "primary"),
       { type: "channel-select", customId: Id.WELCOME_CHANNEL, placeholder: t(Key.WELCOME_CHANNEL), channelTypes: [0] },
       { type: "select", customId: Id.TEMPLATE_SELECT, placeholder: t("welcomeGoodbye.selectTemplate"), options: [{ value: "template-1", label: t("welcomeGoodbye.templateBlue") }, { value: "template-2", label: t("welcomeGoodbye.templateViolet") }, { value: "template-3", label: t("welcomeGoodbye.templateRed") }] },
+      // Contrôle UI de `welcome_image_enabled` : libellé selon l'état RÉEL
+      // persisté, comparaison stricte à `true` (fail-closed, même règle que la
+      // livraison et l'aperçu). La vérification Premium reste appliquée à
+      // l'activation par toggleWelcomeImage — le bouton ne la contourne jamais.
+      button(Id.TOGGLE_WELCOME_IMAGE, t(config.welcome_image_enabled === true ? "welcomeGoodbye.disableWelcomeImage" : "welcomeGoodbye.enableWelcomeImage"), config.welcome_image_enabled === true ? "success" : "secondary"),
       button(Id.SECTION, t("welcomeGoodbye.back"), "secondary"),
     ],
   };

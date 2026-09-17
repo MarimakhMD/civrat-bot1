@@ -118,7 +118,19 @@ function createGuildSettingsRuntime({ legacyConfigService, logger = null }) {
     logger,
   });
   const errorResponder = new ErrorResponder({ logger });
-  const contextFactory = new InteractionContextFactory({ guildConfigResolver, i18n, permissions, errorResponder, logger });
+  // PHASE 2 (UI-1) — le constructeur de InteractionContextFactory déstructure
+  // `configResolver` ; la composition passait `guildConfigResolver`, donc
+  // `this.configResolver` restait null. Conséquence silencieuse (aucune erreur) :
+  // resolveConfiguration() court-circuitait sur `{ config: {} }`, d'où
+  //   • `context.config.language` toujours undefined ⇒ la locale retombait sur
+  //     celle du client Discord : un serveur persisté en "en" affichait le
+  //     panneau Welcome/Goodbye en français ;
+  //   • `context.config` vide pour les modales (message, MP, couleur d'embed)
+  //     qui pré-remplissaient donc des valeurs par défaut au lieu des valeurs
+  //     enregistrées ;
+  //   • le fail-closed BackendUnavailableError déjà testé n'était jamais armé.
+  // Le nom de la variable locale est conservé, seule la clé passée change.
+  const contextFactory = new InteractionContextFactory({ configResolver: guildConfigResolver, i18n, permissions, errorResponder, logger });
   const registry = new InteractionRegistry(); const router = new InteractionRouter({ registry, contextFactory, logger });
   const entitlementService = getEntitlementService();
   const configurationReader = typeof legacyConfigService.getGuildConfigState === "function"

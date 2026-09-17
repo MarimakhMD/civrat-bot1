@@ -14,6 +14,7 @@ const { openGoodbyeMessageModal, submitGoodbyeMessage } = require("./interaction
 const { toggleWelcomeEmbed, previewWelcomeEmbed } = require("./interactions/configureWelcomeEmbed");
 const { openWelcomeEmbedColorModal, submitWelcomeEmbedColor } = require("./interactions/welcomeEmbedColorModal");
 const { toggleWelcomeDm } = require("./interactions/configureWelcomeDm");
+const { toggleWelcomeImage } = require("./interactions/configureWelcomeImage");
 const { openWelcomeDmMessageModal, submitWelcomeDmMessage } = require("./interactions/welcomeDmMessageModal");
 const { testWelcome } = require("./interactions/testWelcome");
 const { testWelcomeDm } = require("./interactions/testWelcomeDm");
@@ -59,6 +60,12 @@ function registerWelcomeGoodbye({registry,service,adminLogService=null,settingsH
   registry.registerModal({customId:Id.WELCOME_EMBED_COLOR,permissions,execute:async c=>{const config=await submitWelcomeEmbedColor({...c,settings:service,envelope:{...c.envelope,fields:c.envelope.modalValues}});log(WelcomeAdminAction.EMBED_COLOR_CHANGED,c);return config;}});
   registry.registerButton({customId:Id.PREVIEW_WELCOME_EMBED,permissions,execute:async c=>previewWelcomeEmbed({...c,settings:service})});
   registry.registerButton({customId:Id.TOGGLE_WELCOME_DM,permissions,execute:async c=>{const config=await toggleWelcomeDm({...c,settings:service});log(config[Key.WELCOME_DM]?WelcomeAdminAction.DM_ENABLED:WelcomeAdminAction.DM_DISABLED,c);return config;}});
+  // PHASE 2 (UI-2) — contrôle UI de `welcome_image_enabled`. La gate Premium
+  // reste appliquée à l'activation PAR toggleWelcomeImage (aucun contournement) :
+  // en cas de refus, aucune écriture n'a lieu et la fonction renvoie la réponse
+  // d'erreur Premium au lieu d'une config — d'où le test `in result` avant de
+  // journaliser, pour ne pas tracer une désactivation qui n'a pas eu lieu.
+  registry.registerButton({customId:Id.TOGGLE_WELCOME_IMAGE,permissions,execute:async c=>{const result=await toggleWelcomeImage({...c,settings:service,entitlementService});if(result&&typeof result==="object"&&Key.WELCOME_IMAGE_ENABLED in result){log(result[Key.WELCOME_IMAGE_ENABLED]===true?WelcomeAdminAction.IMAGE_ENABLED:WelcomeAdminAction.IMAGE_DISABLED,c);}return result;}});
   registry.registerButton({customId:Id.WELCOME_DM_MESSAGE,permissions,execute:async c=>openWelcomeDmMessageModal({...c,settings:service,config:await service.get(c.guildId)})});
   registry.registerModal({customId:Id.WELCOME_DM_MESSAGE,permissions,execute:async c=>{const config=await submitWelcomeDmMessage({...c,settings:service,envelope:{...c.envelope,fields:c.envelope.modalValues}});log(WelcomeAdminAction.DM_MESSAGE_CHANGED,c);return config;}});
   registry.registerButton({customId:Id.TEST_WELCOME_DM,permissions,execute:async c=>testWelcomeDm({...c,settings:service,adminLogService})});
