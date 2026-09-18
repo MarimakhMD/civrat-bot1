@@ -52,6 +52,13 @@ class DiscordInteractionAdapter {
       channelId: interaction.channelId || interaction.channel?.id || null,
       userId: interaction.user?.id || null,
       locale: interaction.locale || interaction.guildLocale || interaction.guild?.preferredLocale || null,
+      // Limite de pièce jointe DU SERVEUR, fournie par l'API Discord
+      // (`attachment_size_limit`). Elle dépend du niveau de boost : toute taille
+      // maximale codée en dur serait fausse sur une partie des guildes. Les
+      // modules qui acceptent un téléversement doivent lire cette valeur.
+      attachmentSizeLimit: Number.isFinite(Number(interaction.attachmentSizeLimit))
+        ? Number(interaction.attachmentSizeLimit)
+        : null,
       member: createDiscordMemberCapability(interaction.member, interaction.guild?.ownerId),
       discordMember: interaction.member,
       discordChannel: interaction.channel,

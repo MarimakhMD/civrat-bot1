@@ -11,5 +11,9 @@ const WelcomeGoodbyeConfigSchema = Object.freeze({
   // 4E/E2 — boolean strict : la validation refuse toute valeur non booléenne,
   // donc ni "true" (chaîne) ni 1 ne peuvent activer l'image.
   [Key.WELCOME_IMAGE_ENABLED]: { type: "boolean" },
+  // Image Welcome personnalisée (Premium) : clé d'objet Supabase Storage,
+  // de la forme `{guildId}/welcome.png`. Nullable : `null` signifie « aucune
+  // image personnalisée », et la livraison retombe sur le template choisi.
+  [Key.WELCOME_IMAGE_KEY]: { type: "welcome-image-key", nullable: true },
 });
 module.exports = { WelcomeGoodbyeConfigSchema };

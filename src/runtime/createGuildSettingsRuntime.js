@@ -45,6 +45,7 @@ const { WelcomeTemplateRegistry } = require("../modules/welcome-goodbye/renderin
 const { WelcomeResourceCache } = require("../modules/welcome-goodbye/rendering/WelcomeResourceCache");
 const imageTheme = require("../modules/welcome-goodbye/image/themes/civrat-default/theme");
 const { WelcomeAdminLogService } = require("../modules/welcome-goodbye/services/WelcomeAdminLogService");
+const { createWelcomeImageStorage } = require("../modules/welcome-goodbye/runtime/createWelcomeImageStorage");
 const { returnSettingsHome } = require("../modules/guild-settings/interactions/openSettingsPanel");
 const en = require("../modules/guild-settings/translations/en.json");
 const fr = require("../modules/guild-settings/translations/fr.json");
@@ -118,7 +119,19 @@ function createGuildSettingsRuntime({ legacyConfigService, logger = null }) {
     logger,
   });
   const errorResponder = new ErrorResponder({ logger });
-  const contextFactory = new InteractionContextFactory({ guildConfigResolver, i18n, permissions, errorResponder, logger });
+  // PHASE 2 (UI-1) — le constructeur de InteractionContextFactory déstructure
+  // `configResolver` ; la composition passait `guildConfigResolver`, donc
+  // `this.configResolver` restait null. Conséquence silencieuse (aucune erreur) :
+  // resolveConfiguration() court-circuitait sur `{ config: {} }`, d'où
+  //   • `context.config.language` toujours undefined ⇒ la locale retombait sur
+  //     celle du client Discord : un serveur persisté en "en" affichait le
+  //     panneau Welcome/Goodbye en français ;
+  //   • `context.config` vide pour les modales (message, MP, couleur d'embed)
+  //     qui pré-remplissaient donc des valeurs par défaut au lieu des valeurs
+  //     enregistrées ;
+  //   • le fail-closed BackendUnavailableError déjà testé n'était jamais armé.
+  // Le nom de la variable locale est conservé, seule la clé passée change.
+  const contextFactory = new InteractionContextFactory({ configResolver: guildConfigResolver, i18n, permissions, errorResponder, logger });
   const registry = new InteractionRegistry(); const router = new InteractionRouter({ registry, contextFactory, logger });
   const entitlementService = getEntitlementService();
   const configurationReader = typeof legacyConfigService.getGuildConfigState === "function"
@@ -240,13 +253,19 @@ function createGuildSettingsRuntime({ legacyConfigService, logger = null }) {
     }),
     settingsHome,
   });
-  registerWelcomeGoodbye({
+  // Image Welcome personnalisée (Premium) : le panneau d'administration et la
+  // livraison utilisent le MÊME bucket et la même résolution, donc l'aperçu ne
+  // peut pas différer de la carte réellement envoyée.
+  const welcomeImageStorage = createWelcomeImageStorage({ logger });
+  const welcomeGoodbyeRegistration = registerWelcomeGoodbye({
     imagePipeline,
     templateRegistry: welcomeTemplateRegistry,
     settingsHome,
     registry,
     service: new WelcomeGoodbyeService({ guildConfigResolver }),
     adminLogService: new WelcomeAdminLogService({ logger }),
+    imageStore: welcomeImageStorage.imageStore,
+    resourceCache: welcomeImageStorage.resourceCache,
     // Phase Premium — gate centralisée : l'aperçu de la carte Welcome image
     // exige l'entitlement WELCOME_IMAGE (le service est partagé avec le
     // panneau Tickets/Admin, une seule source de vérité Premium).
@@ -278,6 +297,7 @@ function createGuildSettingsRuntime({ legacyConfigService, logger = null }) {
   const discord = new DiscordInteractionAdapter({ router, registry });
   const commandDefinitions = [
     ...registration.commands,
+    ...welcomeGoodbyeRegistration.commands,
     ...moderationRegistration.commands,
     ...channelModerationRegistration.commands,
     ...autoModRegistration.commands,

@@ -35,7 +35,7 @@ test("full runtime keeps Recovery logic without exposing a /recovery command", (
   const names = runtime.getDiscordCommands().map((command) => command.data.name);
   assert.equal(names.includes("recovery"), false);
   assert.ok(names.includes("admin"));
-  assert.equal(names.length, 21, "20 normal modular commands + /admin");
+  assert.equal(names.length, 22, "21 normal modular commands + /admin");
   assert.equal(new Set(names).size, names.length, "aucune duplique");
 });
 

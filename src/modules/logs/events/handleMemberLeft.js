@@ -2,6 +2,7 @@
 
 const { memberDisplayLabel, accountCreatedAt, avatarUrl } = require("../services/logLabels");
 const { localizeTitle } = require("../services/logTitles");
+const { resolveLanguage } = require("../services/logLanguage");
 
 async function handleMemberLeft({ member, config, mapper, service, delivery }) {
   if (!config.logs_enabled) return null;
@@ -22,7 +23,11 @@ async function handleMemberLeft({ member, config, mapper, service, delivery }) {
   const entry = mapper.map({
     guildId: member.guild.id,
     channelKey: "log_member_leave_channel_id",
-    category: "members",
+    // PHASE 1 — catégorie alignée sur la clé de salon. Elle valait « members »,
+    // donc un échec de livraison de ce log orientait l'administrateur vers le
+    // réglage du salon d'ARRIVÉE au lieu de celui des départs.
+    category: "members_leave",
+    language: resolveLanguage(config),
     action: "member_left",
     title: localizeTitle(config, "logs.memberLeft"),
     details,
