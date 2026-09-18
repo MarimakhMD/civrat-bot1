@@ -16,10 +16,10 @@ const EXPECTED_COMMANDS = [
   "admin", "analytics", "analytics_invites", "analytics_xp", "automod", "bannir",
   "captcha", "debannir", "deverrouiller", "expulser", "giveaway", "invites",
   "mute", "pseudo", "settings", "slowmode", "suggest", "supprimer", "ticketpanel",
-  "unmute", "uploadsticker", "verrouiller", "warn",
+  "unmute", "uploadsticker", "verrouiller", "warn", "welcomeimage",
 ];
 
-test("loadCommands loads exactly 22 global commands plus /admin, each once", () => {
+test("loadCommands loads exactly 23 global commands plus /admin, each once", () => {
   const loaded = commandHandler.loadCommands();
   const names = [...loaded.keys()].sort();
   assert.deepEqual(names, EXPECTED_COMMANDS);

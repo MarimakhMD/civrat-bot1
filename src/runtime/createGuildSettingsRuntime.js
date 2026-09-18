@@ -45,6 +45,7 @@ const { WelcomeTemplateRegistry } = require("../modules/welcome-goodbye/renderin
 const { WelcomeResourceCache } = require("../modules/welcome-goodbye/rendering/WelcomeResourceCache");
 const imageTheme = require("../modules/welcome-goodbye/image/themes/civrat-default/theme");
 const { WelcomeAdminLogService } = require("../modules/welcome-goodbye/services/WelcomeAdminLogService");
+const { createWelcomeImageStorage } = require("../modules/welcome-goodbye/runtime/createWelcomeImageStorage");
 const { returnSettingsHome } = require("../modules/guild-settings/interactions/openSettingsPanel");
 const en = require("../modules/guild-settings/translations/en.json");
 const fr = require("../modules/guild-settings/translations/fr.json");
@@ -252,13 +253,19 @@ function createGuildSettingsRuntime({ legacyConfigService, logger = null }) {
     }),
     settingsHome,
   });
-  registerWelcomeGoodbye({
+  // Image Welcome personnalisée (Premium) : le panneau d'administration et la
+  // livraison utilisent le MÊME bucket et la même résolution, donc l'aperçu ne
+  // peut pas différer de la carte réellement envoyée.
+  const welcomeImageStorage = createWelcomeImageStorage({ logger });
+  const welcomeGoodbyeRegistration = registerWelcomeGoodbye({
     imagePipeline,
     templateRegistry: welcomeTemplateRegistry,
     settingsHome,
     registry,
     service: new WelcomeGoodbyeService({ guildConfigResolver }),
     adminLogService: new WelcomeAdminLogService({ logger }),
+    imageStore: welcomeImageStorage.imageStore,
+    resourceCache: welcomeImageStorage.resourceCache,
     // Phase Premium — gate centralisée : l'aperçu de la carte Welcome image
     // exige l'entitlement WELCOME_IMAGE (le service est partagé avec le
     // panneau Tickets/Admin, une seule source de vérité Premium).
@@ -290,6 +297,7 @@ function createGuildSettingsRuntime({ legacyConfigService, logger = null }) {
   const discord = new DiscordInteractionAdapter({ router, registry });
   const commandDefinitions = [
     ...registration.commands,
+    ...welcomeGoodbyeRegistration.commands,
     ...moderationRegistration.commands,
     ...channelModerationRegistration.commands,
     ...autoModRegistration.commands,

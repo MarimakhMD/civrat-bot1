@@ -72,6 +72,27 @@
   "goodbyeSection": "Goodbye configuration: channel, message and embed.",
   "enableWelcomeImage": "Enable Welcome Image",
   "disableWelcomeImage": "Disable Welcome Image",
-  "welcomeImagePremiumNotice": "🖼️ The Welcome image is a Premium feature: it is only displayed when the entitlement is granted to this server."
+  "welcomeImagePremiumNotice": "🖼️ The Welcome image is a Premium feature: it is only displayed when the entitlement is granted to this server.",
+  "welcomeImageMenu": "Welcome Image",
+  "welcomeImageTitle": "🖼️ Welcome Image",
+  "welcomeImageNone": "No custom image: the selected template is used.",
+  "welcomeImageActive": "Custom image active: it replaces the template background.",
+  "welcomeImageToggleOffWarning": "⚠️ The Welcome image is disabled: enable it for the image to be used.",
+  "welcomeImageChoose": "Choose an image",
+  "welcomeImageReplace": "Replace",
+  "welcomeImageRemove": "Delete",
+  "welcomeImagePreview": "Preview",
+  "welcomeImageRemoved": "The custom Welcome image has been deleted.",
+  "welcomeImageUploadPrompt": "📎 Use {{command}} and attach your file.\nAccepted formats: {{formats}} · maximum size on this server: {{limit}} MB.\nThe image will be cropped to fill the card.",
+  "welcomeImageUploadPromptNoLimit": "📎 Use {{command}} and attach your file.\nAccepted formats: {{formats}}.\nThe image will be cropped to fill the card.",
+  "welcomeImageUploaded": "Welcome image saved. Here is the actual card rendering.",
+  "welcomeImageStorageUnavailable": "Image storage is unavailable. Please try again later.",
+  "welcomeImageRejectMissing": "No image was attached to the command.",
+  "welcomeImageRejectFormat": "Unsupported format. Accepted formats: {{formats}}.",
+  "welcomeImageRejectEmpty": "The attached file is empty.",
+  "welcomeImageRejectTooLarge": "File too large: this server’s limit is {{limit}} MB.",
+  "welcomeImageRejectFetch": "Downloading the image failed. Please try again.",
+  "welcomeImageRejectNotAnImage": "This file is not a valid image.",
+  "welcomeImageRejectTooManyPixels": "The image dimensions are too large (maximum 4096 × 4096 pixels)."
  }
 }

@@ -2,7 +2,6 @@
 const {WelcomeGoodbyeService}=require("../modules/welcome-goodbye/services/WelcomeGoodbyeService");
 const {WelcomeGoodbyeLogService}=require("../modules/welcome-goodbye/services/WelcomeGoodbyeLogService");
 const {WelcomeTemplateRegistry}=require("../modules/welcome-goodbye/rendering/WelcomeTemplateRegistry");
-const {WelcomeResourceCache}=require("../modules/welcome-goodbye/rendering/WelcomeResourceCache");
 const {WelcomeImageRenderer}=require("../modules/welcome-goodbye/image/rendering/WelcomeImageRenderer");
 const {WelcomeImagePipeline}=require("../modules/welcome-goodbye/image/pipeline/WelcomeImagePipeline");
 const {WelcomeDeliveryService}=require("../modules/welcome-goodbye/services/WelcomeDeliveryService");
@@ -12,6 +11,7 @@ const {adaptGuildMember}=require("../adapters/discord/DiscordGuildMemberAdapter"
 const {DiscordWelcomeGoodbyeTransport}=require("../adapters/discord/DiscordWelcomeGoodbyeTransport");
 // PHASE 2 — renderer unique (B5) et langue de la guilde (B7).
 const {createWelcomeRenderer}=require("../modules/welcome-goodbye/services/welcomePayload");
+const {createWelcomeImageStorage}=require("../modules/welcome-goodbye/runtime/createWelcomeImageStorage");
 const {resolveWelcomeGoodbyeLanguage}=require("../modules/welcome-goodbye/configuration/welcomeGoodbyeDefaults");
 
 function createWelcomeGoodbyeRuntime({guildConfigResolver,logger=null,entitlementService=null}){
@@ -30,9 +30,13 @@ function createWelcomeGoodbyeRuntime({guildConfigResolver,logger=null,entitlemen
   const logService=new WelcomeGoodbyeLogService({logger});
   const templateRegistry=new WelcomeTemplateRegistry();
   templateRegistry.discover();
-  const imageRenderer=new WelcomeImageRenderer({resourceCache:new WelcomeResourceCache()});
+  // Image Welcome personnalisée (Premium) : bucket Supabase Storage privé.
+  // Hors ligne / sans credentials, `imageStore.available` est faux et la
+  // livraison retombe sur le template standard (fail-closed).
+  const {imageStore:welcomeImageStore,resourceCache:welcomeImageCache}=createWelcomeImageStorage({logger});
+  const imageRenderer=new WelcomeImageRenderer({resourceCache:welcomeImageCache});
   const imagePipeline=new WelcomeImagePipeline({renderer:imageRenderer,logService});
-  const delivery=new WelcomeDeliveryService({renderer:createWelcomeRenderer(),logService,imagePipeline,templateRegistry,entitlementService:entitlement});
+  const delivery=new WelcomeDeliveryService({renderer:createWelcomeRenderer(),logService,imagePipeline,templateRegistry,entitlementService:entitlement,imageStore:welcomeImageStore,resourceCache:welcomeImageCache,logger});
 
   // PHASE 2 (B7/B10) — la configuration est lue UNE fois ici : elle fournit la
   // langue de la guilde, qui pilote le format des dates (`{joinDate}`,

@@ -72,6 +72,27 @@
   "goodbyeSection": "Configuration Goodbye : salon, message et embed.",
   "enableWelcomeImage": "Activer Image Welcome",
   "disableWelcomeImage": "Désactiver Image Welcome",
-  "welcomeImagePremiumNotice": "🖼️ L’image Welcome est une fonctionnalité Premium : elle n’est affichée que si l’entitlement est accordé au serveur."
+  "welcomeImagePremiumNotice": "🖼️ L’image Welcome est une fonctionnalité Premium : elle n’est affichée que si l’entitlement est accordé au serveur.",
+  "welcomeImageMenu": "Image Welcome",
+  "welcomeImageTitle": "🖼️ Image Welcome",
+  "welcomeImageNone": "Aucune image personnalisée : le template sélectionné est utilisé.",
+  "welcomeImageActive": "Image personnalisée active : elle remplace le fond du template.",
+  "welcomeImageToggleOffWarning": "⚠️ L’image Welcome est désactivée : activez-la pour qu’elle soit utilisée.",
+  "welcomeImageChoose": "Choisir une image",
+  "welcomeImageReplace": "Remplacer",
+  "welcomeImageRemove": "Supprimer",
+  "welcomeImagePreview": "Aperçu",
+  "welcomeImageRemoved": "L’image Welcome personnalisée a été supprimée.",
+  "welcomeImageUploadPrompt": "📎 Utilisez {{command}} en joignant votre fichier.\nFormats acceptés : {{formats}} · taille maximale sur ce serveur : {{limit}} Mo.\nL’image sera recadrée pour remplir la carte.",
+  "welcomeImageUploadPromptNoLimit": "📎 Utilisez {{command}} en joignant votre fichier.\nFormats acceptés : {{formats}}.\nL’image sera recadrée pour remplir la carte.",
+  "welcomeImageUploaded": "Image Welcome enregistrée. Voici le rendu réel de la carte.",
+  "welcomeImageStorageUnavailable": "Le stockage d’images est indisponible. Réessayez plus tard.",
+  "welcomeImageRejectMissing": "Aucune image n’a été jointe à la commande.",
+  "welcomeImageRejectFormat": "Format non pris en charge. Formats acceptés : {{formats}}.",
+  "welcomeImageRejectEmpty": "Le fichier joint est vide.",
+  "welcomeImageRejectTooLarge": "Fichier trop volumineux : la limite de ce serveur est {{limit}} Mo.",
+  "welcomeImageRejectFetch": "Le téléchargement de l’image a échoué. Réessayez.",
+  "welcomeImageRejectNotAnImage": "Ce fichier n’est pas une image valide.",
+  "welcomeImageRejectTooManyPixels": "Les dimensions de l’image sont trop grandes (maximum 4096 × 4096 pixels)."
  }
 }

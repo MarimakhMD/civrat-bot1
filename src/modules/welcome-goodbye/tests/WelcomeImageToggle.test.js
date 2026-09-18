@@ -314,8 +314,12 @@ test("4E/E2: le défaut est false, comme les autres toggles et comme la base", a
 test("4E/E2: aucune autre clé de config n'a été créée", async () => {
   const { WelcomeGoodbyeConfigKey: Key } = require("../configuration/welcomeGoodbyeConstants");
   const keys = Object.values(Key);
-  assert.equal(keys.length, 14, "13 clés historiques + welcome_image_enabled, rien d'autre");
+  // Image personnalisée (Premium) — 15 clés : 13 historiques + welcome_image_enabled
+  // + welcome_image_key (clé d'objet Supabase Storage, nullable). Toute clé
+  // supplémentaire doit faire échouer ce test.
+  assert.equal(keys.length, 15, "13 clés historiques + welcome_image_enabled + welcome_image_key, rien d'autre");
   assert.ok(keys.includes("welcome_image_enabled"));
+  assert.ok(keys.includes("welcome_image_key"));
   // Aucune clé inventée du type « enabled » en trop.
   const enabledKeys = keys.filter((k) => k.endsWith("_enabled"));
   assert.deepEqual(enabledKeys.sort(), [

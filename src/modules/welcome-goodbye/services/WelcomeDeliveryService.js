@@ -1,6 +1,7 @@
 "use strict";
 const { normalizeWelcomeDeliveryError } = require("./WelcomeDeliveryError");
 const { buildWelcomeCardRequest } = require("../image/pipeline/buildWelcomeCardRequest");
+const { resolveWelcomeImageTemplate } = require("./welcomeImageResource");
 const { EntitlementDecision, EntitlementFeature } = require("../../../core/entitlements");
 const { WelcomeGoodbyeConfigKey: Key, WelcomeGoodbyeLogType: LogType, WelcomeCardSkipReason: SkipReason } = require("../configuration/welcomeGoodbyeConstants");
 // PHASE 2 (B5/B6) — défauts localisés et chemin de rendu unique. La logique
@@ -13,7 +14,7 @@ class WelcomeDeliveryService {
   // optionnel pour ne casser aucun appelant existant, mais son ABSENCE est
   // traitée comme un backend indisponible (fail-closed) : sans preuve
   // d'entitlement, la carte Premium n'est pas générée.
-  constructor({renderer,logService=null,imagePipeline=null,templateRegistry=null,entitlementService=null}){this.renderer=renderer;this.logService=logService;this.imagePipeline=imagePipeline;this.templateRegistry=templateRegistry;this.entitlementService=entitlementService;}
+  constructor({renderer,logService=null,imagePipeline=null,templateRegistry=null,entitlementService=null,imageStore=null,resourceCache=null,logger=null}){this.renderer=renderer;this.logService=logService;this.imagePipeline=imagePipeline;this.templateRegistry=templateRegistry;this.entitlementService=entitlementService;this.imageStore=imageStore;this.resourceCache=resourceCache;this.logger=logger;}
   async welcome(member,config,transport,options={}){return this.#deliver(member,config,transport,{enabled:Key.WELCOME_ENABLED,channel:Key.WELCOME_CHANNEL,message:Key.WELCOME_MESSAGE,embed:Key.WELCOME_EMBED,color:Key.WELCOME_COLOR,type:LogType.WELCOME_SENT,kind:"welcome",image:true},options);}
   async goodbye(member,config,transport,options={}){return this.#deliver(member,config,transport,{enabled:Key.GOODBYE_ENABLED,channel:Key.GOODBYE_CHANNEL,message:Key.GOODBYE_MESSAGE,embed:Key.GOODBYE_EMBED,color:Key.GOODBYE_COLOR,type:LogType.GOODBYE_SENT,kind:"goodbye",image:false},options);}
   // PHASE 2 (B6) — le DM n'est JAMAIS envoyé vide : message DM configuré, sinon
@@ -82,7 +83,19 @@ class WelcomeDeliveryService {
       if(entitlement.code===EntitlementDecision.UNAVAILABLE)this.logService?.failure(event);else this.logService?.delivery(event);
       return null;
     }
-    const template=this.templateRegistry.get(config[Key.WELCOME_TEMPLATE])||this.templateRegistry.get(DEFAULT_TEMPLATE_ID);
+    const baseTemplate=this.templateRegistry.get(config[Key.WELCOME_TEMPLATE])||this.templateRegistry.get(DEFAULT_TEMPLATE_ID);
+    if(!baseTemplate?.design)return null;
+    // Image Welcome personnalisée (Premium) — résolue ICI, c'est-à-dire APRÈS
+    // les deux garde-fous ci-dessus (toggle puis entitlement). Elle est donc
+    // structurellement gated : aucune image ne peut être servie à une guilde
+    // Free, et les trois motifs WELCOME_IMAGE_DISABLED / PREMIUM_REQUIRED /
+    // ENTITLEMENT_UNAVAILABLE sont déjà émis en amont, inchangés.
+    //
+    // `resolveWelcomeImageTemplate` DÉRIVE un template sans jamais muter le
+    // registre global, et renvoie `baseTemplate` dès qu'un maillon manque
+    // (store indisponible, objet absent, clé d'une autre guilde, image
+    // illisible) : le Welcome n'est jamais bloqué par l'image personnalisée.
+    const template=await resolveWelcomeImageTemplate({baseTemplate,config,guildId:member.guildId,entitlement,imageStore:this.imageStore,resourceCache:this.resourceCache,logger:this.logger});
     if(!template?.design)return null;
     try{
       const request=buildWelcomeCardRequest({member,subtitleText,template});

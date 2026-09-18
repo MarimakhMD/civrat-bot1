@@ -67,12 +67,12 @@ test("PHASE0 — le plan de déploiement passe le préflight hors-ligne de deplo
   assert.deepEqual(validateDeploymentPlan(plan), []);
 });
 
-test("PHASE0 — 21 commandes modulaires + 2 adapters statiques", () => {
+test("PHASE0 — 22 commandes modulaires + 2 adapters statiques", () => {
   const moduleCommands = silence(() => {
     const { getDiscordModuleCommands } = require(path.join(ROOT, "src", "runtime", "registerModuleCommands"));
     return getDiscordModuleCommands().map((command) => command.data.name);
   });
-  assert.equal(moduleCommands.length, 21, `attendu 21 commandes modulaires, obtenu ${moduleCommands.length}`);
+  assert.equal(moduleCommands.length, 22, `attendu 22 commandes modulaires, obtenu ${moduleCommands.length}`);
   // Les deux adapters legacy de src/commands/ complètent le catalogue.
   for (const legacy of ["captcha", "ticketpanel"]) {
     assert.ok(loaded.has(legacy), `l'adapter legacy /${legacy} est absent du catalogue`);

@@ -53,6 +53,11 @@ function welcomeView({ t, config }) {
       // livraison et l'aperçu). La vérification Premium reste appliquée à
       // l'activation par toggleWelcomeImage — le bouton ne la contourne jamais.
       button(Id.TOGGLE_WELCOME_IMAGE, t(config.welcome_image_enabled === true ? "welcomeGoodbye.disableWelcomeImage" : "welcomeGoodbye.enableWelcomeImage"), config.welcome_image_enabled === true ? "success" : "secondary"),
+      // Entrée de la sous-vue « Image Welcome » (Premium). Placée dans la
+      // DERNIÈRE ligne, avec le toggle et « Retour » : la vue Welcome occupe
+      // déjà exactement 5 lignes d'action, et un bouton de plus dans le bloc
+      // initial en produirait une sixième — ce qui fait échouer le rendu.
+      button(Id.OPEN_WELCOME_IMAGE, t("welcomeGoodbye.welcomeImageMenu"), "primary"),
       button(Id.SECTION, t("welcomeGoodbye.back"), "secondary"),
     ],
   };

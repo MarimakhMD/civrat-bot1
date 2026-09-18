@@ -69,17 +69,41 @@ class WelcomeImageRenderer {
     return new WelcomeImagePayload({ buffer: canvas.toBuffer("image/png"), width, height });
   }
 
+  /**
+   * Recadrage « cover » : l'image remplit toute la carte, centrée, rognée si
+   * besoin. UN SEUL code de dessin pour l'asset du template et l'image
+   * personnalisée — les deux sources sont donc recadrées strictement à
+   * l'identique, ce qui est exigé pour que l'aperçu et la livraison concordent.
+   */
+  #drawCovered(ctx, image, width, height) {
+    const scale = Math.max(width / image.width, height / image.height);
+    const drawWidth = image.width * scale;
+    const drawHeight = image.height * scale;
+    ctx.drawImage(image, (width - drawWidth) / 2, (height - drawHeight) / 2, drawWidth, drawHeight);
+  }
+
   async #drawBackground(ctx, template, design, width, height) {
     const background = design.background || {};
+
+    // Image Welcome personnalisée (Premium) : déjà chargée en mémoire par le
+    // service de ressources, jamais lue depuis un chemin fourni par la config.
+    // Elle est prioritaire sur l'asset du template ; si elle est illisible, on
+    // retombe sur l'asset puis sur le dégradé déclaratif — le Welcome n'est
+    // jamais bloqué par une image invalide.
+    if (background.buffer) {
+      try {
+        this.#drawCovered(ctx, await loadImage(background.buffer), width, height);
+        return;
+      } catch {
+        // Buffer non décodable → on poursuit vers les sources suivantes.
+      }
+    }
+
     if (background.image && template.assetsPath) {
       try {
         const file = path.join(template.assetsPath, background.image);
         if (fs.existsSync(file)) {
-          const image = await loadImage(file);
-          const scale = Math.max(width / image.width, height / image.height);
-          const drawWidth = image.width * scale;
-          const drawHeight = image.height * scale;
-          ctx.drawImage(image, (width - drawWidth) / 2, (height - drawHeight) / 2, drawWidth, drawHeight);
+          this.#drawCovered(ctx, await loadImage(file), width, height);
           return;
         }
       } catch {

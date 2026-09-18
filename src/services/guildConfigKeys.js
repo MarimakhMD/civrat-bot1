@@ -170,6 +170,11 @@ const WELCOME_GOODBYE_KEYS = Object.freeze([
   // welcome_image_enabled boolean. Sans cette entrée, le rejet strict A1
   // (DCA2) refuserait toute écriture du toggle.
   "welcome_image_enabled",
+  // Image Welcome personnalisée (Premium) : clé d'objet dans le bucket privé
+  // civrat-welcome-images. La COLONNE doit exister dans guild_configs avant
+  // tout déploiement ; sans cette entrée, le rejet strict A1 (DCA2) refuserait
+  // l'écriture après l'upload.
+  "welcome_image_key",
   "goodbye_enabled",
   "goodbye_channel_id",
   "goodbye_message",

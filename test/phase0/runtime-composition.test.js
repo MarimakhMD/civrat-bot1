@@ -29,13 +29,16 @@ const KNOWN_PERMISSIONS = new Set(Object.values(PermissionName));
 // Instantanés de la composition (mesurés avant la Phase 0)
 // ─────────────────────────────────────────────────────────────────────────────
 const EXPECTED_EVENT_COUNT = 22;
-const EXPECTED_MODULE_COMMAND_COUNT = 21;
+// Image personnalisée (Premium) : 21 -> 22 avec la commande /welcomeimage.
+const EXPECTED_MODULE_COMMAND_COUNT = 22;
 // PHASE 2 (UI-2) — BUTTON passe de 131 à 132 : ajout du contrôle
 // `civrat:v1:welcome-goodbye:toggle-welcome-image`, qui expose dans le menu
 // Welcome le toggle `welcome_image_enabled` déjà géré par le backend. Aucun
 // autre type de route n'est modifié (SELECT_MENU et MODAL inchangés).
 const EXPECTED_ROUTE_COUNTS = Object.freeze({
-  [InteractionKind.BUTTON]: 132,
+  // Image personnalisée (Premium) : 132 -> 136, soit 4 contrôles de la
+  // sous-vue « Image Welcome » (entrée, aide d'upload, suppression, retour).
+  [InteractionKind.BUTTON]: 136,
   [InteractionKind.SELECT_MENU]: 21,
   [InteractionKind.MODAL]: 27,
 });
@@ -131,7 +134,7 @@ test("PHASE0 — la composition runtime aboutit sans lever", () => {
   assert.ok(runtime.registry, "le registre d'interactions est absent");
 });
 
-test("PHASE0 — le registre expose 21 commandes modulaires", () => {
+test("PHASE0 — le registre expose 22 commandes modulaires", () => {
   assert.equal(runtime.registry.commandRoutes.size, EXPECTED_MODULE_COMMAND_COUNT);
   assert.equal(silence(() => runtime.getDiscordCommands()).length, EXPECTED_MODULE_COMMAND_COUNT);
 });

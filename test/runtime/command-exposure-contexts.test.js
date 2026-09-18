@@ -13,6 +13,7 @@ const GUILD_ONLY_COMMANDS = [
   "analytics_xp", "analytics_invites", "invites", "suggest", "giveaway",
   "uploadsticker", "warn", "mute", "unmute", "bannir", "debannir",
   "expulser", "supprimer", "slowmode", "verrouiller", "deverrouiller", "pseudo",
+  "welcomeimage",
 ];
 
 const MODERATION_COMMANDS = [
@@ -39,14 +40,14 @@ function allCommands() {
   return { modularDefinitions, modular, legacy, all: [...modular, ...legacy] };
 }
 
-test("the full command set is exactly 22 normal commands plus /admin", () => {
+test("the full command set is exactly 23 normal commands plus /admin", () => {
   const { all } = allCommands();
-  assert.equal(all.length, 23, "23 commands expected");
-  assert.equal(new Set(all.map((command) => command.name)).size, 23, "no duplicate");
+  assert.equal(all.length, 24, "24 commands expected");
+  assert.equal(new Set(all.map((command) => command.name)).size, 24, "no duplicate");
   assert.equal(all.some(({ name }) => name === "ownerpanel" || name === "recovery"), false);
 });
 
-test("the 22 normal commands are guild-only (contexts = [0])", () => {
+test("the 23 normal commands are guild-only (contexts = [0])", () => {
   const { all } = allCommands();
   const byName = new Map(all.map((c) => [c.name, c]));
   for (const name of GUILD_ONLY_COMMANDS) {
@@ -103,8 +104,8 @@ test("all 11 moderation commands are still present", () => {
   }
 });
 
-test("the 21 modular commands are unique (plus two legacy commands)", () => {
+test("the 22 modular commands are unique (plus two legacy commands)", () => {
   const { modular } = allCommands();
-  assert.equal(modular.length, 21, "21 modular commands expected");
-  assert.equal(new Set(modular.map((command) => command.name)).size, 21, "no duplicate modular command");
+  assert.equal(modular.length, 22, "22 modular commands expected");
+  assert.equal(new Set(modular.map((command) => command.name)).size, 22, "no duplicate modular command");
 });
