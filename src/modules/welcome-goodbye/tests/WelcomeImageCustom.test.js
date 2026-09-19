@@ -543,11 +543,20 @@ function uploadContext({
   const transport = createTransportFake();
   const adminLogService = createAdminLogFake();
   const generated = [];
+  const logs = [];
+  const logger = {
+    info: (message, meta) => logs.push({ level: "info", message, ...meta }),
+    warn: (message, meta) => logs.push({ level: "warn", message, ...meta }),
+    error: (message, meta) => logs.push({ level: "error", message, ...meta }),
+    debug: (message, meta) => logs.push({ level: "debug", message, ...meta }),
+  };
   return {
     settings,
     transport,
     adminLogService,
     generated,
+    logs,
+    logger,
     t: (key) => key,
     guildId: GUILD_A,
     userId: "999999999999999999",
@@ -711,16 +720,26 @@ test("Upload — la limite de taille vient de l'interaction, jamais d'une consta
   assert.deepEqual(context.settings.updates, []);
 });
 
-test("Upload — un fichier qui n'est pas une image est refusé après téléchargement", async () => {
+test("Upload — le CDN renvoie 200 avec du HTML : CDN_UNEXPECTED_CONTENT, pas « fichier invalide »", async () => {
+  // Cas réel d'un hébergement qui filtre le CDN Discord : la réponse est 200
+  // mais le corps est une page d'erreur. L'ancien code accusait l'utilisateur
+  // (« Ce fichier n'est pas une image valide. ») en avalant la cause.
   const storage = createStorageFake();
   const context = uploadContext({ granted: true, storage, attachment: { contentType: "image/png", size: 512, url: "https://cdn/i.png" } });
 
-  const result = await withFetch(async () => ({ ok: true, arrayBuffer: async () => Buffer.from("ceci n'est pas une image").buffer }),
+  const result = await withFetch(async () => ({ ok: true, headers: { get: () => "text/html" }, arrayBuffer: async () => Buffer.from("<!doctype html><title>403 Forbidden</title>").buffer }),
     () => uploadWelcomeImage(context));
 
-  assert.equal(result.reason, WelcomeImageRejectReason.NOT_AN_IMAGE);
-  assert.deepEqual(context.settings.updates, [], "rien n'est persisté pour un fichier invalide");
+  assert.equal(result.reason, WelcomeImageRejectReason.CDN_UNEXPECTED_CONTENT);
+  assert.deepEqual(context.settings.updates, [], "rien n'est persisté");
   assert.equal(storage.calls.filter((call) => call.op === "upload").length, 0);
+  // La cause réelle est journalisée, plus jamais avalée.
+  const logged = context.logs.filter((entry) => entry.message === "Welcome image upload rejected");
+  assert.equal(logged.length, 1, "le refus est journalisé");
+  assert.equal(logged[0].reason, WelcomeImageRejectReason.CDN_UNEXPECTED_CONTENT);
+  assert.equal(logged[0].guildId, GUILD_A);
+  assert.equal(logged[0].detail.httpContentType, "text/html");
+  assert.ok(logged[0].detail.head.length > 0, "les premiers octets sont journalisés");
 });
 
 test("Upload — pièce jointe absente et fichier vide", async () => {

@@ -93,6 +93,8 @@
   "welcomeImageRejectTooLarge": "File too large: this server’s limit is {{limit}} MB.",
   "welcomeImageRejectFetch": "Downloading the image failed. Please try again.",
   "welcomeImageRejectNotAnImage": "This file is not a valid image.",
+  "welcomeImageRejectCdn": "The download from Discord did not return an image. Please try again; if it keeps failing, the hosting is probably filtering the Discord CDN.",
+  "welcomeImageRejectDecode": "The image could not be decoded. The file may be corrupted: re-export it and try again.",
   "welcomeImageRejectTooManyPixels": "The image dimensions are too large (maximum 4096 × 4096 pixels)."
  }
 }

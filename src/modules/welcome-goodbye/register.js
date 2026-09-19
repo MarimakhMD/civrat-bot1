@@ -26,10 +26,10 @@ const { selectWelcomeTemplate } = require("./interactions/selectWelcomeTemplate"
 const { previewGoodbye } = require("./interactions/previewGoodbye");
 const { testGoodbye } = require("./interactions/testGoodbye");
 const { WelcomeAdminAction } = require("./services/WelcomeAdminLogService");
-function registerWelcomeGoodbye({registry,service,adminLogService=null,settingsHome=null,imagePipeline=null,templateRegistry=null,entitlementService=null,imageStore=null,resourceCache=null}) { const permissions={allOf:[PermissionName.MANAGE_GUILD]}; const update=async(c)=>c.envelope.transport.update({view:settingsView({t:c.t,config:await service.get(c.guildId)})}); const log=(action,c)=>adminLogService?.record({action,guildId:c.guildId,actorId:c.userId});
+function registerWelcomeGoodbye({registry,service,adminLogService=null,settingsHome=null,imagePipeline=null,templateRegistry=null,entitlementService=null,imageStore=null,resourceCache=null,logger=null}) { const permissions={allOf:[PermissionName.MANAGE_GUILD]}; const update=async(c)=>c.envelope.transport.update({view:settingsView({t:c.t,config:await service.get(c.guildId)})}); const log=(action,c)=>adminLogService?.record({action,guildId:c.guildId,actorId:c.userId});
   // Contexte enrichi pour la sous-vue « Image Welcome » et /welcomeimage :
   // entitlement, stockage et pipeline y sont injectés une seule fois.
-  const imageContext=(c)=>({...c,settings:service,entitlementService,imageStore,resourceCache,imagePipeline,templateRegistry,adminLogService});
+  const imageContext=(c)=>({...c,settings:service,entitlementService,imageStore,resourceCache,imagePipeline,templateRegistry,adminLogService,logger});
   registry.registerButton({customId:Id.PREVIEW_WELCOME_IMAGE,permissions,execute:async c=>{
     // 4E/E2 — condition 1/2 : le TOGGLE `welcome_image_enabled`.
     //

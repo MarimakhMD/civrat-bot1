@@ -93,6 +93,8 @@
   "welcomeImageRejectTooLarge": "Fichier trop volumineux : la limite de ce serveur est {{limit}} Mo.",
   "welcomeImageRejectFetch": "Le téléchargement de l’image a échoué. Réessayez.",
   "welcomeImageRejectNotAnImage": "Ce fichier n’est pas une image valide.",
+  "welcomeImageRejectCdn": "Le téléchargement depuis Discord n’a pas renvoyé une image. Réessayez ; si l’échec se répète, l’hébergement filtre probablement le CDN Discord.",
+  "welcomeImageRejectDecode": "L’image n’a pas pu être décodée. Le fichier est peut-être endommagé : réexportez-le puis réessayez.",
   "welcomeImageRejectTooManyPixels": "Les dimensions de l’image sont trop grandes (maximum 4096 × 4096 pixels)."
  }
 }

@@ -3,6 +3,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { createCanvas, loadImage } = require("@napi-rs/canvas");
 const { WelcomeImagePayload } = require("../contracts/WelcomeImagePayload");
+const { inspectImageHeader } = require("../../services/welcomeImageUploadValidation");
 
 const AVATAR_FETCH_TIMEOUT_MS = 3000;
 
@@ -91,11 +92,18 @@ class WelcomeImageRenderer {
     // retombe sur l'asset puis sur le dégradé déclaratif — le Welcome n'est
     // jamais bloqué par une image invalide.
     if (background.buffer) {
-      try {
-        this.#drawCovered(ctx, await loadImage(background.buffer), width, height);
-        return;
-      } catch {
-        // Buffer non décodable → on poursuit vers les sources suivantes.
+      // En-tête vérifié AVANT le décodage : Skia SIGSEGV sur un buffer dont la
+      // signature d'image est valide mais l'en-tête incohérent, et un
+      // try/catch n'arrête pas un signal. Sans ce garde-fou, une image
+      // téléversée puis corrompue ferait tomber le processus à chaque arrivée
+      // de membre.
+      if (inspectImageHeader(background.buffer).ok) {
+        try {
+          this.#drawCovered(ctx, await loadImage(background.buffer), width, height);
+          return;
+        } catch {
+          // Buffer non décodable → on poursuit vers les sources suivantes.
+        }
       }
     }
 

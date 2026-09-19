@@ -24,11 +24,15 @@ const {
  *    jamais être bloquée par le stockage, elle retombe sur le template standard.
  */
 class WelcomeImageStorageError extends Error {
-  constructor(message, { reason = "STORAGE_UNAVAILABLE", guildId = null } = {}) {
+  constructor(message, { reason = "STORAGE_UNAVAILABLE", guildId = null, causeMessage = null, causeCode = null } = {}) {
     super(message);
     this.name = "WelcomeImageStorageError";
     this.reason = reason;
     this.guildId = guildId;
+    // La cause d'origine est conservée : un message générique « upload failed »
+    // ne dit pas si c'est la RLS, le réseau ou le bucket qui est en cause.
+    this.causeMessage = causeMessage;
+    this.causeCode = causeCode;
   }
 }
 
@@ -93,17 +97,20 @@ class WelcomeImageStore {
     try {
       result = await client.upload(key, buffer, { contentType, upsert: true });
     } catch (error) {
-      this.logger?.warn?.("Welcome image upload failed", { guildId, errorType: error?.name || typeof error });
+      this.logger?.warn?.("Welcome image upload failed", { guildId, errorType: error?.name || typeof error, errorMessage: error?.message || null });
       throw new WelcomeImageStorageError("Welcome image upload failed", {
         reason: "UPLOAD_FAILED",
         guildId,
+        causeMessage: error?.message || null,
       });
     }
     if (result?.error) {
-      this.logger?.warn?.("Welcome image upload rejected", { guildId, code: result.error.code || null });
+      this.logger?.warn?.("Welcome image upload rejected", { guildId, code: result.error.code || null, errorMessage: result.error.message || null });
       throw new WelcomeImageStorageError("Welcome image upload rejected", {
         reason: "UPLOAD_REJECTED",
         guildId,
+        causeCode: result.error.code || null,
+        causeMessage: result.error.message || null,
       });
     }
     return { key, size: buffer.length };

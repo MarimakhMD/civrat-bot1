@@ -25,7 +25,9 @@ const REJECT_MESSAGE_KEY = Object.freeze({
   [WelcomeImageRejectReason.EMPTY_FILE]: "welcomeGoodbye.welcomeImageRejectEmpty",
   [WelcomeImageRejectReason.TOO_LARGE]: "welcomeGoodbye.welcomeImageRejectTooLarge",
   [WelcomeImageRejectReason.FETCH_FAILED]: "welcomeGoodbye.welcomeImageRejectFetch",
+  [WelcomeImageRejectReason.CDN_UNEXPECTED_CONTENT]: "welcomeGoodbye.welcomeImageRejectCdn",
   [WelcomeImageRejectReason.NOT_AN_IMAGE]: "welcomeGoodbye.welcomeImageRejectNotAnImage",
+  [WelcomeImageRejectReason.DECODE_FAILED]: "welcomeGoodbye.welcomeImageRejectDecode",
   [WelcomeImageRejectReason.TOO_MANY_PIXELS]: "welcomeGoodbye.welcomeImageRejectTooManyPixels",
 });
 
@@ -47,12 +49,17 @@ const REJECT_MESSAGE_KEY = Object.freeze({
  * prérequis distinct, conformément au choix produit.
  */
 async function uploadWelcomeImage(context) {
-  const { guildId, userId, t, envelope, settings, imageStore, imagePipeline, templateRegistry, resourceCache } = context;
+  const { guildId, userId, t, envelope, settings, imageStore, imagePipeline, templateRegistry, resourceCache, logger = null } = context;
 
   // Chaque branche répond à l'utilisateur ET renvoie un résultat structuré :
   // le même objet sert aux tests et à un éventuel journal d'audit, sans que le
   // message affiché dépende de qui appelle.
-  const reject = async (reason) => {
+  const reject = async (reason, detail = null) => {
+    // Aucun refus n'est silencieux : c'est ce silence qui rendait ce chemin
+    // impossible à diagnostiquer. Le détail technique reste dans les journaux,
+    // jamais dans la réponse (aucune URL, en-tête ou contenu interne n'est
+    // renvoyé à l'utilisateur).
+    logger?.warn?.("Welcome image upload rejected", { guildId, actorId: userId, reason, detail: detail || null });
     await envelope.transport.reply({
       view: {
         content: t(REJECT_MESSAGE_KEY[reason] || "welcomeGoodbye.welcomeImageRejectNotAnImage", {
@@ -80,7 +87,14 @@ async function uploadWelcomeImage(context) {
     attachment,
     attachmentSizeLimit: envelope?.attachmentSizeLimit ?? null,
   });
-  if (!checked.ok) return await reject(checked.reason);
+  if (!checked.ok) {
+    return await reject(checked.reason, {
+      name: attachment?.name ?? null,
+      contentType: attachment?.contentType ?? null,
+      size: Number.isFinite(Number(attachment?.size)) ? Number(attachment.size) : null,
+      limit: Number.isFinite(Number(envelope?.attachmentSizeLimit)) ? Number(envelope.attachmentSizeLimit) : null,
+    });
+  }
 
   // 2) Premium — avant tout téléchargement et toute écriture.
   const entitlement = await resolveWelcomeImageEntitlement({
@@ -92,19 +106,23 @@ async function uploadWelcomeImage(context) {
       view: premiumRequiredView(t, { decision: entitlement.code }),
       ephemeral: true,
     });
+    logger?.warn?.("Welcome image upload refused by entitlement", { guildId, actorId: userId, code: entitlement.code });
     return { ok: false, code: entitlement.code, granted: false };
   }
 
   // 3) Stockage réellement disponible.
-  if (!imageStore?.available) return await storageUnavailable();
+  if (!imageStore?.available) {
+    logger?.warn?.("Welcome image upload rejected: storage unavailable", { guildId, actorId: userId });
+    return await storageUnavailable();
+  }
 
   // 4) Téléchargement de la pièce jointe.
-  const fetched = await fetchWelcomeImageBuffer(attachment);
-  if (!fetched.ok) return await reject(fetched.reason);
+  const fetched = await fetchWelcomeImageBuffer(attachment, { logger, guildId });
+  if (!fetched.ok) return await reject(fetched.reason, fetched.detail);
 
   // 5) Décodage réel : dimensions incluses, bombe de pixels incluse.
-  const decoded = await decodeWelcomeImage(fetched.buffer);
-  if (!decoded.ok) return await reject(decoded.reason);
+  const decoded = await decodeWelcomeImage(fetched.buffer, { logger, guildId });
+  if (!decoded.ok) return await reject(decoded.reason, decoded.detail);
 
   // 6) Écriture dans le bucket privé, remplacement par upsert.
   let stored;
@@ -112,7 +130,15 @@ async function uploadWelcomeImage(context) {
     stored = await imageStore.upload(guildId, fetched.buffer, {
       contentType: String(attachment.contentType).split(";")[0].trim().toLowerCase(),
     });
-  } catch {
+  } catch (error) {
+    logger?.warn?.("Welcome image storage upload failed", {
+      guildId,
+      actorId: userId,
+      errorName: error?.name || null,
+      errorMessage: error?.message || null,
+      causeMessage: error?.causeMessage || null,
+      causeCode: error?.causeCode || null,
+    });
     return await storageUnavailable();
   }
 
@@ -126,7 +152,7 @@ async function uploadWelcomeImage(context) {
   });
 
   // 8) Aperçu : rendu réel via le chemin de livraison.
-  const preview = await renderUploadedCardPreview({ config, guildId, userId, envelope, entitlement, imageStore, imagePipeline, templateRegistry, resourceCache });
+  const preview = await renderUploadedCardPreview({ config, guildId, userId, envelope, entitlement, imageStore, imagePipeline, templateRegistry, resourceCache, logger });
   if (preview) {
     await envelope.transport.replyImagePreview({
       image: preview,
@@ -156,7 +182,7 @@ async function uploadWelcomeImage(context) {
  * Un échec de rendu ne fait jamais perdre la confirmation d'enregistrement.
  */
 async function renderUploadedCardPreview({
-  config, guildId, userId, envelope, entitlement, imageStore, imagePipeline, templateRegistry, resourceCache,
+  config, guildId, userId, envelope, entitlement, imageStore, imagePipeline, templateRegistry, resourceCache, logger = null,
 }) {
   if (!imagePipeline || !templateRegistry) return null;
   try {
@@ -171,7 +197,10 @@ async function renderUploadedCardPreview({
     const subtitleText = buildWelcomeCardSubtitle(config, member);
     const request = buildWelcomeCardRequest({ member, subtitleText, template });
     return await imagePipeline.generate(request, template);
-  } catch {
+  } catch (error) {
+    // L'aperçu est un confort : son échec ne doit pas annuler l'upload, déjà
+    // effectué. Mais il n'est plus silencieux.
+    logger?.warn?.("Welcome image preview render failed", { guildId, errorName: error?.name || null, errorMessage: error?.message || null });
     return null;
   }
 }

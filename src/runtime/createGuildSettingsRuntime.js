@@ -266,6 +266,9 @@ function createGuildSettingsRuntime({ legacyConfigService, logger = null }) {
     adminLogService: new WelcomeAdminLogService({ logger }),
     imageStore: welcomeImageStorage.imageStore,
     resourceCache: welcomeImageStorage.resourceCache,
+    // Observabilité : sans logger, tout refus d'upload était invisible dans la
+    // console du hosting (aucun log produit sur le chemin de rejet).
+    logger,
     // Phase Premium — gate centralisée : l'aperçu de la carte Welcome image
     // exige l'entitlement WELCOME_IMAGE (le service est partagé avec le
     // panneau Tickets/Admin, une seule source de vérité Premium).
