@@ -40,10 +40,64 @@ class WelcomeImageStorageError extends Error {
 /** Signatures d'erreur Supabase signifiant « objet absent », pas « panne ». */
 const NOT_FOUND_MARKERS = ["not found", "resource not found", "object not found", "pgrst116"];
 
+/**
+ * Décrit une erreur de stockage de façon exploitable.
+ *
+ * Indispensable, et c'est la cause d'un diagnostic aveugle : les erreurs de
+ * `@supabase/storage-js` (`StorageError` / `StorageApiError`) n'ont AUCUN champ
+ * `code`. Elles exposent `status` (nombre HTTP), `statusCode` (chaîne) et
+ * `message`. Un log construit sur `error.code` affiche donc `null` quelle que
+ * soit la cause, rendant un rejet de bucket indistinguable d'un refus RLS ou
+ * d'une panne 500.
+ */
+function describeStorageError(error) {
+  if (!error) return { errorName: null, status: null, statusCode: null, errorMessage: null };
+  const status = error.status === undefined || error.status === null ? null : Number(error.status);
+  // `code` est conservé en dernier recours : les erreurs PostgREST, elles, en
+  // portent un (par exemple `PGRST116` pour un objet absent).
+  const statusCode = error.statusCode !== undefined && error.statusCode !== null
+    ? String(error.statusCode)
+    : (error.code !== undefined && error.code !== null ? String(error.code) : null);
+  return {
+    errorName: error.name || typeof error,
+    status: Number.isFinite(status) ? status : null,
+    statusCode,
+    errorMessage: typeof error.message === "string" ? error.message.slice(0, 300) : null,
+  };
+}
+
 function isNotFoundError(error) {
   if (!error) return false;
-  const haystack = `${error.message || ""} ${error.code || ""}`.toLowerCase();
+  // Le statut HTTP est la signature la plus fiable d'un objet absent.
+  if (Number(error.status) === 404 || String(error.statusCode) === "404") return true;
+  const haystack = `${error.message || ""} ${error.code || ""} ${error.statusCode || ""}`.toLowerCase();
   return NOT_FOUND_MARKERS.some((marker) => haystack.includes(marker));
+}
+
+/**
+ * Content types tentés pour le sidecar, du plus exact au plus permissif.
+ * Le bucket étant privé et le contenu relu en texte, le type déclaré n'a
+ * aucun effet sur le comportement : il ne sert qu'à franchir l'éventuel
+ * `allowed_mime_types` du bucket.
+ */
+const META_CONTENT_TYPES = Object.freeze([
+  "application/json",
+  "application/octet-stream",
+  "text/plain",
+  "image/png",
+]);
+
+/**
+ * Faut-il retenter avec un autre content type ?
+ *
+ * Uniquement si le serveur a explicitement rejeté LE PAYLOAD (4xx de
+ * validation). Retenter sur un 403 (RLS), un 5xx ou une erreur sans statut
+ * réseau ne changerait rien et ne ferait que multiplier les requêtes.
+ */
+const PAYLOAD_REJECTION_STATUSES = new Set([400, 406, 413, 415, 422]);
+
+function isRetriableContentTypeFailure(error) {
+  return PAYLOAD_REJECTION_STATUSES.has(Number(error?.status));
 }
 
 class WelcomeImageStore {
@@ -103,7 +157,7 @@ class WelcomeImageStore {
     try {
       result = await client.upload(key, buffer, { contentType, upsert: true });
     } catch (error) {
-      this.logger?.warn?.("Welcome image upload failed", { guildId, errorType: error?.name || typeof error, errorMessage: error?.message || null });
+      this.logger?.warn?.("Welcome image upload failed", { guildId, ...describeStorageError(error) });
       throw new WelcomeImageStorageError("Welcome image upload failed", {
         reason: "UPLOAD_FAILED",
         guildId,
@@ -111,11 +165,11 @@ class WelcomeImageStore {
       });
     }
     if (result?.error) {
-      this.logger?.warn?.("Welcome image upload rejected", { guildId, code: result.error.code || null, errorMessage: result.error.message || null });
+      this.logger?.warn?.("Welcome image upload rejected", { guildId, ...describeStorageError(result.error) });
       throw new WelcomeImageStorageError("Welcome image upload rejected", {
         reason: "UPLOAD_REJECTED",
         guildId,
-        causeCode: result.error.code || null,
+        causeCode: describeStorageError(result.error).statusCode,
         causeMessage: result.error.message || null,
       });
     }
@@ -135,13 +189,13 @@ class WelcomeImageStore {
     try {
       result = await client.download(key);
     } catch (error) {
-      this.logger?.warn?.("Welcome image download failed", { guildId, errorType: error?.name || typeof error });
+      this.logger?.warn?.("Welcome image download failed", { guildId, ...describeStorageError(error) });
       return null;
     }
     if (result?.error) {
       // Objet absent = état normal (guilde sans image) : pas un incident.
       if (!isNotFoundError(result.error)) {
-        this.logger?.warn?.("Welcome image download rejected", { guildId, code: result.error.code || null });
+        this.logger?.warn?.("Welcome image download rejected", { guildId, ...describeStorageError(result.error) });
       }
       return null;
     }
@@ -176,12 +230,12 @@ class WelcomeImageStore {
       // pourrait sinon s'appliquer à l'image suivante.
       result = await client.remove([key, this.metaKeyFor(guildId)]);
     } catch (error) {
-      this.logger?.warn?.("Welcome image removal failed", { guildId, errorType: error?.name || typeof error });
+      this.logger?.warn?.("Welcome image removal failed", { guildId, ...describeStorageError(error) });
       return false;
     }
     if (result?.error) {
       if (!isNotFoundError(result.error)) {
-        this.logger?.warn?.("Welcome image removal rejected", { guildId, code: result.error.code || null });
+        this.logger?.warn?.("Welcome image removal rejected", { guildId, ...describeStorageError(result.error) });
       }
       // Un objet déjà absent est un état final acceptable.
       return isNotFoundError(result.error);
@@ -199,7 +253,10 @@ class WelcomeImageStore {
    */
   async uploadMeta(guildId, meta) {
     const client = this.#bucketClient();
-    if (!client) return false;
+    if (!client) {
+      this.logger?.warn?.("Welcome image meta upload skipped: storage unavailable", { guildId });
+      return false;
+    }
 
     let payload;
     try {
@@ -209,16 +266,74 @@ class WelcomeImageStore {
       return false;
     }
 
+    const key = this.metaKeyFor(guildId);
+    // Le sidecar est un objet privé, relu par `downloadMeta` puis parsé en
+    // texte : son content type déclaré n'a aucun effet fonctionnel. On tente
+    // donc le type exact, puis des types plus permissifs, parce qu'un bucket
+    // dont `allowed_mime_types` est restreint aux images rejette sinon
+    // `application/json` alors que l'image, elle, passe très bien.
+    let lastError = null;
+    for (const contentType of META_CONTENT_TYPES) {
+      let result;
+      try {
+        result = await client.upload(key, payload, { contentType, upsert: true });
+      } catch (error) {
+        lastError = describeStorageError(error);
+        this.logger?.warn?.("Welcome image meta upload failed", { guildId, key, contentType, ...lastError });
+        if (!isRetriableContentTypeFailure(lastError)) break;
+        continue;
+      }
+      if (!result?.error) {
+        if (contentType !== META_CONTENT_TYPES[0]) {
+          // Le type exact a été refusé : il faut que cela se voie, sinon le
+          // bucket restera mal configuré sans que personne ne le sache.
+          this.logger?.warn?.("Welcome image meta stored with fallback content type", {
+            guildId,
+            key,
+            contentType,
+            rejectedContentType: META_CONTENT_TYPES[0],
+            ...lastError,
+          });
+        }
+        return true;
+      }
+
+      lastError = describeStorageError(result.error);
+      this.logger?.warn?.("Welcome image meta upload rejected", { guildId, key, contentType, ...lastError });
+      if (!isRetriableContentTypeFailure(lastError)) break;
+    }
+
+    // Toute la chaîne a échoué : la cause réelle est maintenant dans les logs
+    // (status / statusCode / message), plus dans un `code: null` inexploitable.
+    this.logger?.warn?.("Welcome image meta not stored", { guildId, key, ...lastError });
+    return false;
+  }
+
+  /**
+   * Retire le sidecar sans toucher à l'image.
+   *
+   * Sert au re-upload : si la nouvelle image n'obtient pas un verdict CONFIRME,
+   * la géométrie de l'image précédente doit disparaître, sinon elle serait
+   * appliquée à une image qui ne lui correspond pas.
+   * @returns {Promise<boolean>} true si le sidecar est absent après l'appel.
+   */
+  async removeMeta(guildId) {
+    const client = this.#bucketClient();
+    if (!client) return false;
+
     let result;
     try {
-      result = await client.upload(this.metaKeyFor(guildId), payload, { contentType: "application/json", upsert: true });
+      result = await client.remove([this.metaKeyFor(guildId)]);
     } catch (error) {
-      this.logger?.warn?.("Welcome image meta upload failed", { guildId, errorType: error?.name || typeof error, errorMessage: error?.message || null });
+      this.logger?.warn?.("Welcome image meta removal failed", { guildId, ...describeStorageError(error) });
       return false;
     }
     if (result?.error) {
-      this.logger?.warn?.("Welcome image meta upload rejected", { guildId, code: result.error.code || null });
-      return false;
+      // Un sidecar déjà absent est l'état voulu : ce n'est pas un incident.
+      if (!isNotFoundError(result.error)) {
+        this.logger?.warn?.("Welcome image meta removal rejected", { guildId, ...describeStorageError(result.error) });
+      }
+      return isNotFoundError(result.error);
     }
     return true;
   }
@@ -237,14 +352,14 @@ class WelcomeImageStore {
     try {
       result = await client.download(this.metaKeyFor(guildId));
     } catch (error) {
-      this.logger?.warn?.("Welcome image meta download failed", { guildId, errorType: error?.name || typeof error });
+      this.logger?.warn?.("Welcome image meta download failed", { guildId, ...describeStorageError(error) });
       return null;
     }
     if (result?.error) {
       // Sidecar absent = état normal (image antérieure à la détection, ou
       // détection non confirmée) : ce n'est pas un incident.
       if (!isNotFoundError(result.error)) {
-        this.logger?.warn?.("Welcome image meta download rejected", { guildId, code: result.error.code || null });
+        this.logger?.warn?.("Welcome image meta download rejected", { guildId, ...describeStorageError(result.error) });
       }
       return null;
     }

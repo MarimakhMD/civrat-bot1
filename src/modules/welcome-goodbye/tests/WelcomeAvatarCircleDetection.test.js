@@ -77,6 +77,15 @@ function smallPng(width = 40, height = 20, color = "#112233") {
 
 // ── Doublures ────────────────────────────────────────────────────────────────
 
+/**
+ * Erreur à la forme réelle de `@supabase/storage-js` (StorageApiError) : elle
+ * porte `status`, `statusCode` et `message`, et surtout AUCUN champ `code`.
+ * Les fakes qui inventaient un `code` masquaient justement le bug de log.
+ */
+function storageApiError(status, message) {
+  return { name: "StorageApiError", status, statusCode: String(status), message };
+}
+
 function createStorageFake(seed = {}, options = {}) {
   const objects = new Map(Object.entries(seed));
   const calls = [];
@@ -88,6 +97,15 @@ function createStorageFake(seed = {}, options = {}) {
         async upload(objectName, buffer, opts = {}) {
           calls.push({ op: "upload", bucket: name, objectName, options: opts });
           if (options.failUploadOn === objectName) return { error: { message: "row-level security blocks write" } };
+          // `allowedMimeTypes` simule un bucket dont la liste de types est
+          // restreinte : l'image passe, le sidecar JSON est rejeté en 400.
+          if (Array.isArray(options.allowedMimeTypes)
+            && !options.allowedMimeTypes.includes(String(opts.contentType))) {
+            return { error: storageApiError(400, `Invalid mimetype: ${opts.contentType}`) };
+          }
+          if (options.rejectUploadStatus && options.rejectUploadOn === objectName) {
+            return { error: storageApiError(options.rejectUploadStatus, options.rejectUploadMessage || "rejected") };
+          }
           objects.set(objectName, Buffer.from(buffer));
           return { error: null };
         },
@@ -377,6 +395,151 @@ test("Sidecar — la suppression retire l'image ET les métadonnées ensemble", 
 });
 
 // ══════════════════════════════════════════════════════════════════════════
+// B2. Écriture du sidecar — succès, échec, diagnostic et repli
+// ══════════════════════════════════════════════════════════════════════════
+
+function collectLogger() {
+  const entries = [];
+  return {
+    entries,
+    warn: (message, data) => entries.push({ level: "warn", message, data }),
+    info: (message, data) => entries.push({ level: "info", message, data }),
+    find: (message) => entries.filter((entry) => entry.message === message),
+  };
+}
+
+const META = Object.freeze({
+  version: 1,
+  verdict: "CONFIRME",
+  score: 0.752,
+  avatar: { cx: 216, cy: 152, radius: 109 },
+  detectedAt: "2026-09-20T00:00:00.000Z",
+});
+
+test("uploadMeta — succès : bucket privé, clé dérivée, octets exacts", async () => {
+  const storage = createStorageFake();
+  const logger = collectLogger();
+  const store = new WelcomeImageStore({ storage, logger });
+
+  assert.equal(await store.uploadMeta(GUILD_A, META), true);
+
+  const uploads = storage.calls.filter((call) => call.op === "upload");
+  assert.equal(uploads.length, 1, "un seul essai quand le type exact est accepté");
+  assert.equal(uploads[0].bucket, "civrat-welcome-images");
+  assert.equal(uploads[0].objectName, META_KEY_A);
+  assert.equal(uploads[0].options.contentType, "application/json");
+  assert.equal(uploads[0].options.upsert, true);
+
+  const stored = storage.objects.get(META_KEY_A);
+  assert.deepEqual(JSON.parse(stored.toString("utf8")), META, "les octets écrits sont bien la géométrie");
+  assert.deepEqual(await store.downloadMeta(GUILD_A), META, "aller-retour");
+  assert.deepEqual(logger.find("Welcome image meta upload rejected"), [], "aucun avertissement sur un succès");
+});
+
+test("uploadMeta — bucket restreint aux images : le repli de content type écrit quand même le sidecar", async () => {
+  // Cas de production le plus probable : `allowed_mime_types` limité aux
+  // images. L'image passe, `application/json` est refusé en 400.
+  const storage = createStorageFake({}, { allowedMimeTypes: ["image/png", "image/jpeg"] });
+  const logger = collectLogger();
+  const store = new WelcomeImageStore({ storage, logger });
+
+  assert.equal(await store.uploadMeta(GUILD_A, META), true, "le sidecar doit être écrit malgré le refus du type exact");
+  assert.deepEqual(JSON.parse(storage.objects.get(META_KEY_A).toString("utf8")), META);
+  assert.deepEqual(await store.downloadMeta(GUILD_A), META, "le type déclaré n'affecte pas la relecture");
+
+  const fallback = logger.find("Welcome image meta stored with fallback content type");
+  assert.equal(fallback.length, 1, "l'administrateur doit voir que le type exact a été refusé");
+  assert.equal(fallback[0].data.rejectedContentType, "application/json");
+  assert.equal(fallback[0].data.status, 400, "la cause réelle du refus est journalisée");
+});
+
+test("uploadMeta — refus RLS (403) : échec immédiat, sans retry, avec la cause réelle", async () => {
+  const storage = createStorageFake({}, {
+    rejectUploadOn: META_KEY_A,
+    rejectUploadStatus: 403,
+    rejectUploadMessage: 'new row violates row-level security policy for table "objects"',
+  });
+  const logger = collectLogger();
+  const store = new WelcomeImageStore({ storage, logger });
+
+  assert.equal(await store.uploadMeta(GUILD_A, META), false);
+  assert.equal(storage.calls.filter((call) => call.op === "upload").length, 1, "un 403 ne se corrige pas par un autre content type");
+  assert.equal(storage.objects.has(META_KEY_A), false);
+
+  const rejection = logger.find("Welcome image meta upload rejected");
+  assert.equal(rejection.length, 1);
+  assert.equal(rejection[0].data.status, 403);
+  assert.equal(rejection[0].data.statusCode, "403");
+  assert.match(rejection[0].data.errorMessage, /row-level security/);
+});
+
+test("uploadMeta — panne 5xx : échec immédiat, sans retry", async () => {
+  const storage = createStorageFake({}, { rejectUploadOn: META_KEY_A, rejectUploadStatus: 500, rejectUploadMessage: "Internal Server Error" });
+  const store = new WelcomeImageStore({ storage, logger: collectLogger() });
+
+  assert.equal(await store.uploadMeta(GUILD_A, META), false);
+  assert.equal(storage.calls.filter((call) => call.op === "upload").length, 1);
+});
+
+test("uploadMeta — le journal n'est jamais aveugle : status et statusCode remplacent le code:null", async () => {
+  // C'est le cœur du correctif : les erreurs Storage n'ont PAS de champ `code`.
+  // Avant, TOUTES les causes journalisaient `{ code: null }` et le diagnostic
+  // était impossible. Chaque site doit exposer status / statusCode / message.
+  const cases = [
+    { name: "403 RLS", options: { rejectUploadOn: META_KEY_A, rejectUploadStatus: 403 }, status: 403 },
+    { name: "500 panne", options: { rejectUploadOn: META_KEY_A, rejectUploadStatus: 500 }, status: 500 },
+  ];
+  for (const testCase of cases) {
+    const logger = collectLogger();
+    const store = new WelcomeImageStore({ storage: createStorageFake({}, testCase.options), logger });
+    assert.equal(await store.uploadMeta(GUILD_A, META), false, testCase.name);
+
+    const final = logger.find("Welcome image meta not stored");
+    assert.equal(final.length, 1, `${testCase.name} : un avertissement final est émis`);
+    assert.equal(final[0].data.status, testCase.status, `${testCase.name} : le statut HTTP est journalisé`);
+    assert.equal(final[0].data.statusCode, String(testCase.status));
+    assert.equal(final[0].data.errorName, "StorageApiError");
+    assert.notEqual(final[0].data.errorMessage, null, `${testCase.name} : le message serveur est conservé`);
+    assert.equal("code" in final[0].data, false, "le champ code:null inexploitable a disparu");
+  }
+});
+
+test("uploadMeta — une erreur sans statut ne déclenche pas de retry inutile", async () => {
+  const storage = createStorageFake({}, { failUploadOn: META_KEY_A });
+  const store = new WelcomeImageStore({ storage, logger: collectLogger() });
+  assert.equal(await store.uploadMeta(GUILD_A, META), false);
+  assert.equal(storage.calls.filter((call) => call.op === "upload").length, 1, "pas de matraquage d'un backend en échec");
+});
+
+test("removeMeta — retire le sidecar sans toucher à l'image", async () => {
+  const storage = createStorageFake({ [IMAGE_KEY_A]: smallPng(), [META_KEY_A]: Buffer.from("{}", "utf8") });
+  const store = new WelcomeImageStore({ storage });
+
+  assert.equal(await store.removeMeta(GUILD_A), true);
+  assert.equal(storage.objects.has(META_KEY_A), false, "le sidecar est parti");
+  assert.equal(storage.objects.has(IMAGE_KEY_A), true, "l'image doit rester en place");
+});
+
+test("removeMeta — un sidecar déjà absent est un succès, pas un incident", async () => {
+  const logger = collectLogger();
+  const storage = createStorageFake();
+  const store = new WelcomeImageStore({ storage, logger });
+  assert.equal(await store.removeMeta(GUILD_A), true);
+  assert.deepEqual(logger.find("Welcome image meta removal rejected"), []);
+});
+
+test("isolation — le sidecar d'une guilde ne se lit ni ne s'écrit depuis une autre", async () => {
+  const storage = createStorageFake({ [META_KEY_A]: Buffer.from(JSON.stringify(META), "utf8") });
+  const store = new WelcomeImageStore({ storage });
+
+  assert.deepEqual(await store.downloadMeta(GUILD_A), META);
+  assert.equal(await store.downloadMeta(GUILD_B), null, "la guilde B ne voit pas la géométrie de A");
+  assert.equal(await store.removeMeta(GUILD_B), true);
+  assert.equal(storage.objects.has(META_KEY_A), true, "la purge de B ne touche pas A");
+  assert.throws(() => store.metaKeyFor("../etc"), TypeError);
+});
+
+// ══════════════════════════════════════════════════════════════════════════
 // C. Intégration au rendu
 // ══════════════════════════════════════════════════════════════════════════
 
@@ -552,6 +715,42 @@ test("Upload — AMBIGU : image conservée, aucun sidecar, clé persistée", asy
   assert.ok(storage.objects.has(IMAGE_KEY_A), "l'image ne doit PAS être supprimée");
   assert.equal(storage.objects.has(META_KEY_A), false, "aucune géométrie incertaine ne doit être stockée");
   assert.deepEqual(settings.updates.at(-1).patch, { [Key.WELCOME_IMAGE_KEY]: IMAGE_KEY_A });
+});
+
+test("Upload — un verdict non confirmé PURGE le sidecar de l'image précédente", async () => {
+  // Régression : après une image A confirmée, un re-upload B ambigu laissait le
+  // sidecar de A en place. Le rendu appliquait alors la zone de A à l'image B.
+  const stale = { version: 1, verdict: "CONFIRME", avatar: { cx: 900, cy: 90, radius: 40 } };
+  const storage = createStorageFake({
+    [IMAGE_KEY_A]: smallPng(),
+    [META_KEY_A]: Buffer.from(JSON.stringify(stale), "utf8"),
+  });
+  const buffer = imageWithThreeCircles();
+
+  const result = await withFetch(buffer, () => uploadWelcomeImage(uploadContext({
+    imageStore: new WelcomeImageStore({ storage }),
+    settings: createSettingsFake(),
+    attachment: attachmentFor(buffer),
+  })));
+
+  assert.equal(result.ok, true);
+  assert.equal(result.avatarCircle.verdict, AvatarCircleVerdict.AMBIGUOUS);
+  assert.ok(storage.objects.has(IMAGE_KEY_A), "la nouvelle image doit être conservée");
+  assert.equal(storage.objects.has(META_KEY_A), false,
+    "la géométrie de l'ancienne image doit être purgée, pas réutilisée sur la nouvelle");
+});
+
+test("Upload — un verdict non confirmé ne supprime jamais l'image", async () => {
+  const storage = createStorageFake({ [IMAGE_KEY_A]: smallPng() });
+  const buffer = imageWithThreeCircles();
+  await withFetch(buffer, () => uploadWelcomeImage(uploadContext({
+    imageStore: new WelcomeImageStore({ storage }),
+    settings: createSettingsFake(),
+    attachment: attachmentFor(buffer),
+  })));
+  assert.ok(storage.objects.has(IMAGE_KEY_A), "la purge du sidecar ne doit pas emporter l'image");
+  const removals = storage.calls.filter((call) => call.op === "remove").flatMap((call) => call.objectNames);
+  assert.ok(!removals.includes(IMAGE_KEY_A), `l'image ne doit jamais être ciblée par la purge : ${removals.join(", ")}`);
 });
 
 test("Upload — l'administrateur est averti différemment selon le verdict", async () => {

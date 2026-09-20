@@ -166,6 +166,12 @@ async function uploadWelcomeImage(context) {
       avatar: detection.geometry,
       detectedAt: new Date().toISOString(),
     });
+  } else {
+    // Verdict non confirmé : il faut PURGER un éventuel sidecar laissé par
+    // une image précédente. Sans cela la géométrie de l'ancienne image
+    // serait appliquée à la nouvelle, ce qui est exactement ce que la règle
+    // « jamais de géométrie incertaine » interdit.
+    await imageStore.removeMeta?.(guildId);
   }
 
   // 7) Persistance de la clé. Le schéma refuse toute clé malformée.
