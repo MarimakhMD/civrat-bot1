@@ -3,6 +3,7 @@
 const {
   WELCOME_IMAGE_BUCKET,
   buildWelcomeImageObjectKey,
+  buildWelcomeImageMetaKey,
 } = require("../configuration/welcomeImageStorage");
 
 /**
@@ -65,6 +66,11 @@ class WelcomeImageStore {
   /** Clé d'objet de la guilde — seule source de vérité, jamais saisie ailleurs. */
   keyFor(guildId) {
     return buildWelcomeImageObjectKey(guildId);
+  }
+
+  /** Clé du sidecar de métadonnées (géométrie détectée), même bucket privé. */
+  metaKeyFor(guildId) {
+    return buildWelcomeImageMetaKey(guildId);
   }
 
   #bucketClient() {
@@ -166,7 +172,9 @@ class WelcomeImageStore {
 
     let result;
     try {
-      result = await client.remove([key]);
+      // L'image ET son sidecar partent ensemble : une géométrie orpheline
+      // pourrait sinon s'appliquer à l'image suivante.
+      result = await client.remove([key, this.metaKeyFor(guildId)]);
     } catch (error) {
       this.logger?.warn?.("Welcome image removal failed", { guildId, errorType: error?.name || typeof error });
       return false;
@@ -179,6 +187,78 @@ class WelcomeImageStore {
       return isNotFoundError(result.error);
     }
     return true;
+  }
+
+  /**
+   * Écrit le sidecar de métadonnées (géométrie détectée de la zone avatar).
+   *
+   * Ne lève JAMAIS : l'image est déjà stockée à ce stade, un échec du sidecar
+   * ne doit donc ni annuler l'upload ni le faire apparaître comme raté. Le
+   * rendu retombera simplement sur la géométrie du gabarit.
+   * @returns {Promise<boolean>} true si le sidecar a bien été écrit.
+   */
+  async uploadMeta(guildId, meta) {
+    const client = this.#bucketClient();
+    if (!client) return false;
+
+    let payload;
+    try {
+      payload = Buffer.from(JSON.stringify(meta), "utf8");
+    } catch (error) {
+      this.logger?.warn?.("Welcome image meta could not be serialized", { guildId, errorType: error?.name || typeof error });
+      return false;
+    }
+
+    let result;
+    try {
+      result = await client.upload(this.metaKeyFor(guildId), payload, { contentType: "application/json", upsert: true });
+    } catch (error) {
+      this.logger?.warn?.("Welcome image meta upload failed", { guildId, errorType: error?.name || typeof error, errorMessage: error?.message || null });
+      return false;
+    }
+    if (result?.error) {
+      this.logger?.warn?.("Welcome image meta upload rejected", { guildId, code: result.error.code || null });
+      return false;
+    }
+    return true;
+  }
+
+  /**
+   * Lit le sidecar. Toute anomalie (absent, JSON invalide, forme inattendue,
+   * backend indisponible) renvoie null : le rendu utilise alors la géométrie du
+   * gabarit. Une métadonnée corrompue ne peut donc jamais casser un Welcome.
+   * @returns {Promise<object|null>}
+   */
+  async downloadMeta(guildId) {
+    const client = this.#bucketClient();
+    if (!client) return null;
+
+    let result;
+    try {
+      result = await client.download(this.metaKeyFor(guildId));
+    } catch (error) {
+      this.logger?.warn?.("Welcome image meta download failed", { guildId, errorType: error?.name || typeof error });
+      return null;
+    }
+    if (result?.error) {
+      // Sidecar absent = état normal (image antérieure à la détection, ou
+      // détection non confirmée) : ce n'est pas un incident.
+      if (!isNotFoundError(result.error)) {
+        this.logger?.warn?.("Welcome image meta download rejected", { guildId, code: result.error.code || null });
+      }
+      return null;
+    }
+
+    const data = result?.data;
+    if (!data) return null;
+    try {
+      const raw = Buffer.isBuffer(data) ? data.toString("utf8") : String(await data.text());
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === "object" ? parsed : null;
+    } catch (error) {
+      this.logger?.warn?.("Welcome image meta could not be parsed", { guildId, errorType: error?.name || typeof error });
+      return null;
+    }
   }
 }
 

@@ -57,7 +57,43 @@ async function resolveWelcomeImageTemplate({
   const buffer = await loadWelcomeImageBuffer({ key, guildId, imageStore, resourceCache, logger });
   if (!buffer) return baseTemplate;
 
-  return deriveTemplateWithImage(baseTemplate, buffer);
+  // La géométrie détectée vit dans un sidecar du même bucket privé. Toute
+  // anomalie (absent, illisible, valeurs incohérentes) ramène à null, donc à
+  // la géométrie du gabarit : une métadonnée corrompue ne casse jamais un Welcome.
+  const avatarOverride = await loadDetectedAvatarGeometry({ guildId, imageStore, logger });
+
+  return deriveTemplateWithImage(baseTemplate, buffer, avatarOverride);
+}
+
+/**
+ * Lit la géométrie détectée et la valide. Les valeurs sont revérifiées ici
+ * plutôt que d'être faites confiance : le sidecar est un objet stocké, il peut
+ * avoir été écrit par une version antérieure ou altéré.
+ * @returns {Promise<{cx:number,cy:number,radius:number}|null>}
+ */
+async function loadDetectedAvatarGeometry({ guildId, imageStore, logger }) {
+  if (!imageStore || typeof imageStore.downloadMeta !== "function") return null;
+
+  let meta = null;
+  try {
+    meta = await imageStore.downloadMeta(guildId);
+  } catch (error) {
+    logger?.warn?.("Welcome image meta could not be read", { guildId, errorType: error?.name || typeof error });
+    return null;
+  }
+  if (!meta || meta.verdict !== "CONFIRME") return null;
+
+  const avatar = meta.avatar;
+  if (!avatar || typeof avatar !== "object") return null;
+  const cx = Number(avatar.cx);
+  const cy = Number(avatar.cy);
+  const radius = Number(avatar.radius);
+  if (![cx, cy, radius].every(Number.isFinite)) return null;
+  if (radius <= 0) return null;
+  // Un cercle qui ne tient pas du tout dans l'image est incohérent : on ignore
+  // la géométrie plutôt que de dessiner l'avatar hors cadre.
+  if (cx + radius <= 0 || cy + radius <= 0) return null;
+  return { cx: Math.round(cx), cy: Math.round(cy), radius: Math.round(radius) };
 }
 
 /** Récupère l'image, avec le cache de ressources existant (TTL 300 s, LRU). */
@@ -88,16 +124,26 @@ async function loadWelcomeImageBuffer({ key, guildId, imageStore, resourceCache,
  * template de base sont CONSERVÉS : si le buffer personnalisé s'avère
  * indécodable, le renderer retombe sur l'asset standard plutôt que sur un
  * dégradé nu.
+ *
+ * `avatarOverride` porte la zone circulaire détectée dans l'image
+ * personnalisée. Il n'est appliqué que sur un verdict CONFIRME (validé par
+ * `loadDetectedAvatarGeometry`) ; à défaut, `design.avatar` du gabarit est
+ * conservé à l'identique, y compris `ringColor` et `ringWidth`.
  */
-function deriveTemplateWithImage(baseTemplate, buffer) {
+function deriveTemplateWithImage(baseTemplate, buffer, avatarOverride = null) {
   const design = baseTemplate.design;
   const background = design.background || {};
+  const derivedDesign = { ...design, background: { ...background, buffer } };
+  if (avatarOverride) {
+    derivedDesign.avatar = { ...(design.avatar || {}), ...avatarOverride };
+  }
   return Object.freeze({
     ...baseTemplate,
-    design: Object.freeze({
-      ...design,
-      background: Object.freeze({ ...background, buffer }),
-    }),
+    design: Object.freeze(
+      avatarOverride
+        ? { ...derivedDesign, avatar: Object.freeze(derivedDesign.avatar) }
+        : { ...derivedDesign, background: Object.freeze(derivedDesign.background) },
+    ),
   });
 }
 

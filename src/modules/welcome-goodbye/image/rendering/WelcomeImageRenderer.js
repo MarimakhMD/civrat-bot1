@@ -71,16 +71,32 @@ class WelcomeImageRenderer {
   }
 
   /**
+   * Géométrie « cover » d'une image dans une boîte : plus petit agrandissement
+   * qui couvre toute la boîte, centré, donc rogné sur le bord excédentaire.
+   * Le rapport de l'image est conservé — il n'y a jamais d'étirement.
+   *
+   * Retourne des coordonnées RELATIVES à la boîte ; l'appelant les translate.
+   * @returns {{dx:number,dy:number,dw:number,dh:number}}
+   */
+  #coverRect(image, boxWidth, boxHeight) {
+    const sourceWidth = Number(image.width) || 0;
+    const sourceHeight = Number(image.height) || 0;
+    if (sourceWidth <= 0 || sourceHeight <= 0) return { dx: 0, dy: 0, dw: boxWidth, dh: boxHeight };
+    const scale = Math.max(boxWidth / sourceWidth, boxHeight / sourceHeight);
+    const drawWidth = sourceWidth * scale;
+    const drawHeight = sourceHeight * scale;
+    return { dx: (boxWidth - drawWidth) / 2, dy: (boxHeight - drawHeight) / 2, dw: drawWidth, dh: drawHeight };
+  }
+
+  /**
    * Recadrage « cover » : l'image remplit toute la carte, centrée, rognée si
    * besoin. UN SEUL code de dessin pour l'asset du template et l'image
    * personnalisée — les deux sources sont donc recadrées strictement à
    * l'identique, ce qui est exigé pour que l'aperçu et la livraison concordent.
    */
   #drawCovered(ctx, image, width, height) {
-    const scale = Math.max(width / image.width, height / image.height);
-    const drawWidth = image.width * scale;
-    const drawHeight = image.height * scale;
-    ctx.drawImage(image, (width - drawWidth) / 2, (height - drawHeight) / 2, drawWidth, drawHeight);
+    const box = this.#coverRect(image, width, height);
+    ctx.drawImage(image, box.dx, box.dy, box.dw, box.dh);
   }
 
   async #drawBackground(ctx, template, design, width, height) {
@@ -155,8 +171,21 @@ class WelcomeImageRenderer {
     if (image) {
       ctx.save();
       ctx.clip();
+      // « cover » et non étirement : `drawImage(img, dx, dy, dw, dh)` met à
+      // l'échelle vers dw×dh sans tenir compte du rapport de la source. Un
+      // avatar non carré était donc DÉFORMÉ pour remplir le cercle. On calcule
+      // ici la géométrie cover dans la boîte du cercle, puis on la translate au
+      // centre : le cercle est intégralement couvert, le rapport est conservé,
+      // l'excédent est rogné par le clip déjà posé.
       const size = avatar.radius * 2;
-      ctx.drawImage(image, avatar.cx - avatar.radius, avatar.cy - avatar.radius, size, size);
+      const box = this.#coverRect(image, size, size);
+      ctx.drawImage(
+        image,
+        avatar.cx - avatar.radius + box.dx,
+        avatar.cy - avatar.radius + box.dy,
+        box.dw,
+        box.dh,
+      );
       ctx.restore();
     } else {
       // Clean fallback: accent disc with the member initial.

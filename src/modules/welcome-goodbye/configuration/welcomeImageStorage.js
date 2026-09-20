@@ -17,10 +17,20 @@
 
 const WELCOME_IMAGE_BUCKET = "civrat-welcome-images";
 const WELCOME_IMAGE_OBJECT_NAME = "welcome.png";
+/**
+ * Sidecar de métadonnées : géométrie détectée de la zone avatar.
+ *
+ * Stocké dans le MÊME bucket privé, sous une clé voisine dérivée du même
+ * guildId. C'est ce qui permet de persister la géométrie SANS migration SQL :
+ * aucune colonne, aucun schéma, aucune RLS supplémentaire — le bucket reste
+ * privé et l'isolation par préfixe est strictement identique.
+ */
+const WELCOME_IMAGE_META_OBJECT_NAME = "welcome.json";
 
 /** Un identifiant Discord est un snowflake : 15 à 22 chiffres. */
 const GUILD_ID_PATTERN = /^\d{15,22}$/;
 const WELCOME_IMAGE_KEY_PATTERN = /^\d{15,22}\/welcome\.png$/;
+const WELCOME_IMAGE_META_KEY_PATTERN = /^\d{15,22}\/welcome\.json$/;
 
 function isDiscordGuildId(value) {
   return typeof value === "string" && GUILD_ID_PATTERN.test(value);
@@ -43,6 +53,21 @@ function isWelcomeImageObjectKey(value) {
 }
 
 /**
+ * Clé du sidecar de métadonnées. Même garde que la clé d'image : le guildId
+ * doit être un snowflake, ce qui exclut toute traversée de chemin.
+ */
+function buildWelcomeImageMetaKey(guildId) {
+  if (!isDiscordGuildId(guildId)) {
+    throw new TypeError("welcome image meta key requires a valid guildId");
+  }
+  return `${guildId}/${WELCOME_IMAGE_META_OBJECT_NAME}`;
+}
+
+function isWelcomeImageMetaKey(value) {
+  return typeof value === "string" && WELCOME_IMAGE_META_KEY_PATTERN.test(value);
+}
+
+/**
  * Extrait le guildId d'une clé, ou null. Utilisé en LECTURE pour ignorer une
  * clé dont le préfixe ne correspond pas à la guilde courante : une valeur
  * copiée d'un autre serveur en base ne peut donc jamais être servie.
@@ -55,9 +80,13 @@ function guildIdOfWelcomeImageKey(value) {
 module.exports = {
   WELCOME_IMAGE_BUCKET,
   WELCOME_IMAGE_OBJECT_NAME,
+  WELCOME_IMAGE_META_OBJECT_NAME,
   WELCOME_IMAGE_KEY_PATTERN,
+  WELCOME_IMAGE_META_KEY_PATTERN,
   isDiscordGuildId,
   buildWelcomeImageObjectKey,
+  buildWelcomeImageMetaKey,
   isWelcomeImageObjectKey,
+  isWelcomeImageMetaKey,
   guildIdOfWelcomeImageKey,
 };

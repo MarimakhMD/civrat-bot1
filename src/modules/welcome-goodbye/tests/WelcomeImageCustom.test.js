@@ -192,13 +192,21 @@ test("ImageWelcome — l'upload est un upsert sur la clé de la guilde, avec son
 });
 
 test("ImageWelcome — la suppression ne touche que la clé de la guilde concernée", async () => {
-  const storage = createStorageFake({ [KEY_A]: png(), [KEY_B]: png() });
+  const storage = createStorageFake({
+    [KEY_A]: png(),
+    [`${GUILD_A}/welcome.json`]: Buffer.from("{}", "utf8"),
+    [KEY_B]: png(),
+    [`${GUILD_B}/welcome.json`]: Buffer.from("{}", "utf8"),
+  });
   const store = new WelcomeImageStore({ storage });
 
   assert.equal(await store.remove(GUILD_A), true);
   const removals = storage.calls.filter((call) => call.op === "remove");
-  assert.deepEqual(removals.map((call) => call.objectNames), [[KEY_A]]);
+  // L'image ET son sidecar de métadonnées partent ensemble — mais uniquement
+  // ceux de la guilde A : l'isolation par préfixe reste la règle.
+  assert.deepEqual(removals.map((call) => call.objectNames), [[KEY_A, `${GUILD_A}/welcome.json`]]);
   assert.equal(storage.objects.has(KEY_B), true, "l'image de la guilde B ne doit pas être affectée");
+  assert.equal(storage.objects.has(`${GUILD_B}/welcome.json`), true, "les métadonnées de la guilde B non plus");
   assert.notEqual(await store.download(GUILD_B), null);
 });
 
@@ -778,9 +786,11 @@ test("Suppression — la clé est remise à null ET l'objet est supprimé", asyn
     { guildId: GUILD_A, patch: { [Key.WELCOME_IMAGE_KEY]: null } },
   ]);
   assert.equal(storage.objects.has(KEY_A), false, "l'objet a bien été retiré du bucket");
+  // Le sidecar de géométrie détectée est retiré avec l'image : une métadonnée
+  // orpheline pourrait sinon s'appliquer à l'image suivante.
   assert.deepEqual(
     storage.calls.filter((call) => call.op === "remove").map((call) => call.objectNames),
-    [[KEY_A]],
+    [[KEY_A, `${GUILD_A}/welcome.json`]],
   );
 });
 

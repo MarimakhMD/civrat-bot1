@@ -15,6 +15,7 @@ const {
   formatImageSize,
   ACCEPTED_IMAGE_CONTENT_TYPES,
 } = require("../services/welcomeImageUploadValidation");
+const { detectAvatarCircle, AvatarCircleVerdict } = require("../image/analysis/detectAvatarCircle");
 
 const DEFAULT_TEMPLATE_ID = "template-1";
 
@@ -142,6 +143,31 @@ async function uploadWelcomeImage(context) {
     return await storageUnavailable();
   }
 
+  // 6bis) Détection de la zone avatar, APRÈS le stockage de l'image.
+  // L'ordre compte : l'image est déjà enregistrée, donc un échec ou une
+  // ambiguïté de la détection ne peut ni l'annuler ni la supprimer. En cas de
+  // verdict autre que CONFIRME, aucun sidecar n'est écrit et le rendu
+  // conservera la géométrie du gabarit.
+  const detection = await detectAvatarCircle(fetched.buffer, { logger, guildId });
+  logger?.info?.("Welcome avatar circle detection", {
+    guildId,
+    verdict: detection.verdict,
+    score: detection.score,
+    candidates: detection.candidates,
+    ...detection.detail,
+  });
+  if (detection.verdict === AvatarCircleVerdict.CONFIRMED && detection.geometry) {
+    // Échec toléré : l'image reste utilisable, seule la géométrie automatique
+    // est perdue. `uploadMeta` ne lève jamais.
+    await imageStore.uploadMeta?.(guildId, {
+      version: 1,
+      verdict: detection.verdict,
+      score: detection.score,
+      avatar: detection.geometry,
+      detectedAt: new Date().toISOString(),
+    });
+  }
+
   // 7) Persistance de la clé. Le schéma refuse toute clé malformée.
   const config = await settings.update(guildId, { [Key.WELCOME_IMAGE_KEY]: stored.key });
   context.adminLogService?.record?.({
@@ -153,15 +179,24 @@ async function uploadWelcomeImage(context) {
 
   // 8) Aperçu : rendu réel via le chemin de livraison.
   const preview = await renderUploadedCardPreview({ config, guildId, userId, envelope, entitlement, imageStore, imagePipeline, templateRegistry, resourceCache, logger });
+
+  // L'administrateur doit savoir si la zone avatar a été reconnue : sans ce
+  // retour, un avatar mal placé resterait inexplicable. Le message diffère
+  // selon le verdict, mais l'upload est confirmé dans les trois cas.
+  const avatarMessageKey = detection.verdict === AvatarCircleVerdict.CONFIRMED
+    ? "welcomeGoodbye.welcomeImageAvatarDetected"
+    : "welcomeGoodbye.welcomeImageAvatarUnconfirmed";
+  const content = `${t("welcomeGoodbye.welcomeImageUploaded")}\n${t(avatarMessageKey)}`;
+
   if (preview) {
     await envelope.transport.replyImagePreview({
       image: preview,
-      content: t("welcomeGoodbye.welcomeImageUploaded"),
+      content,
       ephemeral: true,
     });
   } else {
     await envelope.transport.reply({
-      view: { content: t("welcomeGoodbye.welcomeImageUploaded"), components: [] },
+      view: { content, components: [] },
       ephemeral: true,
     });
   }
@@ -173,6 +208,11 @@ async function uploadWelcomeImage(context) {
     height: decoded.height,
     bytes: fetched.buffer.length,
     preview: Boolean(preview),
+    avatarCircle: {
+      verdict: detection.verdict,
+      geometry: detection.geometry,
+      score: detection.score,
+    },
   };
 }
 
