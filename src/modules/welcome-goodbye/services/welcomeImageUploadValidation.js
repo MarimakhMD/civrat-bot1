@@ -321,6 +321,20 @@ async function fetchWelcomeImageBuffer(attachment, { logger = null, guildId = nu
 
 /**
  * Décodage réel : prouve que le buffer est une image et fournit ses dimensions.
+ *
+ * ⚠️ Exige @napi-rs/canvas >= 1.0.9 (voir MIN_SAFE_CANVAS_VERSION dans
+ * tests/WelcomeImageDecoderCompat.test.js). Les versions antérieures ont deux
+ * défauts qui se manifestent ici :
+ *   - `is_svg_image()` cherchait la séquence littérale `<svg` sur TOUT le
+ *     buffer et non en tête de fichier. Un PNG exporté par Inkscape (source SVG
+ *     embarquée en chunk `iTXt`) ou tout fichier contenant ces 4 octets était
+ *     aiguillé vers le décodeur SVG et rejeté avec « Invalid SVG image », alors
+ *     qu'il était parfaitement valide. Les 5 formats étaient touchés.
+ *   - un en-tête PNG incohérent tuait le processus (SIGSEGV), qu'aucun
+ *     try/catch ne peut intercepter.
+ * La garde `inspectImageHeader` ci-dessous atténue le second défaut sans
+ * dépendre du comportement du binaire, mais ne remplace pas le plancher.
+ *
  * @returns {Promise<{ok:true,width:number,height:number}|{ok:false,reason:string}>}
  */
 async function decodeWelcomeImage(buffer, { logger = null, guildId = null } = {}) {
