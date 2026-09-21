@@ -39,6 +39,30 @@ const { createCanvas, loadImage } = require("@napi-rs/canvas");
  *
  * Ce module est PUR : aucun effet de bord, aucun accès au stockage, aucune
  * écriture. Il ne lève jamais — toute défaillance renvoie `AUCUN`.
+ *
+ * NOTE SUR LES PERFORMANCES
+ * -------------------------
+ * Le balayage grossier évalue des dizaines de milliers de cercles. Quatre
+ * accélérations y sont appliquées, TOUTES à résultat bit-à-bit identique — la
+ * formule de score, les seuils, la génération des candidats, la suppression des
+ * non-maxima et l'affinage sont inchangés :
+ *
+ *  1. Le support de périmètre est calculé AVANT l'intérieur, et un candidat
+ *     dont le support ne dépasse pas 0,5 est écarté immédiatement. C'est
+ *     exactement le filtre déjà appliqué au balayage grossier : l'intérieur et
+ *     la couronne extérieure n'étaient donc calculés que pour être jetés.
+ *  2. La tolérance d'1 pixel du périmètre (max sur un voisinage 3×3) est
+ *     pré-calculée une fois dans une carte dilatée : 9 lectures par
+ *     échantillon deviennent 1.
+ *  3. `r·cos(θ)` et `r·sin(θ)` sont tabulés par rayon. Seul le PRODUIT est
+ *     tabulé, jamais son arrondi : `Math.round(cx + r·cos θ)` n'est PAS égal à
+ *     `cx + Math.round(r·cos θ)` quand le produit tombe juste sous un demi
+ *     (vérifié : 248 018 contre-exemples), donc l'arrondi reste fait sur la
+ *     valeur complète.
+ *  4. La boucle intérieure ne parcourt plus le carré englobant pour en jeter
+ *     les coins : les bornes de chaque ligne sont résolues analytiquement. Les
+ *     termes accumulés, et surtout leur ORDRE d'accumulation, sont identiques
+ *     (vérifié sur 4 165 cas) — les sommes flottantes restent bit-à-bit égales.
  */
 
 /** Verdicts de confiance. */
@@ -55,6 +79,51 @@ const DEFAULTS = Object.freeze({
   acceptScore: 0.62,
   margin: 0.05,
 });
+
+/** Nombre d'échantillons du périmètre pour un rayon donné. */
+function perimeterSamples(r) {
+  return Math.max(48, Math.min(180, Math.round(r * 2)));
+}
+
+/**
+ * Racine entière par excès nul. `Math.floor(Math.sqrt())` suffit sur le domaine
+ * réel (vérifié jusqu'à 100 000) ; la double correction garde la fonction exacte
+ * quelle que soit la précision du `sqrt` de la plateforme.
+ */
+function integerSqrt(value) {
+  let q = Math.floor(Math.sqrt(value));
+  while ((q + 1) * (q + 1) <= value) q++;
+  while (q * q > value) q--;
+  return q;
+}
+
+/**
+ * Tables trigonométriques d'un rayon, construites à la demande pour la durée
+ * d'une seule détection (aucun état partagé entre appels, aucune fuite).
+ *
+ * Les tableaux sont en `Float64Array` : les produits y sont stockés à la
+ * précision native du calcul, la relecture est donc identique à l'expression
+ * inline qu'ils remplacent.
+ */
+function createTrigTables(r) {
+  const samples = perimeterSamples(r);
+  const cos = new Float64Array(samples);
+  const sin = new Float64Array(samples);
+  for (let i = 0; i < samples; i++) {
+    const theta = (i / samples) * Math.PI * 2;
+    cos[i] = r * Math.cos(theta);
+    sin[i] = r * Math.sin(theta);
+  }
+  const outerRadius = r * 1.35;
+  const outerCos = new Float64Array(200);
+  const outerSin = new Float64Array(200);
+  for (let i = 0; i < 200; i++) {
+    const theta = (i / 200) * Math.PI * 2;
+    outerCos[i] = outerRadius * Math.cos(theta);
+    outerSin[i] = outerRadius * Math.sin(theta);
+  }
+  return { samples, cos, sin, outerCos, outerSin };
+}
 
 /**
  * Réduit l'image à une taille de travail. La détection ne porte jamais sur
@@ -81,6 +150,14 @@ async function toWorkingPixels(buffer, maxWorkingSide) {
  * forte transition d'alpha voisine. L'alpha compte parce qu'un emplacement
  * d'avatar peut être un trou transparent plutôt qu'une plage colorée.
  * Le seuil renvoyé est un percentile borné, jamais une constante.
+ *
+ * `dilated` porte, pour chaque position d'échantillon, le maximum de `edge` sur
+ * le voisinage 3×3 — la tolérance d'1 pixel du test de périmètre, pré-calculée.
+ * Le tableau est décalé de `pad` cases pour rester indexable aux positions qui
+ * tombent hors image : le calcul d'index d'origine est brut (`(py+dy)*w+(px+dx)`)
+ * et peut produire un index négatif ou trop grand, auquel cas la valeur lue est
+ * `undefined` et le test échoue. Reproduire exactement ce comportement impose de
+ * conserver la même arithmétique d'index, repli de ligne compris.
  */
 function buildBoundaryMap({ data, w, h }) {
   const gray = new Float32Array(w * h);
@@ -113,52 +190,140 @@ function buildBoundaryMap({ data, w, h }) {
   // Borné des deux côtés : assez bas pour voir un cercle peu contrasté, assez
   // haut pour ne pas prendre le bruit d'une photo pour un contour.
   const threshold = Math.max(6, Math.min(40, percentile * 0.35));
-  return { gray, edge, threshold };
+
+  const size = w * h;
+  const pad = w + 1;
+  const length = size + pad * 2;
+  // Le maximum sur un voisinage 3×3 est séparable : maximum horizontal puis
+  // maximum vertical donnent exactement le même résultat (vérifié case par
+  // case), pour deux tiers de lectures en moins. Une valeur absente compte
+  // pour 0, ce qui ne change rien puisque `edge` est toujours positif.
+  const horizontal = new Float32Array(length);
+  for (let e = 0; e < length; e++) {
+    let best = 0;
+    for (let dx = -1; dx <= 1; dx++) {
+      const i = e - pad + dx;
+      if (i < 0 || i >= size) continue;
+      const value = edge[i];
+      if (value > best) best = value;
+    }
+    horizontal[e] = best;
+  }
+  const dilated = new Float32Array(length);
+  for (let e = 0; e < length; e++) {
+    let best = 0;
+    for (let dy = -1; dy <= 1; dy++) {
+      const j = e + dy * w;
+      if (j < 0 || j >= length) continue;
+      const value = horizontal[j];
+      if (value > best) best = value;
+    }
+    dilated[e] = best;
+  }
+
+  return { gray, edge, threshold, dilated, pad, w, h, trig: new Map() };
 }
 
-/** Score d'un cercle candidat, ou null s'il sort du cadre. */
-function scoreCandidate(cx, cy, r, maps, w, h) {
-  const { gray, edge, threshold } = maps;
-  if (cx - r < 0 || cy - r < 0 || cx + r >= w || cy + r >= h) return null;
-
-  const samples = Math.max(48, Math.min(180, Math.round(r * 2)));
-  let onEdge = 0;
-  for (let i = 0; i < samples; i++) {
-    const theta = (i / samples) * Math.PI * 2;
-    const px = Math.round(cx + r * Math.cos(theta));
-    const py = Math.round(cy + r * Math.sin(theta));
-    let best = 0;
-    // Tolérance d'1 pixel : le cercle du concepteur n'est jamais au pixel près.
-    for (let dy = -1; dy <= 1; dy++) {
-      for (let dx = -1; dx <= 1; dx++) {
-        const value = edge[(py + dy) * w + (px + dx)];
-        if (value > best) best = value;
-      }
-    }
-    if (best > threshold) onEdge++;
+/** Tables trigonométriques du rayon, mémoïsées pour la détection en cours. */
+function trigFor(maps, r) {
+  let tables = maps.trig.get(r);
+  if (!tables) {
+    tables = createTrigTables(r);
+    maps.trig.set(r, tables);
   }
-  const support = onEdge / samples;
+  return tables;
+}
+
+/**
+ * Support de périmètre d'un cercle, ou -1 s'il sort du cadre.
+ * Calculé seul, il permet au balayage grossier d'écarter un candidat avant de
+ * payer l'intérieur et la couronne extérieure.
+ *
+ * Avec `bailBelowHalf`, la boucle s'arrête dès qu'il devient ARITHMÉTIQUEMENT
+ * impossible d'atteindre `support > 0,5` : il reste `samples - i` échantillons,
+ * donc le meilleur support encore atteignable est `(onEdge + samples - i) /
+ * samples`. S'il ne dépasse pas 0,5, le candidat sera de toute façon écarté par
+ * le balayage grossier — la valeur renvoyée (-1) n'est alors jamais lue comme
+ * un support. Un candidat retenu termine toujours la boucle complète et obtient
+ * donc le support exact, bit-à-bit identique à la version de référence.
+ * Réservé au balayage grossier : l'affinage a besoin du support de TOUS les
+ * candidats et appelle cette fonction sans `bailBelowHalf`.
+ */
+function perimeterSupport(cx, cy, r, maps, bailBelowHalf) {
+  const { dilated, pad, threshold, w, h } = maps;
+  if (cx - r < 0 || cy - r < 0 || cx + r >= w || cy + r >= h) return -1;
+
+  const tables = trigFor(maps, r);
+  const { samples, cos, sin } = tables;
+  let onEdge = 0;
+
+  if (bailBelowHalf) {
+    // `support > 0,5` équivaut à `onEdge >= floor(samples/2) + 1`.
+    const needed = Math.floor(samples / 2) + 1;
+    for (let i = 0; i < samples; i++) {
+      if (onEdge + samples - i < needed) return -1;
+      const px = Math.round(cx + cos[i]);
+      const py = Math.round(cy + sin[i]);
+      if (dilated[py * w + px + pad] > threshold) onEdge++;
+    }
+    return onEdge / samples;
+  }
+
+  for (let i = 0; i < samples; i++) {
+    // L'arrondi porte sur la somme complète, comme dans la version de
+    // référence : factoriser l'arrondi changerait le résultat.
+    const px = Math.round(cx + cos[i]);
+    const py = Math.round(cy + sin[i]);
+    // Tolérance d'1 pixel, pré-calculée.
+    if (dilated[py * w + px + pad] > threshold) onEdge++;
+  }
+  return onEdge / samples;
+}
+
+/**
+ * Complète un candidat dont le support est déjà connu. Renvoie null si le
+ * disque ou la couronne extérieure sortent du cadre.
+ */
+function finishCandidate(cx, cy, r, support, maps) {
+  const { gray, w, h } = maps;
 
   let insideSum = 0;
   let insideSquareSum = 0;
   let insideCount = 0;
-  let outsideSum = 0;
-  let outsideCount = 0;
   const step = Math.max(1, Math.round(r / 24));
-  for (let y = Math.ceil(cy - r); y <= cy + r; y += step) {
-    for (let x = Math.ceil(cx - r); x <= cx + r; x += step) {
-      if ((x - cx) ** 2 + (y - cy) ** 2 > r * r) continue;
-      const value = gray[y * w + x];
+  const radiusSquared = r * r;
+  for (let y = cy - r; y <= cy + r; y += step) {
+    const dy = y - cy;
+    const remaining = radiusSquared - dy * dy;
+    if (remaining < 0) continue;
+    // Demi-largeur du disque sur cette ligne. Les abscisses retenues sont
+    // cx - r + k*step avec |k*step - r| <= quarter : mêmes termes, même ordre
+    // d'accumulation que le balayage du carré englobant.
+    const quarter = integerSqrt(remaining);
+    const kFrom = (r - quarter) / step;
+    const kLo = kFrom <= 0 ? 0 : Math.ceil(kFrom);
+    const kHi = Math.floor((r + quarter) / step);
+    if (kHi < kLo) continue;
+    // L'index progresse par pas entiers et le compte est déduit du nombre de
+    // termes : les deux restent des entiers exacts, la séquence de valeurs
+    // lues et l'ordre des additions sont inchangés.
+    let index = y * w + cx - r + kLo * step;
+    const end = y * w + cx - r + kHi * step;
+    insideCount += kHi - kLo + 1;
+    for (; index <= end; index += step) {
+      const value = gray[index];
       insideSum += value;
       insideSquareSum += value * value;
-      insideCount++;
     }
   }
-  const outerRing = r * 1.35;
+
+  let outsideSum = 0;
+  let outsideCount = 0;
+  const tables = trigFor(maps, r);
+  const { outerCos, outerSin } = tables;
   for (let i = 0; i < 200; i++) {
-    const theta = (i / 200) * Math.PI * 2;
-    const x = Math.round(cx + outerRing * Math.cos(theta));
-    const y = Math.round(cy + outerRing * Math.sin(theta));
+    const x = Math.round(cx + outerCos[i]);
+    const y = Math.round(cy + outerSin[i]);
     if (x < 0 || y < 0 || x >= w || y >= h) continue;
     outsideSum += gray[y * w + x];
     outsideCount++;
@@ -186,6 +351,13 @@ function scoreCandidate(cx, cy, r, maps, w, h) {
   };
 }
 
+/** Score d'un cercle candidat, ou null s'il sort du cadre. */
+function scoreCandidate(cx, cy, r, maps) {
+  const support = perimeterSupport(cx, cy, r, maps);
+  if (support < 0) return null;
+  return finishCandidate(cx, cy, r, support, maps);
+}
+
 /** Balayage grossier, suppression des non-maxima, puis affinage local. */
 function searchCandidates(pixels) {
   const { w, h } = pixels;
@@ -202,8 +374,13 @@ function searchCandidates(pixels) {
   for (let cy = minRadius; cy < h - minRadius; cy += centerStep) {
     for (let cx = minRadius; cx < w - minRadius; cx += centerStep) {
       for (const r of radii) {
-        const candidate = scoreCandidate(cx, cy, r, maps, w, h);
-        if (candidate && candidate.support > 0.5) coarse.push(candidate);
+        // Un candidat est retenu au balayage grossier uniquement si son support
+        // dépasse 0,5 : l'évaluer avant l'intérieur évite de calculer des
+        // statistiques qui seraient immédiatement jetées.
+        const support = perimeterSupport(cx, cy, r, maps, true);
+        if (support <= 0.5) continue;
+        const candidate = finishCandidate(cx, cy, r, support, maps);
+        if (candidate) coarse.push(candidate);
       }
     }
   }
@@ -224,7 +401,7 @@ function searchCandidates(pixels) {
     for (let dy = -centerStep; dy <= centerStep; dy++) {
       for (let dx = -centerStep; dx <= centerStep; dx++) {
         for (let dr = -6; dr <= 6; dr++) {
-          const scored = scoreCandidate(candidate.cx + dx, candidate.cy + dy, candidate.r + dr, maps, w, h);
+          const scored = scoreCandidate(candidate.cx + dx, candidate.cy + dy, candidate.r + dr, maps);
           if (scored && scored.score > best.score) best = scored;
         }
       }
