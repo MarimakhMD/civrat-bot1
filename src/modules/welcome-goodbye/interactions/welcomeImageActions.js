@@ -4,6 +4,7 @@ const { premiumRequiredView } = require("../../../core/entitlements");
 const { WelcomeGoodbyeConfigKey: Key } = require("../configuration/welcomeGoodbyeConstants");
 const { welcomeImageView } = require("./welcomeImageView");
 const { resolveWelcomeImageEntitlement } = require("../services/welcomeImageEntitlement");
+const { WelcomeResourceCache } = require("../rendering/WelcomeResourceCache");
 const {
   ACCEPTED_IMAGE_CONTENT_TYPES,
   formatImageSize,
@@ -84,6 +85,20 @@ async function showWelcomeImageUploadHelp(context) {
 async function removeWelcomeImage(context) {
   const config = await context.settings.update(context.guildId, { [Key.WELCOME_IMAGE_KEY]: null });
   const removed = context.imageStore ? await context.imageStore.remove(context.guildId) : false;
+
+  // L'objet a disparu du bucket, mais l'entrée de cache portait la même clé
+  // CONSTANTE : sans invalidation, le rendu continuerait de servir l'image
+  // supprimée pendant tout le TTL. Diffusé à toutes les instances du processus
+  // pour la même raison qu'à l'upload (panneau et livraison ont chacun leur cache).
+  if (context.imageStore?.keyFor) {
+    const removedKey = context.imageStore.keyFor(context.guildId);
+    const touched = WelcomeResourceCache.invalidateEverywhere(removedKey);
+    context.logger?.info?.("Welcome image cache invalidated on removal", {
+      guildId: context.guildId,
+      key: removedKey,
+      cacheInstancesCleared: touched,
+    });
+  }
 
   const entitlement = await resolveWelcomeImageEntitlement({
     guildId: context.guildId,

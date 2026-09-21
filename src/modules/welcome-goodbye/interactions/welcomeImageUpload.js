@@ -16,6 +16,7 @@ const {
   ACCEPTED_IMAGE_CONTENT_TYPES,
 } = require("../services/welcomeImageUploadValidation");
 const { detectAvatarCircle, AvatarCircleVerdict } = require("../image/analysis/detectAvatarCircle");
+const { WelcomeResourceCache } = require("../rendering/WelcomeResourceCache");
 
 const DEFAULT_TEMPLATE_ID = "template-1";
 
@@ -142,6 +143,23 @@ async function uploadWelcomeImage(context) {
     });
     return await storageUnavailable();
   }
+
+  // 6ter) INVALIDATION DU CACHE — obligatoire, pas une optimisation.
+  // La clé d'objet est CONSTANTE par guilde (`{guildId}/welcome.png`) : l'image
+  // précédente et son remplacement occupent la MÊME entrée de cache. Sans cette
+  // invalidation, un remplacement reste invisible pendant toute la durée du TTL
+  // (300 s) et le rendu continue de servir l'ancienne image.
+  //
+  // L'invalidation est diffusée à TOUTES les instances du processus : le panneau
+  // d'administration et la livraison des cartes Welcome composent chacun leur
+  // propre cache. N'invalider que celui du panneau laisserait la vraie carte
+  // Welcome servie sur l'ancienne image.
+  WelcomeResourceCache.invalidateEverywhere(stored.key);
+  logger?.info?.("Welcome image cache invalidated on upload", {
+    guildId,
+    key: stored.key,
+    bytes: stored.size,
+  });
 
   // 6bis) Détection de la zone avatar, APRÈS le stockage de l'image.
   // L'ordre compte : l'image est déjà enregistrée, donc un échec ou une

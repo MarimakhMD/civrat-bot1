@@ -1,5 +1,7 @@
 "use strict";
 
+const crypto = require("node:crypto");
+
 const { WelcomeGoodbyeConfigKey: Key } = require("../configuration/welcomeGoodbyeConstants");
 const {
   isWelcomeImageObjectKey,
@@ -96,12 +98,23 @@ async function loadDetectedAvatarGeometry({ guildId, imageStore, logger }) {
   return { cx: Math.round(cx), cy: Math.round(cy), radius: Math.round(radius) };
 }
 
+/** Empreinte d'un buffer : la seule preuve exploitable de l'image réellement servie. */
+function fingerprint(buffer) {
+  if (!Buffer.isBuffer(buffer) || buffer.length === 0) return { bytes: 0, sha256: null };
+  return { bytes: buffer.length, sha256: crypto.createHash("sha256").update(buffer).digest("hex") };
+}
+
 /** Récupère l'image, avec le cache de ressources existant (TTL 300 s, LRU). */
 async function loadWelcomeImageBuffer({ key, guildId, imageStore, resourceCache, logger }) {
   if (!imageStore) return null;
 
   const cached = resourceCache?.get?.(key);
-  if (cached) return cached;
+  if (cached) {
+    // `source: "cache"` : sans cette trace, un remplacement d'image servi par
+    // une entrée périmée était indistinguable d'une image correctement relue.
+    logger?.info?.("Welcome image background resolved", { guildId, key, source: "cache", ...fingerprint(cached) });
+    return cached;
+  }
 
   let buffer = null;
   try {
@@ -114,6 +127,10 @@ async function loadWelcomeImageBuffer({ key, guildId, imageStore, resourceCache,
     return null;
   }
   if (!buffer) return null;
+
+  // Même trace côté stockage : comparer les deux empreintes dit immédiatement
+  // si le bucket et le cache divergent.
+  logger?.info?.("Welcome image background resolved", { guildId, key, source: "storage", ...fingerprint(buffer) });
 
   resourceCache?.set?.(key, buffer);
   return buffer;
