@@ -15,7 +15,6 @@ const {
   formatImageSize,
   ACCEPTED_IMAGE_CONTENT_TYPES,
 } = require("../services/welcomeImageUploadValidation");
-const { detectAvatarCircle, AvatarCircleVerdict } = require("../image/analysis/detectAvatarCircle");
 const { WelcomeResourceCache } = require("../rendering/WelcomeResourceCache");
 
 const DEFAULT_TEMPLATE_ID = "template-1";
@@ -49,6 +48,13 @@ const REJECT_MESSAGE_KEY = Object.freeze({
  *
  * Le téléversement n'active PAS `welcome_image_enabled` : le toggle reste un
  * prérequis distinct, conformément au choix produit.
+ *
+ * RÈGLE PRODUIT PHASE 2.2 — une image personnalisée est rendue TELLE QUELLE,
+ * avec pour seul élément ajouté par CIVRAT le pseudo/nom du membre. Aucune
+ * détection de cercle, aucune zone avatar, aucun avatar Discord, aucun cercle
+ * ni décoration générés. La détection automatique de la Phase 2.1 a donc
+ * disparu de ce chemin ; elle reste disponible dans
+ * `image/analysis/detectAvatarCircle.js` mais n'est plus appelée ici.
  */
 async function uploadWelcomeImage(context) {
   const { guildId, userId, t, envelope, settings, imageStore, imagePipeline, templateRegistry, resourceCache, logger = null } = context;
@@ -161,35 +167,19 @@ async function uploadWelcomeImage(context) {
     bytes: stored.size,
   });
 
-  // 6bis) Détection de la zone avatar, APRÈS le stockage de l'image.
-  // L'ordre compte : l'image est déjà enregistrée, donc un échec ou une
-  // ambiguïté de la détection ne peut ni l'annuler ni la supprimer. En cas de
-  // verdict autre que CONFIRME, aucun sidecar n'est écrit et le rendu
-  // conservera la géométrie du gabarit.
-  const detection = await detectAvatarCircle(fetched.buffer, { logger, guildId });
-  logger?.info?.("Welcome avatar circle detection", {
-    guildId,
-    verdict: detection.verdict,
-    score: detection.score,
-    candidates: detection.candidates,
-    ...detection.detail,
-  });
-  if (detection.verdict === AvatarCircleVerdict.CONFIRMED && detection.geometry) {
-    // Échec toléré : l'image reste utilisable, seule la géométrie automatique
-    // est perdue. `uploadMeta` ne lève jamais.
-    await imageStore.uploadMeta?.(guildId, {
-      version: 1,
-      verdict: detection.verdict,
-      score: detection.score,
-      avatar: detection.geometry,
-      detectedAt: new Date().toISOString(),
-    });
-  } else {
-    // Verdict non confirmé : il faut PURGER un éventuel sidecar laissé par
-    // une image précédente. Sans cela la géométrie de l'ancienne image
-    // serait appliquée à la nouvelle, ce qui est exactement ce que la règle
-    // « jamais de géométrie incertaine » interdit.
-    await imageStore.removeMeta?.(guildId);
+  // 6bis) Purge du sidecar de géométrie `{guildId}/welcome.json`.
+  //
+  // Depuis la Phase 2.2, une image personnalisée ne porte AUCUNE zone avatar :
+  // elle est rendue telle quelle, avec pour seul ajout le pseudo/nom du membre.
+  // Le rendu ne lit plus ce sidecar — il est piloté par le mode réellement
+  // configuré, jamais par la présence accidentelle d'un fichier hérité. On
+  // supprime néanmoins l'objet ici pour qu'aucune géométrie écrite par une
+  // version antérieure (Phase 2.1) ne subsiste dans le bucket privé.
+  //
+  // Échec toléré : `removeMeta` ne lève jamais et renvoie `false` en cas
+  // d'erreur. L'image reste utilisable dans tous les cas.
+  if ((await imageStore.removeMeta?.(guildId)) === false) {
+    logger?.warn?.("Welcome avatar geometry sidecar could not be purged", { guildId, actorId: userId });
   }
 
   // 7) Persistance de la clé. Le schéma refuse toute clé malformée.
@@ -204,13 +194,9 @@ async function uploadWelcomeImage(context) {
   // 8) Aperçu : rendu réel via le chemin de livraison.
   const preview = await renderUploadedCardPreview({ config, guildId, userId, envelope, entitlement, imageStore, imagePipeline, templateRegistry, resourceCache, logger });
 
-  // L'administrateur doit savoir si la zone avatar a été reconnue : sans ce
-  // retour, un avatar mal placé resterait inexplicable. Le message diffère
-  // selon le verdict, mais l'upload est confirmé dans les trois cas.
-  const avatarMessageKey = detection.verdict === AvatarCircleVerdict.CONFIRMED
-    ? "welcomeGoodbye.welcomeImageAvatarDetected"
-    : "welcomeGoodbye.welcomeImageAvatarUnconfirmed";
-  const content = `${t("welcomeGoodbye.welcomeImageUploaded")}\n${t(avatarMessageKey)}`;
+  // Un seul message de confirmation : il n'y a plus de verdict de détection à
+  // annoncer, l'image personnalisée étant rendue sans zone avatar.
+  const content = t("welcomeGoodbye.welcomeImageUploaded");
 
   if (preview) {
     await envelope.transport.replyImagePreview({
@@ -232,11 +218,6 @@ async function uploadWelcomeImage(context) {
     height: decoded.height,
     bytes: fetched.buffer.length,
     preview: Boolean(preview),
-    avatarCircle: {
-      verdict: detection.verdict,
-      geometry: detection.geometry,
-      score: detection.score,
-    },
   };
 }
 

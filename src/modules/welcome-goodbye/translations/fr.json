@@ -86,8 +86,6 @@
     "welcomeImageUploadPrompt": "📎 Utilisez {{command}} en joignant votre fichier.\nFormats acceptés : {{formats}} · taille maximale sur ce serveur : {{limit}} Mo.\nL’image sera recadrée pour remplir la carte.",
     "welcomeImageUploadPromptNoLimit": "📎 Utilisez {{command}} en joignant votre fichier.\nFormats acceptés : {{formats}}.\nL’image sera recadrée pour remplir la carte.",
     "welcomeImageUploaded": "Image Welcome enregistrée. Voici le rendu réel de la carte.",
-    "welcomeImageAvatarDetected": "Zone d'avatar détectée automatiquement : l'avatar y sera placé et recadré pour la remplir, sans déformation.",
-    "welcomeImageAvatarUnconfirmed": "Détection automatique de la zone d'avatar non confirmée. L'image est bien enregistrée, mais l'avatar utilisera l'emplacement standard du modèle.",
     "welcomeImageStorageUnavailable": "Le stockage d’images est indisponible. Réessayez plus tard.",
     "welcomeImageRejectMissing": "Aucune image n’a été jointe à la commande.",
     "welcomeImageRejectFormat": "Format non pris en charge. Formats acceptés : {{formats}}.",

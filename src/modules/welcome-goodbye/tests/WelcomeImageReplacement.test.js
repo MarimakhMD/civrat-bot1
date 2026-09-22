@@ -413,40 +413,40 @@ test("L'invalidation est journalisée à l'upload et à la suppression", async (
 });
 
 // ══════════════════════════════════════════════════════════════════════════
-// D. Sidecar — la géométrie suit l'image active
+// D. Sidecar — purgé à chaque upload, plus jamais lu au rendu
 // ══════════════════════════════════════════════════════════════════════════
 
-test("Le sidecar suit l'image active : aucune géométrie de A ne survit à B", async () => {
+test("Aucun sidecar de géométrie ne survit à un upload (Phase 2.2)", async () => {
   const s = scenario();
-  // Géométrie de A, écrite à la main comme l'aurait fait un upload confirmé.
+  // Sidecar écrit à la main, comme l'aurait fait un upload de la Phase 2.1.
   s.bucket.objects.set(META_KEY_A, Buffer.from(JSON.stringify({
     version: 1, verdict: "CONFIRME", avatar: { cx: 1900, cy: 600, radius: 300 },
   }), "utf8"));
 
-  await s.upload(IMAGE_B);   // verdict non confirmé sur cette image
+  await s.upload(IMAGE_B);   // un upload purge le sidecar, quel que soit son contenu
 
   assert.equal(s.bucket.objects.has(META_KEY_A), false,
-    "le sidecar de A doit être purgé quand B n'obtient pas un verdict CONFIRME");
+    "le sidecar hérité doit être purgé à l'upload");
   assert.equal(sha256(s.bucket.objects.get(IMAGE_KEY_A)), SHA_B, "l'image active est B");
 });
 
-test("Le rendu ne mélange jamais une géométrie et une image d'une autre version", async () => {
+test("Aucune géométrie avatar n'atteint le rendu, ni pour A ni pour B (Phase 2.2)", async () => {
   const s = scenario();
   await s.upload(IMAGE_A);
+  // Sidecar hérité de la Phase 2.1, posé à la main dans le bucket : le cas
+  // « ancienne image personnalisée + ancien welcome.json » doit rester inerte.
   const geometryA = { cx: 100, cy: 100, radius: 50 };
   s.bucket.objects.set(META_KEY_A, Buffer.from(JSON.stringify({
     version: 1, verdict: "CONFIRME", avatar: geometryA,
   }), "utf8"));
 
   const before = await s.render(s.panelCache);
-  // `deriveTemplateWithImage` fusionne la géométrie détectée en préservant
-  // `ringColor` / `ringWidth` du gabarit : on ne compare donc que le cercle.
-  const circleOf = (geometry) => ({ cx: geometry?.cx, cy: geometry?.cy, radius: geometry?.radius });
-  assert.deepEqual(circleOf(before.geometry), geometryA, "précondition : la géométrie de A est appliquée");
+  assert.equal(before.sha256, SHA_A, "précondition : l'image servie est A");
+  assert.equal(before.geometry, null, "une image personnalisée ne porte aucune zone avatar");
 
   await s.upload(IMAGE_B);
   const after = await s.render(s.panelCache);
   assert.equal(after.sha256, SHA_B, "l'image servie est B");
-  assert.notDeepEqual(circleOf(after.geometry), geometryA,
-    "la géométrie de A ne doit pas être appliquée à l'image B");
+  assert.equal(after.geometry, null,
+    "aucune géométrie — ni celle de A, ni aucune autre — ne doit atteindre le rendu");
 });

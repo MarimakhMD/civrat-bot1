@@ -1,16 +1,19 @@
 "use strict";
 
 /**
- * Détection automatique de la zone avatar d'une image Welcome personnalisée.
+ * Détection automatique de la zone avatar — module conservé, chemin désactivé.
  *
- * Couvre la règle produit à trois verdicts :
- *   CONFIRME → géométrie détectée stockée puis utilisée au rendu ;
- *   AMBIGU   → image CONSERVÉE, aucune géométrie stockée, gabarit utilisé,
- *              administrateur averti ;
- *   AUCUN    → identique à AMBIGU.
+ * PHASE 2.2 : la règle produit a changé. Une image Welcome personnalisée est
+ * rendue TELLE QUELLE, avec pour seul élément ajouté par CIVRAT le pseudo/nom
+ * du membre. CIVRAT ne détecte plus de cercle, ne dérive plus de zone avatar et
+ * ne dessine plus l'avatar du membre sur une image personnalisée.
  *
- * Le point critique est que l'upload reste fonctionnel dans les trois cas :
- * un échec de détection ne supprime ni ne refuse jamais l'image.
+ * Ce fichier couvre donc deux choses distinctes :
+ *  A/B. le module `detectAvatarCircle` et l'API sidecar de `WelcomeImageStore`,
+ *       qui restent dans le dépôt et doivent continuer à fonctionner ;
+ *  C/D/E. la PREUVE que le chemin personnalisé ne passe plus par eux : aucune
+ *       détection à l'upload, aucune géométrie dérivée, aucun avatar rendu, et
+ *       un `welcome.json` hérité de la Phase 2.1 sans aucun effet sur le rendu.
  */
 
 const { test } = require("node:test");
@@ -117,6 +120,9 @@ function createStorageFake(seed = {}, options = {}) {
         },
         async remove(objectNames) {
           calls.push({ op: "remove", bucket: name, objectNames });
+          if (options.failRemoveOn && objectNames.includes(options.failRemoveOn)) {
+            return { error: { message: "row-level security blocks delete" } };
+          }
           for (const objectName of objectNames) objects.delete(objectName);
           return { error: null };
         },
@@ -540,18 +546,18 @@ test("isolation — le sidecar d'une guilde ne se lit ni ne s'écrit depuis une 
 });
 
 // ══════════════════════════════════════════════════════════════════════════
-// C. Intégration au rendu
+// C. Rendu — Phase 2.2 : une image personnalisée n'a AUCUNE zone avatar
 // ══════════════════════════════════════════════════════════════════════════
 
 function metaSidecar(geometry, verdict = "CONFIRME") {
   return Buffer.from(JSON.stringify({ version: 1, verdict, avatar: geometry }), "utf8");
 }
 
-async function resolveWithSidecar(objects, guildId = GUILD_A) {
-  const store = new WelcomeImageStore({ storage: createStorageFake(objects) });
-  const template = baseTemplate();
+/** Résout le template de rendu avec une image personnalisée déjà en bucket. */
+async function resolveCustom(objects, guildId = GUILD_A, imageStore = null) {
+  const store = imageStore || new WelcomeImageStore({ storage: createStorageFake(objects) });
   return resolveWelcomeImageTemplate({
-    baseTemplate: template,
+    baseTemplate: baseTemplate(),
     config: { [Key.WELCOME_IMAGE_KEY]: `${guildId}/welcome.png` },
     guildId,
     entitlement: { ok: true, granted: true, code: EntitlementDecision.GRANTED },
@@ -559,173 +565,98 @@ async function resolveWithSidecar(objects, guildId = GUILD_A) {
   });
 }
 
-test("Rendu — une géométrie CONFIRME remplace celle du gabarit", async () => {
-  const result = await resolveWithSidecar({
-    [IMAGE_KEY_A]: smallPng(),
-    [META_KEY_A]: metaSidecar({ cx: 900, cy: 140, radius: 60 }),
-  });
-  assert.equal(result.design.avatar.cx, 900);
-  assert.equal(result.design.avatar.cy, 140);
-  assert.equal(result.design.avatar.radius, 60);
-});
-
-test("Rendu — ringColor et ringWidth du gabarit sont préservés", async () => {
-  const result = await resolveWithSidecar({
-    [IMAGE_KEY_A]: smallPng(),
-    [META_KEY_A]: metaSidecar({ cx: 900, cy: 140, radius: 60 }),
-  });
-  const original = baseTemplate().design.avatar;
-  assert.equal(result.design.avatar.ringColor, original.ringColor);
-  assert.equal(result.design.avatar.ringWidth, original.ringWidth);
-});
-
-test("Rendu — un verdict AMBIGU laisse la géométrie du gabarit intacte", async () => {
-  const result = await resolveWithSidecar({
-    [IMAGE_KEY_A]: smallPng(),
-    [META_KEY_A]: metaSidecar({ cx: 900, cy: 140, radius: 60 }, "AMBIGU"),
-  });
-  const original = baseTemplate().design.avatar;
-  assert.deepEqual(
-    { cx: result.design.avatar.cx, cy: result.design.avatar.cy, radius: result.design.avatar.radius },
-    { cx: original.cx, cy: original.cy, radius: original.radius },
-    "une géométrie incertaine ne doit jamais atteindre le rendu",
-  );
-  // L'image personnalisée reste bien injectée : seul le placement retombe.
-  assert.ok(result.design.background.buffer, "l'image doit rester utilisée");
-});
-
-test("Rendu — sidecar absent, corrompu ou incohérent : géométrie du gabarit", async () => {
-  const original = baseTemplate().design.avatar;
-  const expected = { cx: original.cx, cy: original.cy, radius: original.radius };
-  const cases = {
-    "sidecar absent": { [IMAGE_KEY_A]: smallPng() },
-    "JSON invalide": { [IMAGE_KEY_A]: smallPng(), [META_KEY_A]: Buffer.from("{ cassé", "utf8") },
-    "avatar manquant": { [IMAGE_KEY_A]: smallPng(), [META_KEY_A]: Buffer.from('{"verdict":"CONFIRME"}', "utf8") },
-    "rayon nul": { [IMAGE_KEY_A]: smallPng(), [META_KEY_A]: metaSidecar({ cx: 10, cy: 10, radius: 0 }) },
-    "valeurs non numériques": { [IMAGE_KEY_A]: smallPng(), [META_KEY_A]: metaSidecar({ cx: "a", cy: null, radius: NaN }) },
-    "cercle hors cadre": { [IMAGE_KEY_A]: smallPng(), [META_KEY_A]: metaSidecar({ cx: -500, cy: -500, radius: 10 }) },
-  };
-  for (const [label, objects] of Object.entries(cases)) {
-    const result = await resolveWithSidecar(objects);
-    assert.deepEqual(
-      { cx: result.design.avatar.cx, cy: result.design.avatar.cy, radius: result.design.avatar.radius },
-      expected,
-      `${label} : la géométrie du gabarit doit être conservée`,
-    );
+/** Compte les accès au sidecar, pour prouver qu'il n'est ni lu ni écrit. */
+function spyOnSidecar(store) {
+  const calls = { uploadMeta: 0, downloadMeta: 0, removeMeta: 0 };
+  for (const method of Object.keys(calls)) {
+    const original = typeof store[method] === "function" ? store[method].bind(store) : null;
+    if (!original) continue;
+    store[method] = async (...args) => { calls[method] += 1; return original(...args); };
   }
-});
-
-test("Rendu — le registre global n'est jamais muté par la géométrie détectée", async () => {
-  const registry = new WelcomeTemplateRegistry();
-  registry.discover();
-  const before = JSON.stringify(registry.get("template-1").design.avatar);
-  await resolveWithSidecar({ [IMAGE_KEY_A]: smallPng(), [META_KEY_A]: metaSidecar({ cx: 900, cy: 140, radius: 60 }) });
-  assert.equal(JSON.stringify(registry.get("template-1").design.avatar), before, "le registre partagé doit rester intact");
-});
-
-test("Rendu — une géométrie d'une autre guilde est ignorée", async () => {
-  const original = baseTemplate().design.avatar;
-  const result = await resolveWithSidecar({
-    [`${GUILD_B}/welcome.png`]: smallPng(),
-    [`${GUILD_B}/welcome.json`]: metaSidecar({ cx: 900, cy: 140, radius: 60 }),
-  }, GUILD_B);
-  // La guilde B lit bien son propre sidecar ; la guilde A ne peut pas l'atteindre.
-  assert.equal(result.design.avatar.cx, 900);
-  const resultA = await resolveWithSidecar({
-    [IMAGE_KEY_A]: smallPng(),
-    [`${GUILD_B}/welcome.json`]: metaSidecar({ cx: 900, cy: 140, radius: 60 }),
-  }, GUILD_A);
-  assert.equal(resultA.design.avatar.cx, original.cx, "isolation par guildId");
-});
-
-// ══════════════════════════════════════════════════════════════════════════
-// D. Upload — fonctionnel dans les trois verdicts
-// ══════════════════════════════════════════════════════════════════════════
-
-function imageWithThreeCircles() {
-  const canvas = createCanvas(CARD_W, CARD_H);
-  const ctx = canvas.getContext("2d");
-  ctx.fillStyle = "#101a2e";
-  ctx.fillRect(0, 0, CARD_W, CARD_H);
-  for (const [cx, fill] of [[216, "#5865f2"], [648, "#eb459e"], [1080, "#3ba55d"]]) {
-    ctx.fillStyle = fill;
-    ctx.beginPath();
-    ctx.arc(cx, 146, 118, 0, Math.PI * 2);
-    ctx.fill();
-  }
-  return canvas.toBuffer("image/png");
+  return calls;
 }
 
-test("Upload — CONFIRME : image stockée, sidecar écrit, clé persistée", async () => {
+test("Rendu — une image personnalisée ne porte AUCUNE zone avatar", async () => {
+  const result = await resolveCustom({ [IMAGE_KEY_A]: smallPng() });
+  assert.equal(result.design.avatar, null, "aucune géométrie avatar ne doit subsister");
+  assert.equal(result.design.customImage, true, "le template doit être marqué en mode image personnalisée");
+  assert.ok(result.design.background.buffer, "l'image personnalisée reste injectée");
+});
+
+test("Rendu — un welcome.json historique ne réintroduit aucune zone avatar", async () => {
+  // Le rendu est piloté par le MODE réellement configuré, jamais par la présence
+  // accidentelle d'un sidecar écrit par la Phase 2.1. C'est ce qui garantit
+  // qu'une ancienne image personnalisée accompagnée de son ancien welcome.json
+  // ne produit pas un rendu avec avatar.
+  const result = await resolveCustom({
+    [IMAGE_KEY_A]: smallPng(),
+    [META_KEY_A]: metaSidecar({ cx: 900, cy: 140, radius: 60 }),
+  });
+  assert.equal(result.design.avatar, null, "un sidecar CONFIRME hérité ne doit plus influencer le rendu");
+  assert.equal(result.design.customImage, true);
+});
+
+test("Rendu — le sidecar de géométrie n'est même plus lu", async () => {
+  const store = new WelcomeImageStore({
+    storage: createStorageFake({
+      [IMAGE_KEY_A]: smallPng(),
+      [META_KEY_A]: metaSidecar({ cx: 900, cy: 140, radius: 60 }),
+    }),
+  });
+  const calls = spyOnSidecar(store);
+  await resolveCustom({ [IMAGE_KEY_A]: smallPng() }, GUILD_A, store);
+  assert.equal(calls.downloadMeta, 0, "aucune lecture du sidecar : le mode configuré suffit");
+});
+
+test("Rendu — le registre global n'est jamais muté par l'image personnalisée", async () => {
+  const registry = new WelcomeTemplateRegistry();
+  registry.discover();
+  const before = JSON.stringify(registry.get("template-1").design);
+  await resolveCustom({ [IMAGE_KEY_A]: smallPng() });
+  assert.equal(JSON.stringify(registry.get("template-1").design), before, "le registre partagé doit rester intact");
+});
+
+// ══════════════════════════════════════════════════════════════════════════
+// D. Upload — Phase 2.2 : aucune détection, aucun sidecar écrit
+// ══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Image contenant un CERCLE GRAPHIQUE net : l'ancien détecteur le confirmait
+ * sans ambiguïté. Elle sert de preuve que CIVRAT ne cherche plus ce cercle et
+ * ne place aucun avatar dessus.
+ */
+function imageWithGraphicCircle() {
+  return welcomeImageWithCircle(1000, 146, 110, { fill: "#5865f2" });
+}
+
+test("Upload — aucune détection de cercle n'est exécutée", async () => {
   const storage = createStorageFake();
   const imageStore = new WelcomeImageStore({ storage });
+  const calls = spyOnSidecar(imageStore);
   const settings = createSettingsFake();
-  const transport = createTransportFake();
-  const buffer = welcomeImageWithCircle(216, 146, 120);
+  const buffer = imageWithGraphicCircle();
 
   const result = await withFetch(buffer, () => uploadWelcomeImage(uploadContext({
-    imageStore, settings, transport, attachment: attachmentFor(buffer),
+    imageStore, settings, attachment: attachmentFor(buffer),
   })));
 
   assert.equal(result.ok, true, `upload refusé : ${result.reason || result.code}`);
   assert.equal(result.code, "WELCOME_IMAGE_UPLOADED");
-  assert.equal(result.avatarCircle.verdict, AvatarCircleVerdict.CONFIRMED);
-  assert.ok(result.avatarCircle.geometry, "une géométrie doit être renvoyée");
+  assert.equal(result.avatarCircle, undefined, "le résultat ne porte plus de verdict de détection");
+  assert.equal(calls.uploadMeta, 0, "aucune géométrie ne doit être écrite");
+  assert.equal(calls.downloadMeta, 0, "aucune géométrie ne doit être lue");
   assert.ok(storage.objects.has(IMAGE_KEY_A), "l'image doit être stockée");
-  assert.ok(storage.objects.has(META_KEY_A), "le sidecar doit être écrit");
-  const stored = JSON.parse(storage.objects.get(META_KEY_A).toString("utf8"));
-  assert.equal(stored.verdict, "CONFIRME");
-  assert.equal(stored.avatar.cx, result.avatarCircle.geometry.cx);
+  assert.equal(storage.objects.has(META_KEY_A), false, "aucun sidecar ne doit être créé");
   assert.deepEqual(settings.updates.at(-1).patch, { [Key.WELCOME_IMAGE_KEY]: IMAGE_KEY_A }, "welcome_image_key doit être persisté");
 });
 
-test("Upload — AUCUN : l'image reste stockée, aucun sidecar, clé persistée", async () => {
-  const storage = createStorageFake();
-  const settings = createSettingsFake();
-  const buffer = plainWelcomeImage();
-
-  const result = await withFetch(buffer, () => uploadWelcomeImage(uploadContext({
-    imageStore: new WelcomeImageStore({ storage }),
-    settings,
-    attachment: attachmentFor(buffer),
-  })));
-
-  assert.equal(result.ok, true, "l'upload doit réussir malgré l'absence de détection");
-  assert.equal(result.code, "WELCOME_IMAGE_UPLOADED");
-  assert.equal(result.avatarCircle.verdict, AvatarCircleVerdict.NONE);
-  assert.equal(result.avatarCircle.geometry, null);
-  assert.ok(storage.objects.has(IMAGE_KEY_A), "l'image ne doit PAS être supprimée");
-  assert.equal(storage.objects.has(META_KEY_A), false, "aucune géométrie incertaine ne doit être stockée");
-  assert.deepEqual(settings.updates.at(-1).patch, { [Key.WELCOME_IMAGE_KEY]: IMAGE_KEY_A }, "welcome_image_key doit être persisté");
-});
-
-test("Upload — AMBIGU : image conservée, aucun sidecar, clé persistée", async () => {
-  const storage = createStorageFake();
-  const settings = createSettingsFake();
-  const buffer = imageWithThreeCircles();
-
-  const result = await withFetch(buffer, () => uploadWelcomeImage(uploadContext({
-    imageStore: new WelcomeImageStore({ storage }),
-    settings,
-    attachment: attachmentFor(buffer),
-  })));
-
-  assert.equal(result.ok, true, "l'upload doit réussir malgré l'ambiguïté");
-  assert.equal(result.avatarCircle.verdict, AvatarCircleVerdict.AMBIGUOUS);
-  assert.ok(storage.objects.has(IMAGE_KEY_A), "l'image ne doit PAS être supprimée");
-  assert.equal(storage.objects.has(META_KEY_A), false, "aucune géométrie incertaine ne doit être stockée");
-  assert.deepEqual(settings.updates.at(-1).patch, { [Key.WELCOME_IMAGE_KEY]: IMAGE_KEY_A });
-});
-
-test("Upload — un verdict non confirmé PURGE le sidecar de l'image précédente", async () => {
-  // Régression : après une image A confirmée, un re-upload B ambigu laissait le
-  // sidecar de A en place. Le rendu appliquait alors la zone de A à l'image B.
+test("Upload — un welcome.json hérité de la Phase 2.1 est purgé", async () => {
   const stale = { version: 1, verdict: "CONFIRME", avatar: { cx: 900, cy: 90, radius: 40 } };
   const storage = createStorageFake({
     [IMAGE_KEY_A]: smallPng(),
     [META_KEY_A]: Buffer.from(JSON.stringify(stale), "utf8"),
   });
-  const buffer = imageWithThreeCircles();
+  const buffer = imageWithGraphicCircle();
 
   const result = await withFetch(buffer, () => uploadWelcomeImage(uploadContext({
     imageStore: new WelcomeImageStore({ storage }),
@@ -734,15 +665,13 @@ test("Upload — un verdict non confirmé PURGE le sidecar de l'image précéden
   })));
 
   assert.equal(result.ok, true);
-  assert.equal(result.avatarCircle.verdict, AvatarCircleVerdict.AMBIGUOUS);
   assert.ok(storage.objects.has(IMAGE_KEY_A), "la nouvelle image doit être conservée");
-  assert.equal(storage.objects.has(META_KEY_A), false,
-    "la géométrie de l'ancienne image doit être purgée, pas réutilisée sur la nouvelle");
+  assert.equal(storage.objects.has(META_KEY_A), false, "la géométrie héritée doit être purgée");
 });
 
-test("Upload — un verdict non confirmé ne supprime jamais l'image", async () => {
+test("Upload — la purge du sidecar n'emporte jamais l'image", async () => {
   const storage = createStorageFake({ [IMAGE_KEY_A]: smallPng() });
-  const buffer = imageWithThreeCircles();
+  const buffer = imageWithGraphicCircle();
   await withFetch(buffer, () => uploadWelcomeImage(uploadContext({
     imageStore: new WelcomeImageStore({ storage }),
     settings: createSettingsFake(),
@@ -753,116 +682,174 @@ test("Upload — un verdict non confirmé ne supprime jamais l'image", async () 
   assert.ok(!removals.includes(IMAGE_KEY_A), `l'image ne doit jamais être ciblée par la purge : ${removals.join(", ")}`);
 });
 
-test("Upload — l'administrateur est averti différemment selon le verdict", async () => {
-  const confirmedBuffer = welcomeImageWithCircle(216, 146, 120);
-  const confirmed = createTransportFake();
-  await withFetch(confirmedBuffer, () => uploadWelcomeImage(uploadContext({
-    transport: confirmed,
-    attachment: attachmentFor(confirmedBuffer),
-  })));
-
-  const plainBuffer = plainWelcomeImage();
-  const unconfirmed = createTransportFake();
-  await withFetch(plainBuffer, () => uploadWelcomeImage(uploadContext({
-    transport: unconfirmed,
-    attachment: attachmentFor(plainBuffer),
-  })));
-
-  const textOf = (fake) => fake.calls.map((call) => call.content).filter(Boolean).join(" ");
-  assert.ok(textOf(confirmed).includes("welcomeGoodbye.welcomeImageAvatarDetected"), "verdict confirmé annoncé");
-  assert.ok(textOf(unconfirmed).includes("welcomeGoodbye.welcomeImageAvatarUnconfirmed"), "verdict non confirmé annoncé");
-  assert.ok(!textOf(confirmed).includes("Unconfirmed"), "les deux messages ne doivent pas se cumuler");
-  // La confirmation d'enregistrement reste présente dans les deux cas.
-  assert.ok(textOf(unconfirmed).includes("welcomeGoodbye.welcomeImageUploaded"), "l'upload reste confirmé même sans détection");
-});
-
-test("Upload — un échec d'écriture du sidecar n'annule pas l'upload", async () => {
-  const storage = createStorageFake({}, { failUploadOn: META_KEY_A });
+test("Upload — un échec de purge du sidecar n'annule pas l'upload", async () => {
+  const storage = createStorageFake({ [META_KEY_A]: Buffer.from("{}", "utf8") }, { failRemoveOn: META_KEY_A });
   const settings = createSettingsFake();
-  const buffer = welcomeImageWithCircle(216, 146, 120);
+  const logger = createLogger();
+  const buffer = imageWithGraphicCircle();
 
   const result = await withFetch(buffer, () => uploadWelcomeImage(uploadContext({
-    imageStore: new WelcomeImageStore({ storage }),
-    settings,
-    attachment: attachmentFor(buffer),
+    imageStore: new WelcomeImageStore({ storage }), settings, logger, attachment: attachmentFor(buffer),
   })));
 
-  assert.equal(result.ok, true, "l'upload doit réussir même si le sidecar échoue");
+  assert.equal(result.ok, true, "l'upload doit réussir même si la purge échoue");
   assert.ok(storage.objects.has(IMAGE_KEY_A), "l'image doit rester stockée");
   assert.deepEqual(settings.updates.at(-1).patch, { [Key.WELCOME_IMAGE_KEY]: IMAGE_KEY_A });
+  assert.ok(
+    logger.logs.some((log) => log.message === "Welcome avatar geometry sidecar could not be purged"),
+    "un échec de purge doit être traçable, jamais silencieux",
+  );
+});
+
+test("Upload — l'administrateur reçoit une confirmation unique, sans verdict de détection", async () => {
+  const transport = createTransportFake();
+  const buffer = imageWithGraphicCircle();
+  await withFetch(buffer, () => uploadWelcomeImage(uploadContext({
+    transport, attachment: attachmentFor(buffer),
+  })));
+  const text = transport.calls.map((call) => call.content).filter(Boolean).join(" ");
+  assert.ok(text.includes("welcomeGoodbye.welcomeImageUploaded"), "l'upload reste confirmé");
+  assert.ok(!text.includes("welcomeImageAvatarDetected"), "plus aucun message de détection");
+  assert.ok(!text.includes("welcomeImageAvatarUnconfirmed"), "plus aucun message de détection");
 });
 
 test("Upload — le téléversement n'active toujours pas welcome_image_enabled", async () => {
   const settings = createSettingsFake();
-  const buffer = welcomeImageWithCircle(216, 146, 120);
+  const buffer = imageWithGraphicCircle();
   await withFetch(buffer, () => uploadWelcomeImage(uploadContext({
-    settings,
-    attachment: attachmentFor(buffer),
+    settings, attachment: attachmentFor(buffer),
   })));
   const patched = settings.updates.flatMap((update) => Object.keys(update.patch));
   assert.ok(!patched.includes(Key.WELCOME_IMAGE_ENABLED), "aucune auto-activation après upload");
   assert.deepEqual(patched, [Key.WELCOME_IMAGE_KEY]);
 });
 
-test("Upload — la détection est journalisée avec son verdict", async () => {
+test("Upload — la détection n'est plus journalisée, l'invalidation de cache l'est toujours", async () => {
   const logger = createLogger();
-  const buffer = welcomeImageWithCircle(216, 146, 120);
+  const buffer = imageWithGraphicCircle();
   await withFetch(buffer, () => uploadWelcomeImage(uploadContext({
-    logger,
-    attachment: attachmentFor(buffer),
+    logger, attachment: attachmentFor(buffer),
   })));
-  const entry = logger.logs.find((log) => log.message === "Welcome avatar circle detection");
-  assert.ok(entry, "la décision doit être traçable");
-  assert.equal(entry.guildId, GUILD_A);
-  assert.ok([AvatarCircleVerdict.CONFIRMED, AvatarCircleVerdict.AMBIGUOUS, AvatarCircleVerdict.NONE].includes(entry.verdict));
+  assert.equal(
+    logger.logs.some((log) => log.message === "Welcome avatar circle detection"),
+    false,
+    "aucune trace de détection ne doit subsister",
+  );
+  assert.ok(
+    logger.logs.some((log) => log.message === "Welcome image cache invalidated on upload"),
+    "le correctif de cache de la Phase 2.1 doit rester intact",
+  );
 });
 
 // ══════════════════════════════════════════════════════════════════════════
-// E. Bout en bout — la géométrie détectée déplace réellement l'avatar
+// E. Bout en bout — l'image personnalisée reste l'image de l'administrateur
 // ══════════════════════════════════════════════════════════════════════════
 
-test("Bout en bout — l'avatar est rendu dans la zone détectée", async () => {
+async function pixelsOf(buffer) {
+  const image = await loadImage(buffer);
+  const canvas = createCanvas(image.width, image.height);
+  const ctx = canvas.getContext("2d");
+  ctx.drawImage(image, 0, 0);
+  return ctx.getImageData(0, 0, image.width, image.height);
+}
+
+function countMatching({ data }, matches) {
+  let count = 0;
+  for (let i = 0; i < data.length; i += 4) if (matches(data[i], data[i + 1], data[i + 2])) count += 1;
+  return count;
+}
+
+const isGreen = (r, g, b) => g > 180 && r < 120 && b < 120;
+const isBright = (r, g, b) => r > 100 && g > 100 && b > 100;
+
+function countBrightInBox(pixels, x0, y0, x1, y1) {
+  let count = 0;
+  for (let y = y0; y <= y1; y++) {
+    for (let x = x0; x <= x1; x++) {
+      const i = (y * pixels.width + x) * 4;
+      if (isBright(pixels.data[i], pixels.data[i + 1], pixels.data[i + 2])) count += 1;
+    }
+  }
+  return count;
+}
+
+test("Bout en bout — une image contenant un cercle graphique ne reçoit AUCUN avatar", async () => {
   const { WelcomeImageRenderer } = require("../image/rendering/WelcomeImageRenderer");
-  const detected = welcomeImageWithCircle(1000, 146, 110, { fill: "#20304a" });
 
-  const detection = await detectAvatarCircle(detected, { guildId: GUILD_A });
-  assert.equal(detection.verdict, AvatarCircleVerdict.CONFIRMED, "précondition : le cercle doit être détecté");
+  const custom = imageWithGraphicCircle();
+  // Précondition indispensable : ce cercle EST détectable. Sans cela le test ne
+  // prouverait rien — il passerait aussi avec une image sans aucun cercle.
+  const detection = await detectAvatarCircle(custom, { guildId: GUILD_A });
+  assert.equal(detection.verdict, AvatarCircleVerdict.CONFIRMED, "précondition : le cercle doit être détectable");
 
-  const storage = createStorageFake({
-    [IMAGE_KEY_A]: detected,
-    [META_KEY_A]: metaSidecar(detection.geometry),
-  });
-  const template = await resolveWithSidecar({
-    [IMAGE_KEY_A]: detected,
-    [META_KEY_A]: metaSidecar(detection.geometry),
-  });
-  assert.equal(storage.objects.has(IMAGE_KEY_A), true);
+  const template = await resolveCustom({ [IMAGE_KEY_A]: custom });
+  assert.equal(template.design.avatar, null, "aucune zone avatar ne doit être dérivée");
 
+  // Avatar de test vert fluo : s'il était dessiné quelque part, il serait
+  // immanquable sur le fond bleu nuit de l'image.
   const avatar = createCanvas(256, 256);
   const actx = avatar.getContext("2d");
   actx.fillStyle = "#00ff00";
   actx.fillRect(0, 0, 256, 256);
   const renderer = new WelcomeImageRenderer({ avatarLoader: async () => avatar.toBuffer("image/png") });
   const payload = await renderer.render(
-    { guildId: GUILD_A, userId: "u", avatarUrl: "http://x/a.png", displayName: "Alice", textElements: [], dimensions: { width: CARD_W, height: CARD_H } },
+    {
+      guildId: GUILD_A,
+      userId: "u",
+      avatarUrl: "http://x/a.png",
+      displayName: "Alice",
+      textElements: [{ id: "title", content: "Alice" }],
+      dimensions: { width: CARD_W, height: CARD_H },
+    },
     template,
   );
 
-  const image = await loadImage(payload.buffer);
-  const canvas = createCanvas(image.width, image.height);
-  const ctx = canvas.getContext("2d");
-  ctx.drawImage(image, 0, 0);
-  const { data, width, height } = ctx.getImageData(0, 0, image.width, image.height);
+  const pixels = await pixelsOf(payload.buffer);
+  assert.equal(countMatching(pixels, isGreen), 0, "aucun pixel d'avatar sur une image personnalisée");
 
-  // L'avatar doit être présent dans la zone DÉTECTÉE et absent de celle du gabarit.
-  const greenAt = (cx, cy) => {
-    const i = (Math.round(cy) * width + Math.round(cx)) * 4;
-    return data[i + 1] > 180 && data[i] < 120 && data[i + 2] < 120;
+  // Le cercle dessiné PAR L'ADMINISTRATEUR doit être intact, non recouvert.
+  const at = (x, y) => {
+    const i = (y * pixels.width + x) * 4;
+    return [pixels.data[i], pixels.data[i + 1], pixels.data[i + 2]];
   };
-  const original = baseTemplate().design.avatar;
-  assert.equal(greenAt(detection.geometry.cx, detection.geometry.cy), true, "l'avatar doit être au centre de la zone détectée");
-  assert.equal(greenAt(original.cx, original.cy), false, "l'avatar ne doit plus être à la position du gabarit");
-  // Et il doit couvrir le cercle détecté, pas seulement son centre.
-  assert.equal(greenAt(detection.geometry.cx, detection.geometry.cy - detection.geometry.radius * 0.8), true, "le cercle doit être rempli");
-  assert.ok(height > 0 && width > 0);
+  assert.deepEqual(at(1000, 146), [0x58, 0x65, 0xf2], "le cercle de l'image doit rester visible");
+});
+
+test("Bout en bout — le pseudo/nom est le SEUL élément ajouté à l'image personnalisée", async () => {
+  const { WelcomeImageRenderer } = require("../image/rendering/WelcomeImageRenderer");
+
+  // Fond uniformément noir : tout ce que CIVRAT dessine dessus est visible.
+  const black = createCanvas(CARD_W, CARD_H);
+  const bctx = black.getContext("2d");
+  bctx.fillStyle = "#000000";
+  bctx.fillRect(0, 0, CARD_W, CARD_H);
+
+  const resolved = await resolveCustom({ [IMAGE_KEY_A]: black.toBuffer("image/png") });
+  const design = resolved.design;
+  const request = {
+    guildId: GUILD_A,
+    userId: "u",
+    avatarUrl: null,
+    displayName: "Alice",
+    textElements: [
+      { id: "title", content: "Alice" },
+      { id: "subtitle", content: "Welcome to the server" },
+    ],
+    dimensions: { width: CARD_W, height: CARD_H },
+  };
+  const renderer = new WelcomeImageRenderer({ avatarLoader: async () => null });
+
+  const customCard = await pixelsOf((await renderer.render(request, resolved)).buffer);
+  const titleBox = [design.title.x, 4, design.title.x + 380, design.title.y + 10];
+  const subtitleBox = [design.subtitle.x, design.subtitle.y - 26, design.subtitle.x + 380, design.subtitle.y + 4];
+
+  assert.ok(countBrightInBox(customCard, ...titleBox) > 0, "le pseudo/nom du membre doit être dessiné");
+  assert.equal(countBrightInBox(customCard, ...subtitleBox), 0, "le sous-titre ne doit PAS être dessiné en mode image personnalisée");
+
+  // Contrôle du test : le MÊME template simplement repassé en mode standard
+  // redessine le sous-titre. La différence vient donc bien du mode, pas d'un
+  // accident de rendu ou d'une boîte de mesure mal placée.
+  const standard = { ...resolved, design: { ...design, customImage: false } };
+  const standardCard = await pixelsOf((await renderer.render(request, standard)).buffer);
+  assert.ok(countBrightInBox(standardCard, ...subtitleBox) > 0, "en mode standard le sous-titre est dessiné — contrôle");
 });

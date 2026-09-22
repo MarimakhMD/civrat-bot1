@@ -86,8 +86,6 @@
     "welcomeImageUploadPrompt": "📎 Use {{command}} and attach your file.\nAccepted formats: {{formats}} · maximum size on this server: {{limit}} MB.\nThe image will be cropped to fill the card.",
     "welcomeImageUploadPromptNoLimit": "📎 Use {{command}} and attach your file.\nAccepted formats: {{formats}}.\nThe image will be cropped to fill the card.",
     "welcomeImageUploaded": "Welcome image saved. Here is the actual card rendering.",
-    "welcomeImageAvatarDetected": "Avatar area detected automatically: the avatar will be placed and cropped to fill it, without distortion.",
-    "welcomeImageAvatarUnconfirmed": "Automatic avatar area detection could not be confirmed. The image is saved, but the avatar will use the template's standard position.",
     "welcomeImageStorageUnavailable": "Image storage is unavailable. Please try again later.",
     "welcomeImageRejectMissing": "No image was attached to the command.",
     "welcomeImageRejectFormat": "Unsupported format. Accepted formats: {{formats}}.",

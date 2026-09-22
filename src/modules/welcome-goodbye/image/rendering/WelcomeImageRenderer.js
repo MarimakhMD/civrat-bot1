@@ -58,15 +58,33 @@ class WelcomeImageRenderer {
     return new WelcomeImagePayload({ buffer: canvas.toBuffer("image/png"), width: request.dimensions.width, height: request.dimensions.height });
   }
 
+  /**
+   * Rendu de la carte. Deux comportements, et seulement deux :
+   *
+   *  MODE TEMPLATE STANDARD (`design.customImage` absent ou faux)
+   *    fond du gabarit + avatar du membre dans sa zone circulaire
+   *    + pseudo/nom (titre) + message Welcome (sous-titre).
+   *
+   *  MODE IMAGE PERSONNALISÉE (`design.customImage === true`)
+   *    l'image de l'administrateur, rendue telle quelle, + pseudo/nom du membre
+   *    comme SEUL élément ajouté par CIVRAT. Aucun avatar, aucun clip
+   *    circulaire, aucune zone réservée, aucune décoration supplémentaire, et
+   *    pas de sous-titre. Le fond n'est ni déformé ni modifié : il passe par le
+   *    même recadrage « cover » que l'asset d'un gabarit, rapport conservé.
+   */
   async #renderCard(request, template) {
     const design = template.design;
+    const customImage = design.customImage === true;
     const width = design.width || request.dimensions.width;
     const height = design.height || request.dimensions.height;
     const canvas = createCanvas(width, height);
     const ctx = canvas.getContext("2d");
     await this.#drawBackground(ctx, template, design, width, height);
-    if (design.avatar) await this.#drawAvatar(ctx, request, design);
-    this.#drawTextSlots(ctx, request, design, width);
+    // Double garde : le drapeau de mode ET l'absence de zone avatar. Le design
+    // dérivé d'une image personnalisée pose `avatar: null`, donc un chemin de
+    // rendu qui ignorerait le drapeau ne dessinerait toujours aucun avatar.
+    if (!customImage && design.avatar) await this.#drawAvatar(ctx, request, design);
+    this.#drawTextSlots(ctx, request, design, width, { subtitle: !customImage });
     return new WelcomeImagePayload({ buffer: canvas.toBuffer("image/png"), width, height });
   }
 
@@ -207,12 +225,22 @@ class WelcomeImageRenderer {
     }
   }
 
-  #drawTextSlots(ctx, request, design, width) {
+  /**
+   * Emplacements de texte. `title` porte le pseudo/nom du membre, `subtitle` le
+   * message Welcome configuré par l'administrateur.
+   *
+   * Avec `subtitle: false` (mode image personnalisée), seul le titre est
+   * dessiné : le message Welcome n'est pas un élément que CIVRAT ajoute à
+   * l'image choisie par l'administrateur.
+   */
+  #drawTextSlots(ctx, request, design, width, { subtitle = true } = {}) {
     const contentOf = (id) => {
       const element = request.textElements.find((entry) => entry.id === id);
       return element && element.content ? String(element.content) : "";
     };
-    for (const [id, slot] of [["title", design.title], ["subtitle", design.subtitle]]) {
+    const slots = [["title", design.title]];
+    if (subtitle) slots.push(["subtitle", design.subtitle]);
+    for (const [id, slot] of slots) {
       if (!slot) continue;
       const content = contentOf(id);
       if (!content) continue;
