@@ -65,6 +65,7 @@
     "templateBlue": "🔵 Bleu",
     "templateViolet": "🟣 Violet",
     "templateRed": "🔴 Rouge",
+    "templateCivrat": "🟢 CIVRAT",
     "imagePreviewGenerated": "Aperçu de l’image Welcome généré.",
     "configureWelcome": "Configurer Welcome",
     "configureGoodbye": "Configurer Goodbye",

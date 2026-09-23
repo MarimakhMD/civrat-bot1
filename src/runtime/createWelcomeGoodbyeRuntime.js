@@ -1,7 +1,7 @@
 "use strict";
 const {WelcomeGoodbyeService}=require("../modules/welcome-goodbye/services/WelcomeGoodbyeService");
 const {WelcomeGoodbyeLogService}=require("../modules/welcome-goodbye/services/WelcomeGoodbyeLogService");
-const {WelcomeTemplateRegistry}=require("../modules/welcome-goodbye/rendering/WelcomeTemplateRegistry");
+const {WelcomeTemplateRegistry,defaultTemplateRoots}=require("../modules/welcome-goodbye/rendering/WelcomeTemplateRegistry");
 const {WelcomeImageRenderer}=require("../modules/welcome-goodbye/image/rendering/WelcomeImageRenderer");
 const {WelcomeImagePipeline}=require("../modules/welcome-goodbye/image/pipeline/WelcomeImagePipeline");
 const {WelcomeDeliveryService}=require("../modules/welcome-goodbye/services/WelcomeDeliveryService");
@@ -28,7 +28,10 @@ function createWelcomeGoodbyeRuntime({guildConfigResolver,logger=null,entitlemen
   const entitlement=entitlementService||(()=>{try{return require("./getEntitlementService").getEntitlementService();}catch{return null;}})();
   const service=new WelcomeGoodbyeService({guildConfigResolver});
   const logService=new WelcomeGoodbyeLogService({logger});
-  const templateRegistry=new WelcomeTemplateRegistry();
+  // Deux racines : les 3 gabarits standards + les gabarits officiels à asset
+  // dédié (template-civrat). La restriction par guildId reste appliquée au
+  // moment de la sélection et de la livraison (getForGuild/resolveBaseTemplate).
+  const templateRegistry=new WelcomeTemplateRegistry({templatesPaths:defaultTemplateRoots()});
   templateRegistry.discover();
   // Image Welcome personnalisée (Premium) : bucket Supabase Storage privé.
   // Hors ligne / sans credentials, `imageStore.available` est faux et la

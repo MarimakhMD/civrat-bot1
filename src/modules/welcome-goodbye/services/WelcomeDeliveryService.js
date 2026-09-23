@@ -2,6 +2,7 @@
 const { normalizeWelcomeDeliveryError } = require("./WelcomeDeliveryError");
 const { buildWelcomeCardRequest } = require("../image/pipeline/buildWelcomeCardRequest");
 const { resolveWelcomeImageTemplate } = require("./welcomeImageResource");
+const { resolveBaseTemplate } = require("../rendering/WelcomeTemplateRegistry");
 const { EntitlementDecision, EntitlementFeature } = require("../../../core/entitlements");
 const { WelcomeGoodbyeConfigKey: Key, WelcomeGoodbyeLogType: LogType, WelcomeCardSkipReason: SkipReason } = require("../configuration/welcomeGoodbyeConstants");
 // PHASE 2 (B5/B6) — défauts localisés et chemin de rendu unique. La logique
@@ -83,7 +84,10 @@ class WelcomeDeliveryService {
       if(entitlement.code===EntitlementDecision.UNAVAILABLE)this.logService?.failure(event);else this.logService?.delivery(event);
       return null;
     }
-    const baseTemplate=this.templateRegistry.get(config[Key.WELCOME_TEMPLATE])||this.templateRegistry.get(DEFAULT_TEMPLATE_ID);
+    // Restriction guildId : un gabarit réservé à d'autres guildes (template-civrat)
+    // n'est jamais livré ici — repli sur le gabarit par défaut, même s'il était
+    // persisté par erreur pour cette guilde.
+    const baseTemplate=resolveBaseTemplate(this.templateRegistry,config[Key.WELCOME_TEMPLATE],member.guildId)||this.templateRegistry.get(DEFAULT_TEMPLATE_ID);
     if(!baseTemplate?.design)return null;
     // Image Welcome personnalisée (Premium) — résolue ICI, c'est-à-dire APRÈS
     // les deux garde-fous ci-dessus (toggle puis entitlement). Elle est donc

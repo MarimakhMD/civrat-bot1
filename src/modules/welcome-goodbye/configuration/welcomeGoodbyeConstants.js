@@ -20,4 +20,9 @@ const WelcomeCardSkipReason = Object.freeze({ IMAGE_DISABLED: "WELCOME_IMAGE_DIS
 // tous les deux. `ACCOUNT_AGE`, `DATE` et `TIME` étaient calculés par
 // l'adaptateur sans aucun provider correspondant : ils restaient littéraux.
 const PlaceholderName = Object.freeze({ USER:"user", MENTION:"mention", USERNAME:"username", DISPLAY_NAME:"displayname", USER_ID:"userid", SERVER:"server", MEMBER_COUNT:"membercount", JOIN_DATE:"joindate", ACCOUNT_AGE:"accountage", DATE:"date", TIME:"time" });
-module.exports = { WelcomeGoodbyeConfigKey, WelcomeGoodbyeComponentId, WelcomeGoodbyeEvent, WelcomeGoodbyeLogType, WelcomeCardSkipReason, PlaceholderName };
+// Template officiel CIVRAT : réservé à un serveur unique, identifié par son
+// guildId EXACT. Aucun autre serveur ne doit le voir ni le sélectionner. La
+// restriction ne repose sur rien d'autre (ni rôle, ni owner, ni nom).
+const CIVRAT_GUILD_ID = "1320817768962064384";
+const CIVRAT_TEMPLATE_ID = "template-civrat";
+module.exports = { WelcomeGoodbyeConfigKey, WelcomeGoodbyeComponentId, WelcomeGoodbyeEvent, WelcomeGoodbyeLogType, WelcomeCardSkipReason, PlaceholderName, CIVRAT_GUILD_ID, CIVRAT_TEMPLATE_ID };

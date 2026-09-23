@@ -846,10 +846,13 @@ test("Bout en bout — le pseudo/nom est le SEUL élément ajouté à l'image pe
   assert.ok(countBrightInBox(customCard, ...titleBox) > 0, "le pseudo/nom du membre doit être dessiné");
   assert.equal(countBrightInBox(customCard, ...subtitleBox), 0, "le sous-titre ne doit PAS être dessiné en mode image personnalisée");
 
-  // Contrôle du test : le MÊME template simplement repassé en mode standard
-  // redessine le sous-titre. La différence vient donc bien du mode, pas d'un
-  // accident de rendu ou d'une boîte de mesure mal placée.
+  // Contrôle du test : le MÊME template repassé en mode standard dessine bien
+  // le pseudo/nom (la boîte de mesure du titre est donc correcte) mais ne
+  // dessine PLUS le sous-titre : le message Welcome n'est jamais rendu dans
+  // l'image, quel que soit le mode. L'absence de sous-titre est voulue, pas un
+  // accident de rendu ou une boîte mal placée.
   const standard = { ...resolved, design: { ...design, customImage: false } };
   const standardCard = await pixelsOf((await renderer.render(request, standard)).buffer);
-  assert.ok(countBrightInBox(standardCard, ...subtitleBox) > 0, "en mode standard le sous-titre est dessiné — contrôle");
+  assert.ok(countBrightInBox(standardCard, ...titleBox) > 0, "en mode standard le pseudo/nom est dessiné — contrôle");
+  assert.equal(countBrightInBox(standardCard, ...subtitleBox), 0, "en mode standard le sous-titre n'est PLUS dessiné");
 });

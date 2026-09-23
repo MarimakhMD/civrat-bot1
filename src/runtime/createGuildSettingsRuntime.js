@@ -41,7 +41,7 @@ const { GuildSettingsService, registerGuildSettings } = require("../modules/guil
 const { WelcomeGoodbyeService, registerWelcomeGoodbye } = require("../modules/welcome-goodbye");
 const { WelcomeImagePipeline } = require("../modules/welcome-goodbye/image/pipeline/WelcomeImagePipeline");
 const { WelcomeImageRenderer } = require("../modules/welcome-goodbye/image/rendering/WelcomeImageRenderer");
-const { WelcomeTemplateRegistry } = require("../modules/welcome-goodbye/rendering/WelcomeTemplateRegistry");
+const { WelcomeTemplateRegistry, defaultTemplateRoots } = require("../modules/welcome-goodbye/rendering/WelcomeTemplateRegistry");
 const { WelcomeResourceCache } = require("../modules/welcome-goodbye/rendering/WelcomeResourceCache");
 const imageTheme = require("../modules/welcome-goodbye/image/themes/civrat-default/theme");
 const { WelcomeAdminLogService } = require("../modules/welcome-goodbye/services/WelcomeAdminLogService");
@@ -167,7 +167,7 @@ function createGuildSettingsRuntime({ legacyConfigService, logger = null }) {
   const registration = registerGuildSettings({ registry, settings, i18n });
   const moderationRegistration = registerModeration({ registry });
   const channelModerationRegistration = registerChannelModeration({ registry });
-  const welcomeTemplateRegistry = new WelcomeTemplateRegistry(); welcomeTemplateRegistry.discover();
+  const welcomeTemplateRegistry = new WelcomeTemplateRegistry({ templatesPaths: defaultTemplateRoots() }); welcomeTemplateRegistry.discover();
   const imagePipeline = new WelcomeImagePipeline({ renderer: new WelcomeImageRenderer({ resourceCache: new WelcomeResourceCache() }), theme: imageTheme });
   registerAutoRole({ registry, service: new AutoRoleService({ guildConfigResolver }) });
   registerLogs({

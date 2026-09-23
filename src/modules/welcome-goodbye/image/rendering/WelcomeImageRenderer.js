@@ -63,7 +63,7 @@ class WelcomeImageRenderer {
    *
    *  MODE TEMPLATE STANDARD (`design.customImage` absent ou faux)
    *    fond du gabarit + avatar du membre dans sa zone circulaire
-   *    + pseudo/nom (titre) + message Welcome (sous-titre).
+   *    + pseudo/nom (titre). Le message Welcome n'est JAMAIS dessiné.
    *
    *  MODE IMAGE PERSONNALISÉE (`design.customImage === true`)
    *    l'image de l'administrateur, rendue telle quelle, + pseudo/nom du membre
@@ -71,6 +71,9 @@ class WelcomeImageRenderer {
    *    circulaire, aucune zone réservée, aucune décoration supplémentaire, et
    *    pas de sous-titre. Le fond n'est ni déformé ni modifié : il passe par le
    *    même recadrage « cover » que l'asset d'un gabarit, rapport conservé.
+   *
+   *  Dans TOUS les modes, le sous-titre (message Welcome) est absent de
+   *  l'image : il part uniquement dans le contenu du message Discord.
    */
   async #renderCard(request, template) {
     const design = template.design;
@@ -84,7 +87,12 @@ class WelcomeImageRenderer {
     // dérivé d'une image personnalisée pose `avatar: null`, donc un chemin de
     // rendu qui ignorerait le drapeau ne dessinerait toujours aucun avatar.
     if (!customImage && design.avatar) await this.#drawAvatar(ctx, request, design);
-    this.#drawTextSlots(ctx, request, design, width, { subtitle: !customImage });
+    // Le message Welcome (sous-titre) n'est JAMAIS dessiné dans l'image, quel
+    // que soit le mode : il est envoyé séparément comme contenu du message
+    // Discord. Seuls le fond (+ avatar le cas échéant) et le pseudo/nom sont
+    // rendus. Le texte du message Discord, ses placeholders et sa langue sont
+    // inchangés — seule l'image cesse de porter le sous-titre.
+    this.#drawTextSlots(ctx, request, design, width, { subtitle: false });
     return new WelcomeImagePayload({ buffer: canvas.toBuffer("image/png"), width, height });
   }
 
@@ -229,9 +237,9 @@ class WelcomeImageRenderer {
    * Emplacements de texte. `title` porte le pseudo/nom du membre, `subtitle` le
    * message Welcome configuré par l'administrateur.
    *
-   * Avec `subtitle: false` (mode image personnalisée), seul le titre est
-   * dessiné : le message Welcome n'est pas un élément que CIVRAT ajoute à
-   * l'image choisie par l'administrateur.
+   * Le renderer appelle toujours ce tracé avec `subtitle: false` : seul le
+   * titre (pseudo/nom) est dessiné, dans tous les modes. Le message Welcome ne
+   * fait pas partie de l'image ; il est envoyé comme contenu du message Discord.
    */
   #drawTextSlots(ctx, request, design, width, { subtitle = true } = {}) {
     const contentOf = (id) => {

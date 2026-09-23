@@ -324,7 +324,7 @@ for (const templateId of TEMPLATE_IDS) {
       "le disque avatar doit être rempli, pas seulement son centre");
   });
 
-  test(`Template standard ${templateId} — pseudo/nom ET sous-titre rendus`, async () => {
+  test(`Template standard ${templateId} — pseudo/nom rendu, sous-titre absent`, async () => {
     const s = scenario({ templateId });
     const design = (await s.render()).template.design;
 
@@ -336,8 +336,10 @@ for (const templateId of TEMPLATE_IDS) {
 
     assert.ok(countDiffering(withText, withoutText, textBox(design.title)) > 0,
       "le pseudo/nom doit être dessiné dans la zone du titre");
-    assert.ok(countDiffering(withText, withoutText, textBox(design.subtitle)) > 0,
-      "le sous-titre (message Welcome) doit rester rendu en mode standard");
+    // Le message Welcome n'est plus JAMAIS dessiné dans l'image, même en mode
+    // standard : il part uniquement dans le contenu du message Discord.
+    assert.equal(countDiffering(withText, withoutText, textBox(design.subtitle)), 0,
+      "le sous-titre ne doit PAS être dessiné, même en mode standard");
   });
 }
 
