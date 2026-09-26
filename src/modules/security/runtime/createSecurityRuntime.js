@@ -5,6 +5,14 @@ const { SecurityBotService } = require("../services/SecurityBotService");
 const { SecurityNukeService } = require("../services/SecurityNukeService");
 const { SecurityAlertSuppression } = require("../services/SecurityAlertSuppression");
 const { DiscordSecurityTransport } = require("../../../adapters/discord/DiscordSecurityTransport");
+const { channelLabel, roleLabel } = require("../../logs/services/logLabels");
+
+// P2-A — champs acteur informatifs pour les alertes nuke. Fail-closed : si
+// l'Audit Log n'a pas permis d'identifier l'auteur, on transmet `null`, jamais
+// une valeur inventée. Réutilise le système de label existant (logLabels).
+function actorFields(actor) {
+  return { actorId: (actor && actor.executorId) || null, actor: (actor && actor.executor) || null };
+}
 
 /**
  * Creates Security runtime wiring raid/bot/nuke detection with transport and logs.
@@ -121,7 +129,9 @@ function createSecurityRuntime({
       return { handled: true, ...results };
     },
 
-    handleChannelCreate: async (channel) => {
+    // P2-A — l'acteur est résolu UNE SEULE FOIS par l'événement (Audit Log) et
+    // partagé ici ; aucun second resolve (qui échouerait sur l'entrée consommée).
+    handleChannelCreate: async (channel, actor) => {
       const guild = channel && channel.guild;
       if (!guild) return { handled: false, code: "GUILD_MISSING" };
       const config = await configService.read(guild.id);
@@ -134,7 +144,10 @@ function createSecurityRuntime({
           windowMs: result.windowMs,
           payload: {
             action: "security_nuke",
-            targetId: null,
+            subtype: "channelCreate",
+            ...actorFields(actor),
+            targetId: channel.id || null,
+            target: channelLabel(channel),
             reason: `Nuke channelCreate ${result.count}/${result.threshold}`,
             rule: "SECURITY_NUKE_CHANNEL_CREATE",
             rules: ["SECURITY_NUKE"],
@@ -144,7 +157,7 @@ function createSecurityRuntime({
       return { handled: true, nuke: result };
     },
 
-    handleChannelDelete: async (channel) => {
+    handleChannelDelete: async (channel, actor) => {
       const guild = channel && channel.guild;
       if (!guild) return { handled: false, code: "GUILD_MISSING" };
       const config = await configService.read(guild.id);
@@ -157,7 +170,10 @@ function createSecurityRuntime({
           windowMs: result.windowMs,
           payload: {
             action: "security_nuke",
-            targetId: null,
+            subtype: "channelDelete",
+            ...actorFields(actor),
+            targetId: channel.id || null,
+            target: channelLabel(channel),
             reason: `Nuke channelDelete ${result.count}/${result.threshold}`,
             rule: "SECURITY_NUKE_CHANNEL_DELETE",
             rules: ["SECURITY_NUKE"],
@@ -167,7 +183,7 @@ function createSecurityRuntime({
       return { handled: true, nuke: result };
     },
 
-    handleRoleCreate: async (role) => {
+    handleRoleCreate: async (role, actor) => {
       const guild = role && role.guild;
       if (!guild) return { handled: false, code: "GUILD_MISSING" };
       const config = await configService.read(guild.id);
@@ -180,7 +196,10 @@ function createSecurityRuntime({
           windowMs: result.windowMs,
           payload: {
             action: "security_nuke",
-            targetId: null,
+            subtype: "roleCreate",
+            ...actorFields(actor),
+            targetId: role.id || null,
+            target: roleLabel(role),
             reason: `Nuke roleCreate ${result.count}/${result.threshold}`,
             rule: "SECURITY_NUKE_ROLE_CREATE",
             rules: ["SECURITY_NUKE"],
@@ -190,7 +209,7 @@ function createSecurityRuntime({
       return { handled: true, nuke: result };
     },
 
-    handleRoleDelete: async (role) => {
+    handleRoleDelete: async (role, actor) => {
       const guild = role && role.guild;
       if (!guild) return { handled: false, code: "GUILD_MISSING" };
       const config = await configService.read(guild.id);
@@ -203,7 +222,10 @@ function createSecurityRuntime({
           windowMs: result.windowMs,
           payload: {
             action: "security_nuke",
-            targetId: null,
+            subtype: "roleDelete",
+            ...actorFields(actor),
+            targetId: role.id || null,
+            target: roleLabel(role),
             reason: `Nuke roleDelete ${result.count}/${result.threshold}`,
             rule: "SECURITY_NUKE_ROLE_DELETE",
             rules: ["SECURITY_NUKE"],

@@ -14,20 +14,25 @@ module.exports = {
       // coupés, aucune requête API n'est émise pour un log qui sera jeté.
       const config = await guildConfigService.getGuildConfig(role.guild.id);
 
+      // P2-A — résolution Audit Log UNE SEULE FOIS, partagée entre Logs et
+      // Security (voir channelCreate).
+      const actor = (config?.logs_enabled || config?.security_anti_nuke)
+        ? await resolveAuditActor({ guild: role.guild, type: AuditLogEvent.RoleCreate, targetId: role.id })
+        : null;
+
       if (config?.logs_enabled) {
-        const actor = await resolveAuditActor({ guild: role.guild, type: AuditLogEvent.RoleCreate, targetId: role.id });
         await getLogsRuntime().handleRoleEvent({
           guild: role.guild,
           config,
           action: "role_created",
           roleId: role.id,
           target: roleLabel(role),
-          who: actor.executor,
+          who: actor ? actor.executor : undefined,
         });
       }
 
       try {
-        await require("../modules/security/runtime/getSecurityRuntime").getSecurityRuntime().handleRoleCreate(role);
+        await require("../modules/security/runtime/getSecurityRuntime").getSecurityRuntime().handleRoleCreate(role, actor);
       } catch (error) {
         // 4F-1 — observabilité : best-effort conservé.
         logger.warn("Security roleCreate handling failed", { event: "security_role_create_failed", guildId: role?.guild?.id || null, error: error?.message || String(error) });

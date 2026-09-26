@@ -14,18 +14,25 @@ module.exports = {
       // coupés, aucune requête API n'est émise pour un log qui sera jeté.
       const config = await guildConfigService.getGuildConfig(channel.guild.id);
 
+      // P2-A — résolution Audit Log UNE SEULE FOIS, partagée entre Logs et
+      // Security. Résolue si les Logs sont actifs OU si l'anti-nuke est actif
+      // (même Logs coupés). Jamais de second resolve côté Security : l'entrée
+      // serait déjà consommée et la recherche échouerait.
+      const actor = (config?.logs_enabled || config?.security_anti_nuke)
+        ? await resolveAuditActor({ guild: channel.guild, type: AuditLogEvent.ChannelCreate, targetId: channel.id })
+        : null;
+
       if (config?.logs_enabled) {
-        const actor = await resolveAuditActor({ guild: channel.guild, type: AuditLogEvent.ChannelCreate, targetId: channel.id });
         await getLogsRuntime().handleChannelEvent({
           channel,
           config,
           action: "channel_created",
-          who: actor.executor,
+          who: actor ? actor.executor : undefined,
         });
       }
 
       try {
-        await require("../modules/security/runtime/getSecurityRuntime").getSecurityRuntime().handleChannelCreate(channel);
+        await require("../modules/security/runtime/getSecurityRuntime").getSecurityRuntime().handleChannelCreate(channel, actor);
       } catch (error) {
         // 4F-1 — observabilité : best-effort conservé.
         logger.warn("Security channelCreate handling failed", { event: "security_channel_create_failed", guildId: channel.guild?.id || null, error: error?.message || String(error) });
