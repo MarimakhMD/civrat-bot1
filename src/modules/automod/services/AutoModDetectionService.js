@@ -63,7 +63,21 @@ class AutoModDetectionService {
     const key = `${input.guildId}:${input.authorId}`;
     const now = this.clock();
     const history = (this.store.get(key) || []).filter((entry) => now - entry.t < this.windowMs);
-    history.push({ t: now, c: normalize(text) });
+    // Une ÉDITION (même `messageId`) ne doit pas gonfler artificiellement le
+    // compteur de spam : on met à jour l'entrée existante (contenu courant,
+    // horodatage d'origine conservé) au lieu d'en pousser une nouvelle. Sans
+    // `messageId` (appels legacy / création), comportement strictement
+    // inchangé : une nouvelle entrée est poussée.
+    if (input.messageId != null) {
+      const existing = history.find((entry) => entry.m === input.messageId);
+      if (existing) {
+        existing.c = normalize(text);
+      } else {
+        history.push({ t: now, c: normalize(text), m: input.messageId });
+      }
+    } else {
+      history.push({ t: now, c: normalize(text) });
+    }
     this.store.set(key, history);
 
     if (config.automod_anti_spam && (history.length >= 5 || history.filter((entry) => entry.c && entry.c === normalize(text)).length >= 3)) {
