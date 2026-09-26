@@ -2,6 +2,7 @@ const { AuditLogEvent } = require("discord.js");
 const { getLogsRuntime } = require("../modules/logs/runtime/getLogsRuntime");
 const { roleLabel } = require("../modules/logs/services/logLabels");
 const { resolveAuditActor } = require("../utils/auditLogActor");
+const guildConfigService = require("../services/guildConfig");
 const logger = require("../utils/logger");
 
 module.exports = {
@@ -9,15 +10,22 @@ module.exports = {
   once: false,
   async execute(role) {
     try {
-      const actor = await resolveAuditActor({ guild: role.guild, type: AuditLogEvent.RoleCreate, targetId: role.id });
-      await getLogsRuntime().handleRoleEvent({
-        guild: role.guild,
-        config: await require("../services/guildConfig").getGuildConfig(role.guild.id),
-        action: "role_created",
-        roleId: role.id,
-        target: roleLabel(role),
-        who: actor.executor,
-      });
+      // PHASE 1 — la config est lue AVANT l'Audit Log : si les logs sont
+      // coupés, aucune requête API n'est émise pour un log qui sera jeté.
+      const config = await guildConfigService.getGuildConfig(role.guild.id);
+
+      if (config?.logs_enabled) {
+        const actor = await resolveAuditActor({ guild: role.guild, type: AuditLogEvent.RoleCreate, targetId: role.id });
+        await getLogsRuntime().handleRoleEvent({
+          guild: role.guild,
+          config,
+          action: "role_created",
+          roleId: role.id,
+          target: roleLabel(role),
+          who: actor.executor,
+        });
+      }
+
       try {
         await require("../modules/security/runtime/getSecurityRuntime").getSecurityRuntime().handleRoleCreate(role);
       } catch (error) {

@@ -3,6 +3,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { createCanvas, loadImage } = require("@napi-rs/canvas");
 const { WelcomeImagePayload } = require("../contracts/WelcomeImagePayload");
+const { inspectImageHeader } = require("../../services/welcomeImageUploadValidation");
 
 const AVATAR_FETCH_TIMEOUT_MS = 3000;
 
@@ -57,29 +58,102 @@ class WelcomeImageRenderer {
     return new WelcomeImagePayload({ buffer: canvas.toBuffer("image/png"), width: request.dimensions.width, height: request.dimensions.height });
   }
 
+  /**
+   * Rendu de la carte. Deux comportements, et seulement deux :
+   *
+   *  MODE TEMPLATE STANDARD (`design.customImage` absent ou faux)
+   *    fond du gabarit + avatar du membre dans sa zone circulaire
+   *    + pseudo/nom (titre). Le message Welcome n'est JAMAIS dessiné.
+   *
+   *  MODE IMAGE PERSONNALISÉE (`design.customImage === true`)
+   *    l'image de l'administrateur, rendue telle quelle, + pseudo/nom du membre
+   *    comme SEUL élément ajouté par CIVRAT. Aucun avatar, aucun clip
+   *    circulaire, aucune zone réservée, aucune décoration supplémentaire, et
+   *    pas de sous-titre. Le fond n'est ni déformé ni modifié : il passe par le
+   *    même recadrage « cover » que l'asset d'un gabarit, rapport conservé.
+   *
+   *  Dans TOUS les modes, le sous-titre (message Welcome) est absent de
+   *  l'image : il part uniquement dans le contenu du message Discord.
+   */
   async #renderCard(request, template) {
     const design = template.design;
+    const customImage = design.customImage === true;
     const width = design.width || request.dimensions.width;
     const height = design.height || request.dimensions.height;
     const canvas = createCanvas(width, height);
     const ctx = canvas.getContext("2d");
     await this.#drawBackground(ctx, template, design, width, height);
-    if (design.avatar) await this.#drawAvatar(ctx, request, design);
-    this.#drawTextSlots(ctx, request, design, width);
+    // Double garde : le drapeau de mode ET l'absence de zone avatar. Le design
+    // dérivé d'une image personnalisée pose `avatar: null`, donc un chemin de
+    // rendu qui ignorerait le drapeau ne dessinerait toujours aucun avatar.
+    if (!customImage && design.avatar) await this.#drawAvatar(ctx, request, design);
+    // Le message Welcome (sous-titre) n'est JAMAIS dessiné dans l'image, quel
+    // que soit le mode : il est envoyé séparément comme contenu du message
+    // Discord. Seuls le fond (+ avatar le cas échéant) et le pseudo/nom sont
+    // rendus. Le texte du message Discord, ses placeholders et sa langue sont
+    // inchangés — seule l'image cesse de porter le sous-titre.
+    this.#drawTextSlots(ctx, request, design, width, { subtitle: false });
     return new WelcomeImagePayload({ buffer: canvas.toBuffer("image/png"), width, height });
+  }
+
+  /**
+   * Géométrie « cover » d'une image dans une boîte : plus petit agrandissement
+   * qui couvre toute la boîte, centré, donc rogné sur le bord excédentaire.
+   * Le rapport de l'image est conservé — il n'y a jamais d'étirement.
+   *
+   * Retourne des coordonnées RELATIVES à la boîte ; l'appelant les translate.
+   * @returns {{dx:number,dy:number,dw:number,dh:number}}
+   */
+  #coverRect(image, boxWidth, boxHeight) {
+    const sourceWidth = Number(image.width) || 0;
+    const sourceHeight = Number(image.height) || 0;
+    if (sourceWidth <= 0 || sourceHeight <= 0) return { dx: 0, dy: 0, dw: boxWidth, dh: boxHeight };
+    const scale = Math.max(boxWidth / sourceWidth, boxHeight / sourceHeight);
+    const drawWidth = sourceWidth * scale;
+    const drawHeight = sourceHeight * scale;
+    return { dx: (boxWidth - drawWidth) / 2, dy: (boxHeight - drawHeight) / 2, dw: drawWidth, dh: drawHeight };
+  }
+
+  /**
+   * Recadrage « cover » : l'image remplit toute la carte, centrée, rognée si
+   * besoin. UN SEUL code de dessin pour l'asset du template et l'image
+   * personnalisée — les deux sources sont donc recadrées strictement à
+   * l'identique, ce qui est exigé pour que l'aperçu et la livraison concordent.
+   */
+  #drawCovered(ctx, image, width, height) {
+    const box = this.#coverRect(image, width, height);
+    ctx.drawImage(image, box.dx, box.dy, box.dw, box.dh);
   }
 
   async #drawBackground(ctx, template, design, width, height) {
     const background = design.background || {};
+
+    // Image Welcome personnalisée (Premium) : déjà chargée en mémoire par le
+    // service de ressources, jamais lue depuis un chemin fourni par la config.
+    // Elle est prioritaire sur l'asset du template ; si elle est illisible, on
+    // retombe sur l'asset puis sur le dégradé déclaratif — le Welcome n'est
+    // jamais bloqué par une image invalide.
+    if (background.buffer) {
+      // En-tête vérifié AVANT le décodage : Skia SIGSEGV sur un buffer dont la
+      // signature d'image est valide mais l'en-tête incohérent, et un
+      // try/catch n'arrête pas un signal. Sans ce garde-fou, une image
+      // téléversée puis corrompue ferait tomber le processus à chaque arrivée
+      // de membre.
+      if (inspectImageHeader(background.buffer).ok) {
+        try {
+          this.#drawCovered(ctx, await loadImage(background.buffer), width, height);
+          return;
+        } catch {
+          // Buffer non décodable → on poursuit vers les sources suivantes.
+        }
+      }
+    }
+
     if (background.image && template.assetsPath) {
       try {
         const file = path.join(template.assetsPath, background.image);
         if (fs.existsSync(file)) {
-          const image = await loadImage(file);
-          const scale = Math.max(width / image.width, height / image.height);
-          const drawWidth = image.width * scale;
-          const drawHeight = image.height * scale;
-          ctx.drawImage(image, (width - drawWidth) / 2, (height - drawHeight) / 2, drawWidth, drawHeight);
+          this.#drawCovered(ctx, await loadImage(file), width, height);
           return;
         }
       } catch {
@@ -123,8 +197,21 @@ class WelcomeImageRenderer {
     if (image) {
       ctx.save();
       ctx.clip();
+      // « cover » et non étirement : `drawImage(img, dx, dy, dw, dh)` met à
+      // l'échelle vers dw×dh sans tenir compte du rapport de la source. Un
+      // avatar non carré était donc DÉFORMÉ pour remplir le cercle. On calcule
+      // ici la géométrie cover dans la boîte du cercle, puis on la translate au
+      // centre : le cercle est intégralement couvert, le rapport est conservé,
+      // l'excédent est rogné par le clip déjà posé.
       const size = avatar.radius * 2;
-      ctx.drawImage(image, avatar.cx - avatar.radius, avatar.cy - avatar.radius, size, size);
+      const box = this.#coverRect(image, size, size);
+      ctx.drawImage(
+        image,
+        avatar.cx - avatar.radius + box.dx,
+        avatar.cy - avatar.radius + box.dy,
+        box.dw,
+        box.dh,
+      );
       ctx.restore();
     } else {
       // Clean fallback: accent disc with the member initial.
@@ -146,12 +233,22 @@ class WelcomeImageRenderer {
     }
   }
 
-  #drawTextSlots(ctx, request, design, width) {
+  /**
+   * Emplacements de texte. `title` porte le pseudo/nom du membre, `subtitle` le
+   * message Welcome configuré par l'administrateur.
+   *
+   * Le renderer appelle toujours ce tracé avec `subtitle: false` : seul le
+   * titre (pseudo/nom) est dessiné, dans tous les modes. Le message Welcome ne
+   * fait pas partie de l'image ; il est envoyé comme contenu du message Discord.
+   */
+  #drawTextSlots(ctx, request, design, width, { subtitle = true } = {}) {
     const contentOf = (id) => {
       const element = request.textElements.find((entry) => entry.id === id);
       return element && element.content ? String(element.content) : "";
     };
-    for (const [id, slot] of [["title", design.title], ["subtitle", design.subtitle]]) {
+    const slots = [["title", design.title]];
+    if (subtitle) slots.push(["subtitle", design.subtitle]);
+    for (const [id, slot] of slots) {
       if (!slot) continue;
       const content = contentOf(id);
       if (!content) continue;

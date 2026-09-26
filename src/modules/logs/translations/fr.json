@@ -67,6 +67,25 @@
     "thread_deleted": "🗑️ Fil supprimé",
     "invite_created": "🔗 Invitation créée",
     "invite_deleted": "🗑️ Invitation supprimée",
-    "invite_used": "🔗 Invitation utilisée"
+    "invite_used": "🔗 Invitation utilisée",
+    "ticket_created": "🎫 Ticket créé",
+    "ticket_closed": "🔒 Ticket fermé",
+    "ticket_reopened": "🔓 Ticket rouvert",
+    "ticket_deleted": "🗑️ Ticket supprimé",
+    "ticket_renamed": "✏️ Ticket renommé",
+    "ticket_claimed": "🙋 Ticket pris en charge",
+    "ticket_member_added": "➕ Membre ajouté au ticket",
+    "ticket_member_removed": "➖ Membre retiré du ticket",
+    "ticket_creation_rolled_back": "↩️ Création de ticket annulée",
+    "ticket_creation_orphan": "⚠️ Ticket orphelin détecté",
+    "captcha_verified": "✅ CAPTCHA vérifié",
+    "captcha_verification_failed": "❌ Échec de vérification CAPTCHA",
+    "giveaway_created": "🎁 Giveaway créé",
+    "giveaway_drawn": "🏆 Giveaway tiré au sort",
+    "suggestion_created": "💡 Suggestion créée",
+    "suggestion_approved": "✅ Suggestion approuvée",
+    "suggestion_rejected": "❌ Suggestion refusée",
+    "suggestion_deleted": "🗑️ Suggestion supprimée",
+    "xp_level_up": "⬆️ Niveau supérieur atteint"
   }
 }

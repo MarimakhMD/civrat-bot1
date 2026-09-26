@@ -1,6 +1,7 @@
 const { AuditLogEvent } = require("discord.js");
 const { getLogsRuntime } = require("../modules/logs/runtime/getLogsRuntime");
 const { roleLabel } = require("../modules/logs/services/logLabels");
+const { roleChanges, formatChanges } = require("../modules/logs/services/logDiffs");
 const { resolveAuditActor } = require("../utils/auditLogActor");
 const guildConfigService = require("../services/guildConfig");
 const logger = require("../utils/logger");
@@ -10,9 +11,22 @@ module.exports = {
   once: false,
   async execute(oldRole, newRole) {
     try {
-      if (oldRole.name === newRole.name) return;
+      // PHASE 1 — tous les changements réels, pas seulement le renommage.
+      // La config est lue AVANT l'Audit Log : si les logs sont coupés, aucune
+      // requête API n'est émise.
       const config = await guildConfigService.getGuildConfig(newRole.guild.id);
-      const actor = await resolveAuditActor({ guild: newRole.guild, type: AuditLogEvent.RoleUpdate, targetId: newRole.id });
+      if (!config?.logs_enabled) return;
+
+      const changes = roleChanges(oldRole, newRole);
+      if (changes.length === 0) return;
+
+      const { before, after, permissions } = formatChanges(changes, config);
+      const actor = await resolveAuditActor({
+        guild: newRole.guild,
+        type: AuditLogEvent.RoleUpdate,
+        targetId: newRole.id,
+      });
+
       await getLogsRuntime().handleRoleEvent({
         guild: newRole.guild,
         config,
@@ -20,8 +34,9 @@ module.exports = {
         roleId: newRole.id,
         target: roleLabel(newRole),
         who: actor.executor,
-        before: oldRole.name || null,
-        after: newRole.name || null,
+        before,
+        after,
+        permissions,
       });
     } catch (error) {
       // 4F-1 — observabilité : best-effort conservé.

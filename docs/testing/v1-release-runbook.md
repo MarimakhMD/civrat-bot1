@@ -55,9 +55,9 @@ pas comme absence de données.
 ```bash
 npm ci --ignore-scripts
 npm run check
-# Campagne exhaustive : tous les fichiers *.test.js sous src/ et test/
-mapfile -t files < <(find src test -type f -name '*.test.js' | sort)
-node --test "${files[@]}"
+# Campagne exhaustive : tous les fichiers *.test.js du dépôt, découverts sur disque.
+# `npm run test:list` affiche la liste et le compte sans rien exécuter.
+npm test
 git diff --check
 ```
 

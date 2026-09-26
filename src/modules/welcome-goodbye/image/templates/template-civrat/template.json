@@ -1,0 +1,16 @@
+{
+  "id": "template-civrat",
+  "version": 3,
+  "name": "CIVRAT",
+  "guildIds": ["1320817768962064384"],
+  "supports": { "background": true, "avatar": true, "title": true, "subtitle": true },
+  "design": {
+    "width": 1296,
+    "height": 432,
+    "background": { "type": "image", "colors": ["#111827"], "image": "background.png" },
+    "accent": "#3fae5a",
+    "avatar": { "cx": 233, "cy": 199, "radius": 137, "ringColor": "#ffffff", "ringWidth": 0 },
+    "title": { "x": 817, "y": 262, "size": 26, "color": "#ffffff", "align": "center" },
+    "subtitle": { "x": 817, "y": 300, "size": 18, "color": "#7ddb91", "align": "center" }
+  }
+}
