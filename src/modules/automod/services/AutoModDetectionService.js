@@ -58,6 +58,14 @@ class AutoModDetectionService {
       return out("AUTOMOD_IGNORED");
     }
 
+    // P7 — exemption par rôle OU par salon : flag minimal calculé une seule
+    // fois par le runtime (choke point create+update). Placé AVANT le push du
+    // compteur de spam → aucun comptage, aucune règle, aucune sanction,
+    // aucun log AutoMod. Les exemptions bot/admin restent prioritaires ci-dessus.
+    if (input.exempt === true) {
+      return out("AUTOMOD_IGNORED");
+    }
+
     const rules = [];
     const text = input.content || "";
     const key = `${input.guildId}:${input.authorId}`;

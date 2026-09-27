@@ -15,7 +15,22 @@ const DEFAULTS = Object.freeze({
   automod_delete_message: true,
   automod_punishment: "none",
   automod_timeout_minutes: 10,
+  // P7 — exemptions rôle/salon. Listes vides = comportement strictement
+  // identique à avant P7 (aucune exemption).
+  automod_exempt_roles: [],
+  automod_exempt_channels: [],
 });
+
+/**
+ * P7 — les deux listes d'exemption doivent TOUJOURS être des tableaux au
+ * sortie de `read()`, même si la colonne est absente de l'environnement de
+ * test/local (undefined), nulle en base, ou corrompue en un scalaire.
+ * Le défaut est `[]` : aucune exemption, aucun crash.
+ */
+function normalizeExemptList(value) {
+  if (!Array.isArray(value)) return [];
+  return value.filter((entry) => typeof entry === "string" && entry.length > 0);
+}
 
 /**
  * Reads and writes AutoMod guild configuration through the module-facing
@@ -32,7 +47,10 @@ class AutoModConfigService {
 
   async read(guildId) {
     const stored = (await this.config.get(guildId)) || {};
-    return { ...DEFAULTS, ...stored };
+    const config = { ...DEFAULTS, ...stored };
+    config.automod_exempt_roles = normalizeExemptList(config.automod_exempt_roles);
+    config.automod_exempt_channels = normalizeExemptList(config.automod_exempt_channels);
+    return config;
   }
 
   async update(guildId, updates) {
@@ -40,4 +58,4 @@ class AutoModConfigService {
   }
 }
 
-module.exports = { AutoModConfigService, AUTOMOD_DEFAULTS: DEFAULTS };
+module.exports = { AutoModConfigService, AUTOMOD_DEFAULTS: DEFAULTS, normalizeExemptList };

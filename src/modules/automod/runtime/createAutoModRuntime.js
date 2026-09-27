@@ -19,6 +19,39 @@ function safeHas(permissions, name) {
 }
 
 /**
+ * P7 — exemption rôle OU salon, évaluée UNE seule fois dans `process()`
+ * (choke point commun à messageCreate et messageUpdate).
+ *
+ * Sémantique : `roleExempt || channelExempt`.
+ *  - rôle : `member.roles.cache.has(id)` — O(1), aucun fetch ; un rôle
+ *    supprimé/dangling renvoie false et n'exempte plus personne ;
+ *  - salon : comparaison avec `message.channelId` — O(1), aucun fetch, aucune
+ *    DB. Pas de logique parentId : un thread n'est PAS exempté via son parent.
+ *
+ * Les listes sont bornées à 10 entrées à l'écriture (validation P7) et
+ * normalisées en tableaux par AutoModConfigService.read(), donc ces some()
+ * sont O(10) au pire — aucun Set reconstruit, aucune règle ne re-passe par ici.
+ */
+function isExemptFromAutoMod({ config, member, channelId, guildId }) {
+  const exemptRoles = Array.isArray(config.automod_exempt_roles) ? config.automod_exempt_roles : [];
+  const exemptChannels = Array.isArray(config.automod_exempt_channels) ? config.automod_exempt_channels : [];
+  if (exemptRoles.length === 0 && exemptChannels.length === 0) return false;
+
+  const roleCache = member && member.roles && member.roles.cache;
+  const roleExempt = exemptRoles.length > 0
+    && Boolean(roleCache && typeof roleCache.has === "function")
+    // `@everyone` a pour ID l'ID de la guilde : même si une valeur brute
+    // contournait la validation à l'écriture, elle ne doit jamais exempter.
+    && exemptRoles.some((roleId) => roleId !== guildId && roleCache.has(roleId));
+
+  const channelExempt = exemptChannels.length > 0
+    && typeof channelId === "string"
+    && exemptChannels.includes(channelId);
+
+  return roleExempt || channelExempt;
+}
+
+/**
  * Builds the AutoMod runtime. The runtime reads guild configuration, runs the
  * transport-neutral detection service, and applies the configured enforcement
  * through an injected enforcer factory.
@@ -47,10 +80,24 @@ function createAutoModRuntime({ guildConfigResolver, configService, detection, e
       ? { administrator: safeHas(member.permissions, "Administrator"), manageMessages: safeHas(member.permissions, "ManageMessages") }
       : null;
 
+    // P7 — exemption rôle OU salon : évaluée ICI, dans le point commun
+    // messageCreate/messageUpdate, APRÈS config/bot/admin et AVANT detect()
+    // (donc avant le compteur de spam). Aucun fetch Discord, aucune DB :
+    // roles.cache.has() + comparaison channelId, listes bornées à 10.
+    const exempt = isExemptFromAutoMod({
+      config,
+      member,
+      channelId: typeof message.channelId === "string"
+        ? message.channelId
+        : (message.channel && message.channel.id) || null,
+      guildId: message.guild.id,
+    });
+
     const result = detector.detect({
       config,
       authorIsBot: Boolean(message.author && message.author.bot),
       authorPermissions,
+      exempt,
       guildId: message.guild.id,
       authorId: message.author && message.author.id,
       content: message.content || "",
@@ -58,7 +105,11 @@ function createAutoModRuntime({ guildConfigResolver, configService, detection, e
       messageId,
     });
 
-    if (!result.matched) return { matched: false, code: "AUTOMOD_NO_MATCH" };
+    // Un message exempté ressort en AUTOMOD_IGNORED (contrat P7 §10) ; les
+    // autres cas non-appariés gardent le code historique AUTOMOD_NO_MATCH.
+    if (!result.matched) {
+      return { matched: false, code: exempt ? "AUTOMOD_IGNORED" : "AUTOMOD_NO_MATCH" };
+    }
 
     const actions = await enforcer.enforce({
       message,
@@ -107,4 +158,4 @@ function createAutoModRuntime({ guildConfigResolver, configService, detection, e
   };
 }
 
-module.exports = { createAutoModRuntime, countMentions };
+module.exports = { createAutoModRuntime, countMentions, isExemptFromAutoMod };

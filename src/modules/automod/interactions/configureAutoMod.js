@@ -1,7 +1,8 @@
 "use strict";
 
-const { AutoModComponentId: Id } = require("../configuration/automodConstants");
+const { AutoModComponentId: Id, AutoModExemptLimits, EXEMPT_ID_PATTERN } = require("../configuration/automodConstants");
 const { RULES } = require("./automodViews");
+const { enforceConfigWrite } = require("../../../core/rateLimit/ActionRateLimitGuard");
 
 const RULE_BY_NAME = Object.fromEntries(RULES.map((entry) => [entry.rule, entry.key]));
 
@@ -92,6 +93,114 @@ async function selectAutoModEnforcement(context) {
   return context.service.update(context.guildId, { automod_punishment: value });
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// P7 — exemptions par rôle / par salon
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Guild de l'interaction, pour la validation des IDs reçus des selects.
+ * Un route MANAGE_GUILD est toujours exécuté en guilde : si la guild est
+ * indisponible, on ignore les valeurs (incapacité de valider → jamais
+ * d'exception, GO §4).
+ */
+function resolveExemptGuild(context) {
+  return (context.envelope && (context.envelope.discordMember?.guild || context.envelope.discordChannel?.guild)) || null;
+}
+
+/**
+ * Validation d'une sélection reçue d'un select NATIF — jamais de confiance
+ * aveugle (GO §4) :
+ *  - forme snowflake (EXEMPT_ID_PATTERN), sinon ignoré ;
+ *  - `@everyone` exclu explicitement (son ID est celui de la guilde) ;
+ *  - dédupliqué via Set ;
+ *  - appartenance à la guilde vérifiée via les caches (roles.cache /
+ *    channels.cache) — zéro fetch Discord ;
+ *  - salons : type texte (0) ou annonce (5) UNIQUEMENT — catégories (4) et
+ *    threads (10/11/12) rejetés même s'ils traversaient le select ;
+ *  - plafond EXEMPT_MAX_IDS (10) ;
+ *  - toute valeur non validable est ignorée proprement, sans exception.
+ */
+function sanitizeExemptSelection(values, { kind, guild, guildId }) {
+  const selected = Array.isArray(values) ? values : [];
+  const everyoneId = (guild && guild.roles && guild.roles.everyone && guild.roles.everyone.id) || guildId;
+  const accepted = [];
+  const seen = new Set();
+  for (const raw of selected) {
+    if (accepted.length >= AutoModExemptLimits.MAX_IDS) break;
+    if (typeof raw !== "string" || !EXEMPT_ID_PATTERN.test(raw)) continue;
+    if (raw === everyoneId) continue;
+    if (seen.has(raw)) continue;
+    if (!guild) continue; // non validable → ignoré proprement
+    if (kind === "role") {
+      if (!guild.roles || !guild.roles.cache || !guild.roles.cache.has(raw)) continue;
+    } else {
+      const channel = guild.channels && guild.channels.cache && guild.channels.cache.get(raw);
+      if (!channel) continue;
+      if (!AutoModExemptLimits.CHANNEL_TYPES.includes(channel.type)) continue;
+    }
+    seen.add(raw);
+    accepted.push(raw);
+  }
+  return accepted;
+}
+
+/**
+ * Merge sélection validée ∪ stockage, avec re-validation MINIMALE du stockage
+ * (forme snowflake + exclusion `@everyone`, sans exiger que l'objet existe
+ * encore en cache) : un ID obsolète (rôle/salon supprimé) reste stocké et se
+ * nettoie manuellement via Reset (GO §6), il n'exempte plus personne au
+ * runtime (`roles.cache.has` / comparaison channelId). Plafond final à 10.
+ */
+function mergeExemptList(stored, incoming, { guildId }) {
+  const everyoneId = guildId;
+  const merged = [];
+  const seen = new Set();
+  const push = (id) => {
+    if (typeof id !== "string" || !EXEMPT_ID_PATTERN.test(id)) return;
+    if (id === everyoneId) return;
+    if (seen.has(id)) return;
+    seen.add(id);
+    merged.push(id);
+  };
+  for (const id of incoming) push(id);
+  for (const id of Array.isArray(stored) ? stored : []) push(id);
+  return merged.slice(0, AutoModExemptLimits.MAX_IDS);
+}
+
+/**
+ * Écriture d'une liste d'exemption — TOUJOURS après `enforceConfigWrite`
+ * (P6 §5, 30/60 s par guild+user) et AVANT l'upsert. Au dépassement :
+ * réponse éphémère déjà envoyée par la garde, retour `null`, aucun write.
+ */
+async function updateExemptList(context, key, incomingValues, kind) {
+  if (!(await enforceConfigWrite(context))) return null;
+  const guild = resolveExemptGuild(context);
+  const incoming = sanitizeExemptSelection(incomingValues, { kind, guild, guildId: context.guildId });
+  const config = await context.service.read(context.guildId);
+  const merged = mergeExemptList(config[key], incoming, { guildId: context.guildId });
+  return context.service.update(context.guildId, { [key]: merged });
+}
+
+async function selectAutoModExemptRoles(context) {
+  return updateExemptList(context, "automod_exempt_roles", context.envelope.values, "role");
+}
+
+async function selectAutoModExemptChannels(context) {
+  return updateExemptList(context, "automod_exempt_channels", context.envelope.values, "channel");
+}
+
+/** Reset rôles : la liste devient []. Rate-limit P6 identique aux selects. */
+async function resetAutoModExemptRoles(context) {
+  if (!(await enforceConfigWrite(context))) return null;
+  return context.service.update(context.guildId, { automod_exempt_roles: [] });
+}
+
+/** Reset salons : la liste devient []. Rate-limit P6 identique aux selects. */
+async function resetAutoModExemptChannels(context) {
+  if (!(await enforceConfigWrite(context))) return null;
+  return context.service.update(context.guildId, { automod_exempt_channels: [] });
+}
+
 module.exports = {
   toggleAutoModEnable,
   toggleAutoModDelete,
@@ -101,4 +210,9 @@ module.exports = {
   openAutoModBadWords,
   submitAutoModBadWords,
   selectAutoModEnforcement,
+  // P7 — exemptions rôle / salon.
+  selectAutoModExemptRoles,
+  selectAutoModExemptChannels,
+  resetAutoModExemptRoles,
+  resetAutoModExemptChannels,
 };

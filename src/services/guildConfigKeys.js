@@ -63,6 +63,11 @@ const AUTOMOD_KEYS = Object.freeze([
   "automod_delete_message",
   "automod_punishment",
   "automod_timeout_minutes",
+  // P7 — exemptions AutoMod (listes d'IDs, text[] NOT NULL DEFAULT '{}').
+  // Colonne Supabase à créer manuellement (SQL fourni au rapport P7) avant
+  // toute écriture en production ; la lecture reste safe sans la colonne (défaut []).
+  "automod_exempt_roles",
+  "automod_exempt_channels",
 ]);
 
 /** AutoRole. */
