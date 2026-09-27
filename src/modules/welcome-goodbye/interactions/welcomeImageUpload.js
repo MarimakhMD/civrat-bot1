@@ -1,6 +1,7 @@
 "use strict";
 
 const { premiumRequiredView } = require("../../../core/entitlements");
+const { RATE_LIMITS } = require("../../../core/rateLimit/ActionRateLimitGuard");
 const { WelcomeGoodbyeConfigKey: Key } = require("../configuration/welcomeGoodbyeConstants");
 const { WelcomeAdminAction } = require("../services/WelcomeAdminLogService");
 const { buildWelcomeCardRequest } = require("../image/pipeline/buildWelcomeCardRequest");
@@ -58,6 +59,22 @@ const REJECT_MESSAGE_KEY = Object.freeze({
  */
 async function uploadWelcomeImage(context) {
   const { guildId, userId, t, envelope, settings, imageStore, imagePipeline, templateRegistry, resourceCache, logger = null } = context;
+
+  // P6 §4 — rate-limit 5 uploads / 5 min par (guild, user), AVANT tout :
+  // avant le fetch de la pièce jointe, le décodage, le traitement canvas,
+  // l'upload Storage et les écritures de métadonnées. Le garde est EXPLICITE
+  // (`context.rateLimitGuard`, injecté par le routeur de module) : sans lui,
+  // comportement historique strictement conservé.
+  const uploadLimit = RATE_LIMITS.WELCOME_IMAGE;
+  const activeGuard = context.rateLimitGuard || null;
+  if (activeGuard && guildId && userId) {
+    const gate = activeGuard.check({ guildId, userId, group: uploadLimit.group, limit: uploadLimit.limit, windowMs: uploadLimit.windowMs });
+    if (!gate.allowed) {
+      await envelope.transport.reply({ view: { content: t("ratelimit.retry"), components: [] }, ephemeral: true });
+      return { ok: false, code: "WELCOME_IMAGE_RATE_LIMITED" };
+    }
+    activeGuard.record({ guildId, userId, group: uploadLimit.group, limit: uploadLimit.limit, windowMs: uploadLimit.windowMs });
+  }
 
   // Chaque branche répond à l'utilisateur ET renvoie un résultat structuré :
   // le même objet sert aux tests et à un éventuel journal d'audit, sans que le

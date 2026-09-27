@@ -45,7 +45,8 @@ function registerGiveaways({ registry, configService, supabase, logsRuntimeFacto
     customId: Id.TOGGLE,
     permissions,
     execute: async (context) => {
-      await toggleGiveaway({ service: configService, guildId: context.guildId });
+      const saved = await toggleGiveaway({ service: configService, guildId: context.guildId, userId: context.userId, t: context.t, envelope: context.envelope, rateLimitGuard: context.rateLimitGuard });
+      if (saved === null) return; // refus rate-limit déjà répondu (P6)
       return render(context);
     },
   });

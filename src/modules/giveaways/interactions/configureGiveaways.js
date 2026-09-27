@@ -1,8 +1,12 @@
 "use strict";
 
 const { GiveawayConfigKey: Key } = require("../configuration/giveawayConstants");
+const { enforceConfigWrite } = require("../../../core/rateLimit/ActionRateLimitGuard");
 
-async function toggleGiveaway({ service, guildId }) {
+// P6 §5 — écriture de configuration : garde AVANT read/upsert ; `null` au
+// dépassement = réponse déjà envoyée, l'appelant saute le rendu.
+async function toggleGiveaway({ service, guildId, userId, t, envelope, rateLimitGuard }) {
+  if (!(await enforceConfigWrite({ guildId, userId, t, envelope, rateLimitGuard }))) return null;
   const config = await service.read(guildId);
   return service.update(guildId, { [Key.ENABLED]: !config[Key.ENABLED] });
 }
