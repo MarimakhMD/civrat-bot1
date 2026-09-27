@@ -10,6 +10,25 @@ function toInt(value, fallback) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+/**
+ * P3-A — bornes d'écriture des seuils configurables (validation AVANT stockage).
+ * Une valeur non finie garde le comportement historique de toInt (défaut) ;
+ * une valeur fini hors plage est ramenée proprement à la borne la plus proche.
+ * Jamais de -1, de 0 ni de valeur absurde stockée.
+ *  - mention / emoji / caps : entier 1..100 (caps = pourcentage 1..100)
+ *  - timeout : 1..40320 minutes, clamp identique à DiscordAutoModTransport
+ */
+const THRESHOLD_BOUNDS = Object.freeze({
+  automod_mention_threshold: Object.freeze({ min: 1, max: 100 }),
+  automod_emoji_threshold: Object.freeze({ min: 1, max: 100 }),
+  automod_caps_threshold: Object.freeze({ min: 1, max: 100 }),
+  automod_timeout_minutes: Object.freeze({ min: 1, max: 40320 }),
+});
+
+function toBoundedInt(value, fallback, { min, max }) {
+  return Math.min(max, Math.max(min, toInt(value, fallback)));
+}
+
 async function toggleAutoModEnable(context) {
   const config = await context.service.read(context.guildId);
   return context.service.update(context.guildId, { automod_enabled: !config.automod_enabled });
@@ -45,10 +64,10 @@ async function openAutoModThresholds(context) {
 async function submitAutoModThresholds(context) {
   const values = context.envelope.modalValues || {};
   return context.service.update(context.guildId, {
-    automod_mention_threshold: toInt(values.mention_threshold, 5),
-    automod_emoji_threshold: toInt(values.emoji_threshold, 8),
-    automod_caps_threshold: toInt(values.caps_threshold, 70),
-    automod_timeout_minutes: toInt(values.timeout_minutes, 10),
+    automod_mention_threshold: toBoundedInt(values.mention_threshold, 5, THRESHOLD_BOUNDS.automod_mention_threshold),
+    automod_emoji_threshold: toBoundedInt(values.emoji_threshold, 8, THRESHOLD_BOUNDS.automod_emoji_threshold),
+    automod_caps_threshold: toBoundedInt(values.caps_threshold, 70, THRESHOLD_BOUNDS.automod_caps_threshold),
+    automod_timeout_minutes: toBoundedInt(values.timeout_minutes, 10, THRESHOLD_BOUNDS.automod_timeout_minutes),
   });
 }
 
