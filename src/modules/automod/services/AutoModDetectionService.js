@@ -2,11 +2,57 @@
 
 const DEFAULT_WINDOW_MS = 8000;
 
-const LINK_RE = /(?:https?:\/\/|www\.)\S+/i;
-const INVITE_RE = /(?:discord\.gg\/|discord(?:app)?\.com\/invite\/)[\w-]+/i;
+// P8 — détection liens/invites.
+//  • LINK_RE   : https:// + http:// + www. (avec frontière à gauche pour
+//    exclure `nowww.example` / `mywww.example`) + variantes d'obfuscation
+//    hxxp:// et hxxps:// (indication d'obfuscation de protocole).
+//  • INVITE_RE : discord.gg + discord(dapp).com/invite(S)/ — le « s »
+//    couvre les liens Discovery. Codes d'invitation limités au jeu ASCII
+//    historique [\w-] (aucun format nouveau inventé).
+// Les deux règles s'appliquent à la copie normalizeForDetection() ci-dessous,
+// JAMAIS au texte brut (logs/sanctions/spam/bad words/caps/emoji restent sur
+// le brut — source officielle inchangée).
+const LINK_RE = /(?:https?:\/\/|hxxps?:\/\/|(?<![\p{L}\p{N}])www\.)\S+/iu;
+const INVITE_RE = /(?:discord\.gg\/|discord(?:app)?\.com\/invites?\/)[\w-]+/iu;
 const CUSTOM_EMOJI_RE = /<a?:\w+:\d+>/g;
 const EXTENDED_PICTOGRAPHIC_RE = /\p{Extended_Pictographic}/u;
 const LETTER_RE = /\p{L}/u;
+
+// Caractères de format Unicode (ZWSP U+200B, soft hyphen U+00AD, BOM
+// U+FEFF, marques directionnelles…) — supprimés de la copie de détection.
+const DETECT_CF_RE = /\p{Cf}/gu;
+// Séquence littérale `[.]` (obfuscation par crochets).
+const DETECT_BRACKET_DOT_RE = /\[\.]/g;
+// Points obfusqués restants après NFKD : `。` U+3002, `｡` U+FF61 (NFKD le
+// ramène en U+3002) et `．` U+FF0E (redondant avec NFKD, conservé par sécurité).
+const DETECT_UNICODE_DOT_RE = /[。｡．]/gu;
+// Espace(s) immédiatement avant un point : couvre `discord .gg/abc` sans
+// rejoindre les mots d'une phrase (un espace AVANT `www` n'est pas touché).
+const DETECT_SPACE_BEFORE_DOT_RE = /(?<=\S)\s+(?=\.)/g;
+
+/**
+ * P8 — normalisation DÉTECTION-ONLY pour les règles LINK et INVITE.
+ *
+ * Opérations (et rien d'autre) :
+ *   1. NFKD           — plie les formes fullwidth (dont `．` → `.`) ;
+ *   2. toLowerCase    — casse insensible ;
+ *   3. strip \p{Cf}   — ZWSP / soft hyphen / BOM / marques ;
+ *   4. repli des points obfusqués `[.]`, `。`, `｡`, `．` → `.` ;
+ *   5. retrait de l'espace immédiatement avant un point (forme `x .y`).
+ *
+ * Interdits (contrat P8) : homoglyphes cyrilliques/grecs, décodage %XX,
+ * new URL(), parsing d'URL, table de confusables, normalisation globale du
+ * message. Le texte brut reste la source officielle.
+ */
+function normalizeForDetection(value) {
+  return (value || "")
+    .normalize("NFKD")
+    .toLowerCase()
+    .replace(DETECT_CF_RE, "")
+    .replace(DETECT_BRACKET_DOT_RE, ".")
+    .replace(DETECT_UNICODE_DOT_RE, ".")
+    .replace(DETECT_SPACE_BEFORE_DOT_RE, "");
+}
 
 function normalize(value) {
   return (value || "").normalize("NFKD").toLowerCase();
@@ -92,12 +138,18 @@ class AutoModDetectionService {
       rules.push("AUTOMOD_SPAM");
     }
 
-    if (config.automod_anti_links && LINK_RE.test(text)) {
-      rules.push("AUTOMOD_LINK");
-    }
-
-    if (config.automod_anti_invites && INVITE_RE.test(text)) {
-      rules.push("AUTOMOD_INVITE");
+    // P8 — liens/invites sur la copie de détection UNIQUEMENT (calculée une
+    // fois, uniquement si au moins une des deux règles est active). Le
+    // contenu brut `text` reste intact pour toutes les autres règles.
+    // Priorité inchangée : LINK poussé AVANT INVITE (SPAM > LINK > INVITE > …).
+    if (config.automod_anti_links || config.automod_anti_invites) {
+      const detectText = normalizeForDetection(text);
+      if (config.automod_anti_links && LINK_RE.test(detectText)) {
+        rules.push("AUTOMOD_LINK");
+      }
+      if (config.automod_anti_invites && INVITE_RE.test(detectText)) {
+        rules.push("AUTOMOD_INVITE");
+      }
     }
 
     const mentionThresholdRaw = config.automod_mention_threshold;
@@ -138,4 +190,4 @@ class AutoModDetectionService {
   }
 }
 
-module.exports = { AutoModDetectionService, DEFAULT_WINDOW_MS };
+module.exports = { AutoModDetectionService, DEFAULT_WINDOW_MS, normalizeForDetection };
