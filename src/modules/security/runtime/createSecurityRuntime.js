@@ -4,6 +4,8 @@ const { SecurityRaidService } = require("../services/SecurityRaidService");
 const { SecurityBotService } = require("../services/SecurityBotService");
 const { SecurityNukeService } = require("../services/SecurityNukeService");
 const { SecurityAlertSuppression } = require("../services/SecurityAlertSuppression");
+const { SecurityPermsService, gainedSensitivePermissions } = require("../services/SecurityPermsService");
+const { SecurityPermsDefaults } = require("../configuration/securityConstants");
 const { DiscordSecurityTransport } = require("../../../adapters/discord/DiscordSecurityTransport");
 const { channelLabel, roleLabel } = require("../../logs/services/logLabels");
 
@@ -31,6 +33,7 @@ function createSecurityRuntime({
   raidService,
   botService,
   nukeService,
+  permsService,
   alertSuppression,
   transportFactory,
   logsRuntimeFactory,
@@ -42,6 +45,7 @@ function createSecurityRuntime({
   const raid = raidService || new SecurityRaidService();
   const bot = botService || new SecurityBotService();
   const nuke = nukeService || new SecurityNukeService();
+  const perms = permsService || new SecurityPermsService();
   const suppression = alertSuppression || new SecurityAlertSuppression();
   const makeTransport = typeof transportFactory === "function" ? transportFactory : (guild) => new DiscordSecurityTransport({ guild });
   const makeLogs = typeof logsRuntimeFactory === "function" ? logsRuntimeFactory : () => null;
@@ -235,10 +239,102 @@ function createSecurityRuntime({
       return { handled: true, nuke: result };
     },
 
+    // P2-B — CHANNELUPDATE : rafale d'overwrites de salon. ALERT-ONLY.
+    // Seules les modifications portant la clé `permissions` alimentent le
+    // compteur dédié (5 salons DISTINCTS / 15 s) ; nom, topic, slowmode,
+    // position, catégorie… ne comptent pas. Aucune sanction : une alerte
+    // `security_perms` unique par fenêtre, via SecurityAlertSuppression.
+    handleChannelPermsUpdate: async (channel, changes, actor) => {
+      const guild = channel && channel.guild;
+      if (!guild) return { handled: false, code: "GUILD_MISSING" };
+      const config = await configService.read(guild.id);
+      if (!config || !config.security_enabled || !config.security_anti_nuke) return { handled: false, code: "SECURITY_DISABLED" };
+      if (!Array.isArray(changes) || !changes.some((change) => change && change.key === "permissions")) {
+        return { handled: true, channelBurst: null };
+      }
+
+      const burst = perms.recordChannelPermissions({ guildId: guild.id, channelId: channel.id });
+      if (burst.triggered) {
+        await emitAlert({
+          guild,
+          action: "security_perms:channelBurst",
+          windowMs: burst.windowMs,
+          payload: {
+            action: "security_perms",
+            // Fail-closed : acteur inconnu → null, jamais d'identité inventée.
+            moderator: actor ? actor.executor : null,
+            moderatorId: actor ? actor.executorId : null,
+            targetId: channel.id || null,
+            target: channelLabel(channel),
+            reason: `Permission overwrites burst ${burst.distinct}/${burst.threshold} in ${burst.windowMs}ms`,
+            rule: "SECURITY_PERMS_CHANNEL_BURST",
+            rules: ["SECURITY_PERMS"],
+          },
+        });
+      }
+      return { handled: true, channelBurst: burst };
+    },
+
+    // P2-B — ROLEUPDATE : deux signaux, tous deux alert-only.
+    //  1. SIGNAL FORT (N1) — GAIN d'une permission sensible (liste dédiée) ;
+    //     une perte n'est jamais un signal, et un simple changement de couleur/
+    //     nom/hoist n'atteint jamais ce chemin (pas d'entrée `permissions`).
+    //     Dédup par cible : même rôle en boucle → une seule alerte par fenêtre.
+    //  2. RAFLE — 3 rôles DISTINCTS dont les permissions ont bougé / 15 s.
+    handleRolePermsUpdate: async (role, changes, actor) => {
+      const guild = role && role.guild;
+      if (!guild) return { handled: false, code: "GUILD_MISSING" };
+      const config = await configService.read(guild.id);
+      if (!config || !config.security_enabled || !config.security_anti_nuke) return { handled: false, code: "SECURITY_DISABLED" };
+      if (!Array.isArray(changes) || !changes.some((change) => change && change.key === "permissions")) {
+        return { handled: true, gained: [], roleBurst: null };
+      }
+
+      const gained = gainedSensitivePermissions(changes);
+      if (gained.length > 0) {
+        await emitAlert({
+          guild,
+          action: `security_perms:roleEscalation:${role.id}`,
+          windowMs: SecurityPermsDefaults.ESCALATION_COOLDOWN_MS,
+          payload: {
+            action: "security_perms",
+            moderator: actor ? actor.executor : null,
+            moderatorId: actor ? actor.executorId : null,
+            targetId: role.id || null,
+            target: roleLabel(role),
+            reason: `Permissions gained: ${gained.join(", ")}`,
+            rule: "SECURITY_PERMS_ROLE_ESCALATION",
+            rules: ["SECURITY_PERMS"],
+          },
+        });
+      }
+
+      const burst = perms.recordRolePermissions({ guildId: guild.id, roleId: role.id });
+      if (burst.triggered) {
+        await emitAlert({
+          guild,
+          action: "security_perms:roleBurst",
+          windowMs: burst.windowMs,
+          payload: {
+            action: "security_perms",
+            moderator: actor ? actor.executor : null,
+            moderatorId: actor ? actor.executorId : null,
+            targetId: role.id || null,
+            target: roleLabel(role),
+            reason: `Role permissions burst ${burst.distinct}/${burst.threshold} in ${burst.windowMs}ms`,
+            rule: "SECURITY_PERMS_ROLE_BURST",
+            rules: ["SECURITY_PERMS"],
+          },
+        });
+      }
+      return { handled: true, gained, roleBurst: burst };
+    },
+
     // Expose services for testing
     _raid: raid,
     _bot: bot,
     _nuke: nuke,
+    _perms: perms,
     _suppression: suppression,
   });
 }

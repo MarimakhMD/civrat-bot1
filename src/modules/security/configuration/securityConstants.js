@@ -44,4 +44,36 @@ const SecurityNukeDefaults = Object.freeze({
   }),
 });
 
-module.exports = { SecurityConfigKey, SecurityComponentId, SECURITY_DEFAULTS, SecurityRaidDefaults, SecurityNukeDefaults };
+/**
+ * P2-B — détection ALERT-ONLY des modifications dangereuses de permissions.
+ *
+ * Constantes DÉDIÉES et neuves : aucun seuil existant n'est touché
+ * (SecurityNukeDefaults 10/12/30/32 et SecurityRaidDefaults restent strictement
+ * inchangés, SecurityRaidService n'est pas réutilisé).
+ *
+ *  • CHANNEL_DISTINCT_THRESHOLD — rafale d'overwrites de salon : 5 salons
+ *    DISTINCTS sur WINDOW_MS.
+ *  • ROLE_DISTINCT_THRESHOLD — rafale de modifications de permissions de rôle :
+ *    3 rôles DISTINCTS sur WINDOW_MS.
+ *  • ESCALATION_COOLDOWN_MS — anti-boucle du signal fort N1 (gain d'une
+ *    permission sensible sur une même cible).
+ *  • SENSITIVE_PERMISSIONS — liste initiale des permissions sensibles ; un
+ *    GAIN de l'une d'elles déclenche N1 (une perte n'est jamais un signal).
+ */
+const SecurityPermsDefaults = Object.freeze({
+  WINDOW_MS: 15000,
+  CHANNEL_DISTINCT_THRESHOLD: 5,
+  ROLE_DISTINCT_THRESHOLD: 3,
+  ESCALATION_COOLDOWN_MS: 15000,
+  SENSITIVE_PERMISSIONS: Object.freeze([
+    "Administrator",
+    "ManageGuild",
+    "ManageRoles",
+    "ManageChannels",
+    "BanMembers",
+    "KickMembers",
+    "ManageWebhooks",
+  ]),
+});
+
+module.exports = { SecurityConfigKey, SecurityComponentId, SECURITY_DEFAULTS, SecurityRaidDefaults, SecurityNukeDefaults, SecurityPermsDefaults };

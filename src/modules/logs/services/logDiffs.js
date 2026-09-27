@@ -228,6 +228,55 @@ function channelChanges(oldChannel, newChannel) {
 // Rendu Avant / Après
 // ─────────────────────────────────────────────────────────────
 
+/**
+ * P2-B — surcharges réellement modifiées entre deux états d'un salon.
+ *
+ * Reprend la même normalisation que `overwriteSignature` (permissions lues via
+ * `permissionNames`, jamais devinées) mais AU NIVEAU D'UNE surcharge, ce qui
+ * permet de classer chaque identifiant touché :
+ *  • `added`    — surcharge absente avant, présente après        → audit 13 ;
+ *  • `removed`  — présente avant, absente après                  → audit 15 ;
+ *  • `modified` — présente des deux côtés, signature différente  → audit 14.
+ *
+ * Tableaux vides si les caches ne sont pas comparables — rien n'est inventé.
+ *
+ * @returns {{added:string[], removed:string[], modified:string[]}}
+ */
+function overwriteDiff(oldChannel, newChannel) {
+  const result = { added: [], removed: [], modified: [] };
+  const maps = [oldChannel, newChannel].map((channel) => {
+    const cache = channel && channel.permissionOverwrites && channel.permissionOverwrites.cache;
+    if (!cache || typeof cache.forEach !== "function") return null;
+    const map = new Map();
+    try {
+      cache.forEach((overwrite, id) => {
+        const allow = permissionNames(overwrite && overwrite.allow) || [];
+        const deny = permissionNames(overwrite && overwrite.deny) || [];
+        map.set(String(id), `+[${allow.join(",")}] -[${deny.join(",")}]`);
+      });
+    } catch {
+      return null;
+    }
+    return map;
+  });
+  const before = maps[0];
+  const after = maps[1];
+  if (!before || !after) return result;
+
+  const ids = new Set([...before.keys(), ...after.keys()]);
+  for (const id of ids) {
+    const had = before.has(id);
+    const has = after.has(id);
+    if (!had && has) result.added.push(id);
+    else if (had && !has) result.removed.push(id);
+    else if (before.get(id) !== after.get(id)) result.modified.push(id);
+  }
+  result.added.sort();
+  result.removed.sort();
+  result.modified.sort();
+  return result;
+}
+
 /** Valeur lisible d'une propriété, localisée quand c'est pertinent. */
 function renderValue(key, value, config) {
   if (value === null || value === undefined || value === "") {
@@ -287,5 +336,6 @@ module.exports = {
   permissionDiff,
   permissionNames,
   overwriteSignature,
+  overwriteDiff,
   CHANGE_LABELS,
 };

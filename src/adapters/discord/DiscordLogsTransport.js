@@ -193,6 +193,7 @@ const LOG_COLORS = Object.freeze({
   security_raid: "#C0392B",
   security_bot: "#C0392B",
   security_nuke: "#C0392B",
+  security_perms: "#C0392B",
   // orange — modification / timeout / kick / avertissement
   message_updated: "#E67E22",
   member_nickname_changed: "#E67E22",

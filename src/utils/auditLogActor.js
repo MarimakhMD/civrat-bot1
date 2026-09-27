@@ -282,6 +282,93 @@ async function resolveAuditActor(options) {
   return { executor: result.executor, executorId: result.executorId, reason: result.reason };
 }
 
+/**
+ * P2-B — garde de NATURE pour une entrée `ChannelOverwrite*` (13/14/15).
+ *
+ * Une entrée d'overwrite porte ses changements dans les clés `allow` / `deny`.
+ * Un `changes` absent ou vide reste accepté (la nature est alors
+ * indéterminable, la garde n'interdit rien) ; un `changes` RENSEIGNÉ sans la
+ * moindre clé `allow`/`deny` est rejeté : ce n'est pas l'entrée d'overwrites
+ * cherchée.
+ */
+function isOverwriteChange(entry) {
+  const changes = entry && entry.changes;
+  if (!Array.isArray(changes) || changes.length === 0) return true;
+  return changes.some((change) => change && (change.key === "allow" || change.key === "deny"));
+}
+
+/**
+ * P2-B — résolution contrôlée sur PLUSIEURS types d'audit et cibles candidates.
+ *
+ * Motif : `channelUpdate` avec une modification d'overwrites ne produit PAS
+ * d'entrée `ChannelUpdate` (11) seule — Discord journalise
+ * `CHANNEL_OVERWRITE_CREATE/UPDATE/DELETE` (13/14/15). Le `target_id` exact de
+ * 13/14/15 n'est pas confirmé par la doc (« affected entity ») : on essaie
+ * d'abord l'identifiant du salon, puis les overwrites réellement touchés —
+ * les deux hypothèses sont couvertes sans coût API supplémentaire (le cache par
+ * `(guild, type)` est réutilisé entre tentatives de cibles).
+ *
+ * Contrôles garantis :
+ *  • les types sont essayés DANS l'ordre fourni, et l'on s'arrête à la PREMIÈRE
+ *    correspondance fiable (fraîcheur + cible + consommation unique) ;
+ *  • chaque type peut porter son propre `changeFilter` (nature de l'entrée) ;
+ *  • une entrée n'est consommée QUE si elle est retenue ; aucune identité
+ *    n'est inventée (fail-closed partout) ;
+ *  • isolation stricte par `guild_id` (registre de consommation existant).
+ *
+ * @param {{guild:object, types:Array<number|{type:number,changeFilter?:Function}>,
+ *   targetIds?:Array<string|number>, occurredAt?:number, maxAgeMs?:number,
+ *   consume?:boolean}} options
+ * @returns {Promise<{executor:string|null, executorId:string|null,
+ *   reason:string|null, matchedType:number|null, matchedTargetId:string|null}>}
+ */
+async function resolveAuditActorSequence({
+  guild,
+  types,
+  targetIds = [],
+  occurredAt = Date.now(),
+  maxAgeMs = MAX_ENTRY_AGE_MS,
+  consume = true,
+}) {
+  const none = { executor: null, executorId: null, reason: null, matchedType: null, matchedTargetId: null };
+  if (!guild || !Array.isArray(types) || types.length === 0) return none;
+
+  const ids = (Array.isArray(targetIds) ? targetIds : [])
+    .filter((id) => id !== null && id !== undefined && id !== "")
+    .map((id) => String(id));
+  if (ids.length === 0) return none;
+
+  for (const spec of types) {
+    const type = typeof spec === "number" ? spec : spec ? spec.type : null;
+    if (type === null || type === undefined) continue;
+    const changeFilter = typeof spec === "number" || !spec
+      ? null
+      : (typeof spec.changeFilter === "function" ? spec.changeFilter : null);
+
+    for (const targetId of ids) {
+      const result = await resolveAuditAction({
+        guild,
+        type,
+        targetId,
+        changeFilter,
+        occurredAt,
+        maxAgeMs,
+        consume,
+      });
+      if (result.matched) {
+        return {
+          executor: result.executor,
+          executorId: result.executorId,
+          reason: result.reason,
+          matchedType: type,
+          matchedTargetId: targetId,
+        };
+      }
+    }
+  }
+  return none;
+}
+
 // ─────────────────────────────────────────────────────────────
 // Timeout / UnTimeout — `MemberUpdate` est polymorphe
 // ─────────────────────────────────────────────────────────────
@@ -443,7 +530,9 @@ async function resolveRoleDeltas(options) {
 
 module.exports = {
   resolveAuditActor,
+  resolveAuditActorSequence,
   resolveAuditAction,
+  isOverwriteChange,
   resolveTimeoutAction,
   resolveRoleDelta,
   resolveRoleDeltas,
