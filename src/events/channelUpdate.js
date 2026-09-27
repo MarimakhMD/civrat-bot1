@@ -81,6 +81,21 @@ module.exports = {
         // 4F-1 — observabilité : best-effort conservé.
         logger.warn("Security channelUpdate handling failed", { event: "security_channel_update_failed", guildId: newChannel.guild?.id || null, error: error?.message || String(error) });
       }
+
+      // P5 — rafale de modifications NON liées aux permissions (alert-only),
+      // best-effort. Appelé UNIQUEMENT si `changes` contient au moins une clé
+      // différente de `permissions` (les updates « permissions seules »
+      // restent le domaine exclusif de P2-B). Même `changes` et même `actor`
+      // que P2-B : AUCUN nouvel appel Audit Log, Logs et Security restent
+      // indépendants.
+      if (changes.some((change) => change && change.key !== "permissions")) {
+        try {
+          await require("../modules/security/runtime/getSecurityRuntime").getSecurityRuntime().handleChannelContentUpdate(newChannel, changes, actor);
+        } catch (error) {
+          // 4F-1 — observabilité : best-effort conservé.
+          logger.warn("Security channelUpdate content handling failed", { event: "security_channel_update_content_failed", guildId: newChannel.guild?.id || null, error: error?.message || String(error) });
+        }
+      }
     } catch (error) {
       // 4F-1 — observabilité : best-effort conservé.
       logger.warn("channelUpdate handling failed", { event: "channel_update_failed", guildId: newChannel?.guild?.id || null, error: error?.message || String(error) });

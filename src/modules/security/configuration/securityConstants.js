@@ -76,4 +76,25 @@ const SecurityPermsDefaults = Object.freeze({
   ]),
 });
 
-module.exports = { SecurityConfigKey, SecurityComponentId, SECURITY_DEFAULTS, SecurityRaidDefaults, SecurityNukeDefaults, SecurityPermsDefaults };
+/**
+ * P5 — détection ALERT-ONLY des rafales de modifications NON liées aux
+ * permissions (channelUpdate / roleUpdate).
+ *
+ * Constantes DÉDIÉES et neuves : aucun seuil existant n'est touché
+ * (SecurityNukeDefaults 10/12/30/32, SecurityRaidDefaults et
+ * SecurityPermsDefaults 5/3 restent strictement inchangés).
+ *
+ *  • CHANNEL_DISTINCT_THRESHOLD — rafale de salons distincts dont un champ
+ *    NON-permission a bougé (name/topic/position/parent/slowmode/nsfw/…)
+ *    sur WINDOW_MS.
+ *  • ROLE_DISTINCT_THRESHOLD — rafale de rôles distincts dont un champ
+ *    NON-permission (name/color/hoist/mentionable) OU la position a bougé.
+ *  • Une seule alerte par fenêtre (flag `alerted` du service + suppression).
+ */
+const SecurityUpdateDefaults = Object.freeze({
+  WINDOW_MS: 15000,
+  CHANNEL_DISTINCT_THRESHOLD: 10,
+  ROLE_DISTINCT_THRESHOLD: 6,
+});
+
+module.exports = { SecurityConfigKey, SecurityComponentId, SECURITY_DEFAULTS, SecurityRaidDefaults, SecurityNukeDefaults, SecurityPermsDefaults, SecurityUpdateDefaults };

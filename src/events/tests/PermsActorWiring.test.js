@@ -46,6 +46,7 @@ const state = {
   logsChannelCalls: [],
   logsRoleCalls: [],
   securityCalls: [],
+  contentCalls: [],
 };
 
 function reset() {
@@ -57,6 +58,7 @@ function reset() {
   state.logsChannelCalls.length = 0;
   state.logsRoleCalls.length = 0;
   state.securityCalls.length = 0;
+  state.contentCalls.length = 0;
 }
 
 // ── Stubs ───────────────────────────────────────────────────────────
@@ -90,6 +92,10 @@ installStub("src/utils/auditLogActor.js", {
 const securityRuntime = {
   handleChannelPermsUpdate: async (obj, changes, actor) => state.securityCalls.push({ handler: "handleChannelPermsUpdate", obj, changes, actor }),
   handleRolePermsUpdate: async (obj, changes, actor) => state.securityCalls.push({ handler: "handleRolePermsUpdate", obj, changes, actor }),
+  // P5 — rafales non-permission : enregistrées dans un tableau SÉPARÉ pour
+  // préserver intacts les contrats d'assertion P2-B.
+  handleChannelContentUpdate: async (obj, changes, actor) => state.contentCalls.push({ handler: "handleChannelContentUpdate", obj, changes, actor }),
+  handleRoleContentUpdate: async (obj, changes, actor, positionChanged) => state.contentCalls.push({ handler: "handleRoleContentUpdate", obj, changes, actor, positionChanged }),
 };
 installStub("src/modules/security/runtime/getSecurityRuntime.js", { getSecurityRuntime: () => securityRuntime });
 
@@ -340,4 +346,145 @@ test("P2B channelUpdate: Audit Log sans correspondance → who null, Security re
 
   assert.equal(state.logsChannelCalls[0].who, null);
   assert.equal(state.securityCalls[0].actor.executor, null);
+});
+
+// ─────────────────────────────────────────────────────────────────────
+// P5 — rafales NON-permission (content) : channelUpdate / roleUpdate
+// ─────────────────────────────────────────────────────────────────────
+
+test("P5 channelUpdate: modification name → P5 alimenté (changes + actor partagé), UNE seule résolution", async () => {
+  reset();
+  state.config = { logs_enabled: true, security_anti_nuke: true };
+  state.resolveResult = foundActor("u5", "Eve#0005");
+
+  await channelUpdate.execute(makeChannel("g1"), makeChannel("g1", { name: "autre" }));
+
+  // Aucune nouvelle résolution Audit Log : la séquence reste UNE fois.
+  assert.equal(state.sequenceCalls.length, 1, "une seule résolution, partagée Logs/Security/P5");
+  assert.equal(state.logsChannelCalls.length, 1);
+  assert.equal(state.contentCalls.length, 1, "P5 est alimenté");
+  const call = state.contentCalls[0];
+  assert.equal(call.handler, "handleChannelContentUpdate");
+  assert.ok(call.changes.some((c) => c.key === "name"), "la clé name transmise");
+  assert.equal(call.actor.executorId, "u5", "même acteur que Logs");
+  assert.equal(call.actor.executor, state.logsChannelCalls[0].who, "acteur strictement partagé avec les Logs");
+  // P2-B reste servi (sans déclencher : une clé ≠ permissions n'alimente pas son compteur).
+  assert.equal(state.securityCalls.length, 1);
+});
+
+test("P5 channelUpdate: uniquement permissions → P2-B alimenté, P5 NON appelé", async () => {
+  reset();
+  state.config = { logs_enabled: true, security_anti_nuke: true };
+  state.resolveResult = foundActor("u6", "Fen#0006");
+
+  const overwrites = new Map([["R1", { allow: bitfield(["SendMessages"]), deny: bitfield([]) }]]);
+  await channelUpdate.execute(makeChannel("g1"), makeChannel("g1", { permissionOverwrites: { cache: overwrites } }));
+
+  assert.equal(state.securityCalls.length, 1, "P2-B alimenté");
+  assert.ok(state.securityCalls[0].changes.some((c) => c.key === "permissions"));
+  assert.equal(state.contentCalls.length, 0, "permissions seules → P5 non appelé");
+});
+
+test("P5 channelUpdate: permissions + name → P2-B ET P5 (deux signaux indépendants)", async () => {
+  reset();
+  state.config = { logs_enabled: true, security_anti_nuke: true };
+  state.resolveResult = foundActor("u7", "Gil#0007");
+
+  const overwrites = new Map([["R1", { allow: bitfield(["Administrator"]), deny: bitfield([]) }]]);
+  await channelUpdate.execute(
+    makeChannel("g1"),
+    makeChannel("g1", { name: "GÉNÉRAL", permissionOverwrites: { cache: overwrites } }),
+  );
+
+  assert.equal(state.securityCalls.length, 1, "P2-B");
+  assert.equal(state.contentCalls.length, 1, "P5");
+  const keys = state.contentCalls[0].changes.map((c) => c.key);
+  assert.ok(keys.includes("name") && keys.includes("permissions"), "les deux composantes sont transmises");
+  assert.equal(state.sequenceCalls.length, 1, "toujours UNE seule résolution");
+});
+
+test("P5 channelUpdate: anti_nuke seul (logs coupés) → P5 servi, aucune résolution supplémentaire", async () => {
+  reset();
+  state.config = { logs_enabled: false, security_anti_nuke: true };
+  state.resolveResult = foundActor("u8", "Hugo#0008");
+
+  await channelUpdate.execute(makeChannel("g1"), makeChannel("g1", { topic: "nouveau" }));
+
+  assert.equal(state.logsChannelCalls.length, 0);
+  assert.equal(state.sequenceCalls.length, 1, "résolution unique pour Security");
+  assert.equal(state.contentCalls.length, 1);
+  assert.equal(state.contentCalls[0].actor.executorId, "u8");
+});
+
+test("P5 roleUpdate: couleur → P5 alimenté (positionChanged false), log de rôle intact", async () => {
+  reset();
+  state.config = { logs_enabled: true, security_anti_nuke: true };
+  state.resolveResult = foundActor("u9", "Ivy#0009");
+
+  await roleUpdate.execute(makeRole("g1"), makeRole("g1", { hexColor: "#00ff00", color: 0x00ff00 }));
+
+  assert.equal(state.logsRoleCalls.length, 1, "log de couleur intact");
+  assert.equal(state.resolveCalls.length, 1, "résolution unique type 31");
+  assert.equal(state.contentCalls.length, 1, "P5 alimenté");
+  const call = state.contentCalls[0];
+  assert.equal(call.handler, "handleRoleContentUpdate");
+  assert.equal(call.positionChanged, false, "position inchangée");
+  assert.ok(call.changes.some((c) => c.key === "color"), "la clé color transmise");
+  assert.equal(call.actor.executor, state.logsRoleCalls[0].who, "acteur partagé avec les Logs");
+});
+
+test("P5 roleUpdate: uniquement permissions → P5 NON appelé (P2-B seul)", async () => {
+  reset();
+  state.config = { logs_enabled: true, security_anti_nuke: true };
+  state.resolveResult = foundActor("u10", "Jon#0010");
+
+  await roleUpdate.execute(makeRole("g1"), makeRole("g1", { permissions: bitfield(["ViewChannel", "BanMembers"]) }));
+
+  assert.equal(state.securityCalls.length, 1, "P2-B alimenté");
+  assert.equal(state.contentCalls.length, 0, "permissions seules → P5 non appelé");
+});
+
+test("P5 roleUpdate: permissions + name → P2-B ET P5", async () => {
+  reset();
+  state.config = { logs_enabled: true, security_anti_nuke: true };
+  state.resolveResult = foundActor("u11", "Kim#0011");
+
+  await roleUpdate.execute(
+    makeRole("g1"),
+    makeRole("g1", { name: "Admin", permissions: bitfield(["ViewChannel", "Administrator"]) }),
+  );
+
+  assert.equal(state.securityCalls.length, 1, "P2-B");
+  assert.equal(state.contentCalls.length, 1, "P5");
+  const keys = state.contentCalls[0].changes.map((c) => c.key);
+  assert.ok(keys.includes("name") && keys.includes("permissions"));
+  assert.equal(state.resolveCalls.length, 1, "UNE seule résolution pour les deux signaux");
+});
+
+test("P5 roleUpdate: position-seule → P5 alimenté (positionChanged true), AUCUN log de rôle, UNE résolution", async () => {
+  reset();
+  state.config = { logs_enabled: true, security_anti_nuke: true };
+  state.resolveResult = foundActor("u12", "Lux#0012");
+
+  await roleUpdate.execute(makeRole("g1", { position: 4 }), makeRole("g1", { position: 7 }));
+
+  assert.equal(state.logsRoleCalls.length, 0, "une position-seule ne produit toujours pas de log role_updated");
+  assert.equal(state.resolveCalls.length, 1, "résolution unique (type 31) pour l'alerte P5");
+  assert.equal(state.securityCalls.length, 0, "P2-B non appelé (aucune clé de roleChanges)");
+  assert.equal(state.contentCalls.length, 1, "P5 alimenté par la position");
+  const call = state.contentCalls[0];
+  assert.equal(call.positionChanged, true);
+  assert.deepEqual(call.changes, [], "roleChanges ne contient pas la position (logDiffs intact)");
+});
+
+test("P5 roleUpdate: d'autres clés avec position inchangée → positionChanged false", async () => {
+  reset();
+  state.config = { logs_enabled: true, security_anti_nuke: true };
+  state.resolveResult = foundActor("u13", "Mia#0013");
+
+  await roleUpdate.execute(makeRole("g1", { position: 5 }), makeRole("g1", { position: 5, name: "Renommé" }));
+
+  assert.equal(state.contentCalls.length, 1);
+  assert.equal(state.contentCalls[0].positionChanged, false, "position identique → pas de signal position");
+  assert.ok(state.contentCalls[0].changes.some((c) => c.key === "name"));
 });

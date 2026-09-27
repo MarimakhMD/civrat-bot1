@@ -5,6 +5,7 @@ const { SecurityBotService } = require("../services/SecurityBotService");
 const { SecurityNukeService } = require("../services/SecurityNukeService");
 const { SecurityAlertSuppression } = require("../services/SecurityAlertSuppression");
 const { SecurityPermsService, gainedSensitivePermissions } = require("../services/SecurityPermsService");
+const { SecurityUpdateService } = require("../services/SecurityUpdateService");
 const { SecurityPermsDefaults } = require("../configuration/securityConstants");
 const { DiscordSecurityTransport } = require("../../../adapters/discord/DiscordSecurityTransport");
 const { channelLabel, roleLabel } = require("../../logs/services/logLabels");
@@ -34,6 +35,7 @@ function createSecurityRuntime({
   botService,
   nukeService,
   permsService,
+  updateService,
   alertSuppression,
   transportFactory,
   logsRuntimeFactory,
@@ -46,6 +48,7 @@ function createSecurityRuntime({
   const bot = botService || new SecurityBotService();
   const nuke = nukeService || new SecurityNukeService();
   const perms = permsService || new SecurityPermsService();
+  const update = updateService || new SecurityUpdateService();
   const suppression = alertSuppression || new SecurityAlertSuppression();
   const makeTransport = typeof transportFactory === "function" ? transportFactory : (guild) => new DiscordSecurityTransport({ guild });
   const makeLogs = typeof logsRuntimeFactory === "function" ? logsRuntimeFactory : () => null;
@@ -330,11 +333,87 @@ function createSecurityRuntime({
       return { handled: true, gained, roleBurst: burst };
     },
 
+    // P5 — CHANNELUPDATE : rafale de modifications SANS lien avec les
+    // permissions. ALERT-ONLY. Seules les modifications portant AU MOINS UNE
+    // clé différente de `permissions` alimentent le compteur dédié (10 salons
+    // DISTINCTS / 15 s) ; une update contenant UNIQUEMENT `permissions`
+    // relève de P2-B seul. En cas d'update mixte (permissions + nom), P2-B ET
+    // P5 mesurent chacun leur menace — aucun signal n'est supprimé.
+    handleChannelContentUpdate: async (channel, changes, actor) => {
+      const guild = channel && channel.guild;
+      if (!guild) return { handled: false, code: "GUILD_MISSING" };
+      const config = await configService.read(guild.id);
+      if (!config || !config.security_enabled || !config.security_anti_nuke) return { handled: false, code: "SECURITY_DISABLED" };
+      if (!Array.isArray(changes) || !changes.some((change) => change && change.key !== "permissions")) {
+        return { handled: true, contentBurst: null };
+      }
+
+      const burst = update.recordChannelContent({ guildId: guild.id, channelId: channel.id });
+      if (burst.triggered) {
+        await emitAlert({
+          guild,
+          action: `security_update:channelUpdate`,
+          windowMs: burst.windowMs,
+          payload: {
+            action: "security_update",
+            subtype: "channelUpdate",
+            // Fail-closed : acteur inconnu → null, jamais d'identité inventée.
+            moderator: actor ? actor.executor : null,
+            moderatorId: actor ? actor.executorId : null,
+            targetId: channel.id || null,
+            target: channelLabel(channel),
+            reason: `Channel updates burst ${burst.distinct}/${burst.threshold} in ${burst.windowMs}ms`,
+            rule: "SECURITY_UPDATES_CHANNEL_BURST",
+            rules: ["SECURITY_UPDATES"],
+          },
+        });
+      }
+      return { handled: true, contentBurst: burst };
+    },
+
+    // P5 — ROLEUPDATE : rafale de modifications SANS lien avec les
+    // permissions, position de rôle comprise (comparaison locale effectuée
+    // par l'événement : `oldRole.position !== newRole.position`). ALERT-ONLY,
+    // 6 rôles DISTINCTS / 15 s, une seule alerte par fenêtre. P2-B (clés
+    // `permissions`) reste strictement indépendant.
+    handleRoleContentUpdate: async (role, changes, actor, positionChanged = false) => {
+      const guild = role && role.guild;
+      if (!guild) return { handled: false, code: "GUILD_MISSING" };
+      const config = await configService.read(guild.id);
+      if (!config || !config.security_enabled || !config.security_anti_nuke) return { handled: false, code: "SECURITY_DISABLED" };
+      const hasContentChange = Array.isArray(changes) && changes.some((change) => change && change.key !== "permissions");
+      if (!hasContentChange && !positionChanged) {
+        return { handled: true, contentBurst: null };
+      }
+
+      const burst = update.recordRoleContent({ guildId: guild.id, roleId: role.id });
+      if (burst.triggered) {
+        await emitAlert({
+          guild,
+          action: `security_update:roleUpdate`,
+          windowMs: burst.windowMs,
+          payload: {
+            action: "security_update",
+            subtype: "roleUpdate",
+            moderator: actor ? actor.executor : null,
+            moderatorId: actor ? actor.executorId : null,
+            targetId: role.id || null,
+            target: roleLabel(role),
+            reason: `Role updates burst ${burst.distinct}/${burst.threshold} in ${burst.windowMs}ms`,
+            rule: "SECURITY_UPDATES_ROLE_BURST",
+            rules: ["SECURITY_UPDATES"],
+          },
+        });
+      }
+      return { handled: true, contentBurst: burst };
+    },
+
     // Expose services for testing
     _raid: raid,
     _bot: bot,
     _nuke: nuke,
     _perms: perms,
+    _update: update,
     _suppression: suppression,
   });
 }

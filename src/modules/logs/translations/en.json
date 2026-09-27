@@ -44,6 +44,7 @@
     "security_bot": "Security: Bot",
     "security_nuke": "Security: Nuke",
     "security_perms": "Security: Permissions",
+    "security_update": "Security: Updates",
     "warn": "Warning",
     "memberJoined": "👤 Member joined",
     "memberLeft": "🚪 Member left",
