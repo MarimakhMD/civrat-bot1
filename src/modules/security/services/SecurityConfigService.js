@@ -1,6 +1,6 @@
 "use strict";
 
-const { SECURITY_DEFAULTS } = require("../configuration/securityConstants");
+const { SECURITY_DEFAULTS, SecurityConfigKey, sanitizeWhitelistEntries } = require("../configuration/securityConstants");
 
 /**
  * Reads and writes Security guild configuration through the module-facing
@@ -17,7 +17,14 @@ class SecurityConfigService {
 
   async read(guildId) {
     const stored = (await this.config.get(guildId)) || {};
-    return { ...SECURITY_DEFAULTS, ...stored };
+    const merged = { ...SECURITY_DEFAULTS, ...stored };
+    // P9 — lecture défensive de la whitelist UNIQUEMENT : null / scalaire /
+    // junk / doublons / dépassement de plafond sont neutralisés en mémoire,
+    // sans appel réseau supplémentaire et sans toucher aux autres clés
+    // Security. Une liste déjà propre ressort identique (même contenu,
+    // même ordre).
+    merged[SecurityConfigKey.WHITELIST] = sanitizeWhitelistEntries(merged[SecurityConfigKey.WHITELIST]);
+    return merged;
   }
 
   async update(guildId, updates) {

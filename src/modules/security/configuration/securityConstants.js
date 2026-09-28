@@ -29,6 +29,62 @@ const SECURITY_DEFAULTS = Object.freeze({
   security_log_channel_id: null,
 });
 
+/**
+ * P9 — whitelist anti-bot : contrat de forme strict.
+ *
+ *  • ID_PATTERN — snowflake Discord stockable : 15 à 22 chiffres ASCII,
+ *    même tolérance que EXEMPT_ID_PATTERN (AutoMod) et DISCORD_ID_PATTERN
+ *    (Tickets / Welcome). Aucune conversion en nombre JS.
+ *  • MAX_ENTRIES — plafond strict de la liste : après validation + dédup,
+ *    seules les PREMIÈRES entrées sont conservées (aucune suppression
+ *    arbitraire au milieu de la liste).
+ *  • MODAL_MAX_LENGTH — longueur maximale du champ de modale (limite API
+ *    Discord pour un TextInput).
+ */
+const SecurityWhitelist = Object.freeze({
+  ID_PATTERN: /^\d{15,22}$/,
+  MAX_ENTRIES: 100,
+  MODAL_MAX_LENGTH: 4000,
+});
+
+/**
+ * P9 — normalisation commune (écriture ET lecture) : garde les chaînes
+ * valides selon ID_PATTERN, déduplique en préservant l'ordre de première
+ * apparition, puis applique le plafond MAX_ENTRIES.
+ *
+ * • fonction pure, sans I/O ni appel réseau ;
+ * • entrée non-tableau → [] (null / scalaire / undefined neutralisés) ;
+ * • entrée non-string ou hors pattern → supprimée silencieusement (jamais
+ *   de throw) ;
+ * • ne convertit jamais en nombre JS ;
+ * • n'altère jamais le tableau d'entrée (nouveau tableau retourné).
+ */
+function sanitizeWhitelistEntries(entries) {
+  if (!Array.isArray(entries)) return [];
+  const seen = new Set();
+  const kept = [];
+  for (const entry of entries) {
+    if (typeof entry !== "string") continue;
+    if (!SecurityWhitelist.ID_PATTERN.test(entry)) continue;
+    if (seen.has(entry)) continue;
+    seen.add(entry);
+    kept.push(entry);
+    if (kept.length >= SecurityWhitelist.MAX_ENTRIES) break;
+  }
+  return kept;
+}
+
+/**
+ * P9 — texte brut de modale → liste validée : split(",") + trim, puis
+ * validation stricte. Une soumission 100 % invalide produit [] ; une
+ * soumission mixte ne conserve que les entrées valides (dans l'ordre).
+ */
+function parseWhitelistInput(raw) {
+  const text = typeof raw === "string" ? raw : "";
+  const tokens = text.split(",").map((token) => token.trim()).filter(Boolean);
+  return sanitizeWhitelistEntries(tokens);
+}
+
 const SecurityRaidDefaults = Object.freeze({
   WINDOW_MS: 15000,
   THRESHOLD: 5,
@@ -97,4 +153,4 @@ const SecurityUpdateDefaults = Object.freeze({
   ROLE_DISTINCT_THRESHOLD: 6,
 });
 
-module.exports = { SecurityConfigKey, SecurityComponentId, SECURITY_DEFAULTS, SecurityRaidDefaults, SecurityNukeDefaults, SecurityPermsDefaults, SecurityUpdateDefaults };
+module.exports = { SecurityConfigKey, SecurityComponentId, SECURITY_DEFAULTS, SecurityWhitelist, sanitizeWhitelistEntries, parseWhitelistInput, SecurityRaidDefaults, SecurityNukeDefaults, SecurityPermsDefaults, SecurityUpdateDefaults };

@@ -20,16 +20,26 @@ test("Security configuration persists toggle and whitelist", async () => {
   assert.equal(config.security_anti_nuke, true);
 });
 
-test("Security whitelist modal and submit", async () => {
-  let config = { security_whitelist: ["111"] };
+test("Security whitelist modal opens through envelope.transport and prefills current entries", async () => {
+  let config = { security_whitelist: ["111111111111111", "222222222222222"] };
   const service = { read: async () => config, update: async (_g, patch) => (config = { ...config, ...patch }) };
   let modal = null;
-  const transport = { showModal: async (m) => { modal = m; } };
-  await openWhitelist({ t: (k) => k, service, guildId: "g", transport });
+  const envelope = { transport: { showModal: async (m) => { modal = m; } } };
+  await openWhitelist({ t: (k) => k, service, guildId: "g", envelope });
   assert.equal(modal.customId, Id.WHITELIST_MODAL);
-  assert.ok(modal.fields[0].value.includes("111"));
-  await submitWhitelist({ service, guildId: "g", modalValues: { whitelist: "222, 333 , " } });
-  assert.deepEqual(config.security_whitelist, ["222", "333"]);
-  await submitWhitelist({ service, guildId: "g", modalValues: { whitelist: "" } });
+  assert.equal(modal.fields[0].id, "whitelist");
+  // préremplissage conservé : la liste courante est join(", ")
+  assert.equal(modal.fields[0].value, "111111111111111, 222222222222222");
+  // P9 — maxLength explicite sur le champ (appliqué au TextInput par le transport)
+  assert.equal(modal.fields[0].maxLength, 4000);
+  assert.equal(modal.fields[0].required, false);
+});
+
+test("Security whitelist submit persists trimmed valid entries from envelope.modalValues", async () => {
+  let config = { security_whitelist: ["111111111111111"] };
+  const service = { read: async () => config, update: async (_g, patch) => (config = { ...config, ...patch }) };
+  await submitWhitelist({ service, guildId: "g", envelope: { modalValues: { whitelist: "222222222222222, 333333333333333 , " } } });
+  assert.deepEqual(config.security_whitelist, ["222222222222222", "333333333333333"]);
+  await submitWhitelist({ service, guildId: "g", envelope: { modalValues: { whitelist: "" } } });
   assert.deepEqual(config.security_whitelist, []);
 });
