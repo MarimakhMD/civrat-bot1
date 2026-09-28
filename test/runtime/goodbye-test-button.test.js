@@ -73,16 +73,41 @@ test("Tester Goodbye keeps the existing error behaviour when the channel is unav
   assert.equal(captured.reply?.content, "Le salon Goodbye est indisponible.", "existing localized error must be preserved");
 });
 
+// PHASE 2 (B9) — contrat du DM CORRIGÉ, donc pin mis à jour.
+//
+// L'ancien pin figeait le comportement fautif : `sendDirectMessage(_userId, …)`
+// ignorait son argument et envoyait systématiquement à `this.member.user`. Son
+// double de membre ne portait aucun identifiant, ce qui suffisait alors.
+// Le transport résout désormais réellement l'identifiant demandé ; le double est
+// donc fidèle (identifiants présents) et le pin vérifie en plus que le DM part
+// bien vers l'utilisateur DEMANDÉ.
 test("automatic Goodbye delivery transport keeps its contract (pin: member-leave path unchanged)", async () => {
   const sent = [];
   const dm = [];
+  const otherDm = [];
   const member = {
-    guild: { channels: { cache: { get: () => ({ isTextBased: () => true, send: async (message) => { sent.push(message); return message; } }) } } },
-    user: { send: async (message) => { dm.push(message); return message; } },
+    id: "u",
+    guild: {
+      channels: { cache: { get: () => ({ isTextBased: () => true, send: async (message) => { sent.push(message); return message; } }) } },
+      client: {
+        users: {
+          cache: new Map([
+            ["u", { id: "u", send: async (message) => { dm.push(message); return message; } }],
+            ["other", { id: "other", send: async (message) => { otherDm.push(message); return message; } }],
+          ]),
+        },
+      },
+    },
+    user: { id: "u", send: async (message) => { dm.push(message); return message; } },
   };
   const transport = new DiscordWelcomeGoodbyeTransport(member);
   await transport.sendChannelMessage("c", { content: "Au revoir !", embed: null });
   assert.deepEqual(sent, [{ content: "Au revoir !" }]);
   await transport.sendDirectMessage("u", { content: "Bienvenue" });
   assert.deepEqual(dm, [{ content: "Bienvenue" }]);
+
+  // B9 — l'identifiant demandé est honoré, y compris quand il diffère du membre.
+  await transport.sendDirectMessage("other", { content: "Autre destinataire" });
+  assert.deepEqual(otherDm, [{ content: "Autre destinataire" }]);
+  assert.equal(dm.length, 1, "le membre du transport ne doit plus recevoir le DM d'un autre utilisateur");
 });

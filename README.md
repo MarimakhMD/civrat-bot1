@@ -166,12 +166,22 @@ preserved. This architecture change does not alter CAPTCHA source files.
 | `node deploy.js list <guildId>` | Reads one Guild command catalog without modifying it. |
 | `node deploy.js clear <guildId>` | Clears one Guild command catalog without touching global commands. |
 | `npm run check:syntax` | Performs JavaScript syntax checks. |
-| `npm run check:commands` | Performs static slash-command source checks. |
+| `npm run check:commands` | Verifies the real 23-command catalog (22 global + technical `/admin`) against `deploy.js`, plus static `src/commands` source checks. |
 | `npm run check:repository` | Verifies repository safety baselines. |
 | `npm run check` | Runs all static checks. |
-| `npm run test:core` | Runs offline core tests. |
+| `npm test` | Discovers and runs **every** `*.test.js` in the repository, deterministically. No filter, no glob to maintain. |
+| `npm run test:list` | Lists the discovered test files and their count without executing them. |
+| `npm run test:core` | Runs offline core tests (`test/core`). |
+| `npm run test:adapters` | Runs adapter tests (`test/adapters`). |
+| `npm run test:guild-settings` | Runs Guild Settings and runtime composition tests. |
+| `npm run test:modules` | Runs all `src/modules/**/tests` module tests. |
+| `npm run test:welcome-goodbye` | Runs Welcome/Goodbye offline tests. |
 | `npm run test:phase-2` | Runs offline core, adapter, and Guild Settings tests. |
 | `npm run test:phase-3` | Also runs Welcome/Goodbye offline tests. |
+
+`npm test` discovers test files from disk, so adding a `*.test.js` anywhere in
+the repository automatically includes it. A scoped script whose filter matches
+no file fails loudly instead of reporting a green run.
 
 The repository's automated tests are offline: they do not constitute a real
 Discord deployment or interaction test. Real acceptance must still be performed

@@ -88,14 +88,14 @@ test("deployment plan contains exactly 22 global commands and technical /admin",
   assert.deepEqual(validateDeploymentPlan(plan), []);
 });
 
-test("production deploy without an id performs 22 global + technical /admin", async () => {
+test("production deploy without an id performs 23 global + technical /admin", async () => {
   const rest = createRestDouble();
   const result = await deployCommands({ commands: validCommands(), rest });
   const puts = putCalls(rest);
 
   assert.equal(result.ok, true);
   assert.equal(result.mode, "production");
-  assert.equal(result.sent, 23);
+  assert.equal(result.sent, 24);
   assert.equal(puts.length, 2);
   assert.equal(puts[0].route, Routes.applicationCommands(config.clientId));
   assertNormalCatalog(puts[0].body);
@@ -105,7 +105,7 @@ test("production deploy without an id performs 22 global + technical /admin", as
   assertNoObsoleteCommands(puts[1].body);
 });
 
-test("targeted normal guild deploy performs one Guild PUT with only 22 normal commands", async () => {
+test("targeted normal guild deploy performs one Guild PUT with only 23 normal commands", async () => {
   const rest = createRestDouble();
   const result = await deployCommands({
     commands: validCommands(),
@@ -117,7 +117,7 @@ test("targeted normal guild deploy performs one Guild PUT with only 22 normal co
   assert.equal(result.ok, true);
   assert.equal(result.mode, "guild");
   assert.equal(result.scope, "normal");
-  assert.equal(result.sent, 22);
+  assert.equal(result.sent, 23);
   assert.equal(puts.length, 1);
   assert.equal(puts[0].route, Routes.applicationGuildCommands(config.clientId, NORMAL_GUILD_ID));
   assert.notEqual(puts[0].route, Routes.applicationCommands(config.clientId));

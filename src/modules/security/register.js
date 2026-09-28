@@ -15,7 +15,8 @@ function registerSecurity({ registry, service, settingsHome = null }) {
     customId: Id.TOGGLE,
     permissions,
     execute: async (context) => {
-      await toggleSecurity({ ...context, service });
+      const saved = await toggleSecurity({ ...context, service });
+      if (saved === null) return; // refus rate-limit déjà répondu (P6)
       return render(context);
     },
   });
@@ -23,7 +24,8 @@ function registerSecurity({ registry, service, settingsHome = null }) {
     customId: Id.ANTI_RAID,
     permissions,
     execute: async (context) => {
-      await toggleRule({ service, guildId: context.guildId, key: Key.ANTI_RAID });
+      const saved = await toggleRule({ ...context, service, key: Key.ANTI_RAID });
+      if (saved === null) return; // refus rate-limit déjà répondu (P6)
       return render(context);
     },
   });
@@ -31,7 +33,8 @@ function registerSecurity({ registry, service, settingsHome = null }) {
     customId: Id.ANTI_BOT,
     permissions,
     execute: async (context) => {
-      await toggleRule({ service, guildId: context.guildId, key: Key.ANTI_BOT });
+      const saved = await toggleRule({ ...context, service, key: Key.ANTI_BOT });
+      if (saved === null) return; // refus rate-limit déjà répondu (P6)
       return render(context);
     },
   });
@@ -39,7 +42,8 @@ function registerSecurity({ registry, service, settingsHome = null }) {
     customId: Id.ANTI_NUKE,
     permissions,
     execute: async (context) => {
-      await toggleRule({ service, guildId: context.guildId, key: Key.ANTI_NUKE });
+      const saved = await toggleRule({ ...context, service, key: Key.ANTI_NUKE });
+      if (saved === null) return; // refus rate-limit déjà répondu (P6)
       return render(context);
     },
   });
@@ -48,7 +52,8 @@ function registerSecurity({ registry, service, settingsHome = null }) {
     matcher: prefix(Id.WHITELIST_MODAL),
     permissions,
     execute: async (context) => {
-      await submitWhitelist({ ...context, service });
+      const saved = await submitWhitelist({ ...context, service });
+      if (saved === null) return; // refus rate-limit déjà répondu (P6)
       return render(context);
     },
   });

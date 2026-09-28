@@ -2,6 +2,7 @@
 
 const { memberDisplayLabel, accountCreatedAt, avatarUrl, inviterDisplayLabel } = require("../services/logLabels");
 const { localizeTitle } = require("../services/logTitles");
+const { resolveLanguage } = require("../services/logLanguage");
 
 async function handleMemberJoined({ member, config, inviteResult = null, inviterStats = null, mapper, service, delivery }) {
   if (!config.logs_enabled || member.user.bot) return null;
@@ -28,6 +29,7 @@ async function handleMemberJoined({ member, config, inviteResult = null, inviter
     guildId: member.guild.id,
     channelKey: "log_member_join_channel_id",
     category: "members",
+    language: resolveLanguage(config),
     action: "member_joined",
     title: localizeTitle(config, "logs.memberJoined"),
     details,

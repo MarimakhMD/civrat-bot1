@@ -1,6 +1,7 @@
 "use strict";
 
 const { localizeTitle } = require("../services/logTitles");
+const { resolveLanguage } = require("../services/logLanguage");
 
 async function handleRoleEvent({
   guild,
@@ -13,6 +14,7 @@ async function handleRoleEvent({
   who = undefined,
   before = null,
   after = null,
+  permissions = null,
   avatarUrl = null,
   mapper,
   service,
@@ -27,6 +29,9 @@ async function handleRoleEvent({
   if (member) details.member = member;
   if (before) details.before = before;
   if (after) details.after = after;
+  // PHASE 1 — delta de permissions rendu dans un champ dédié plutôt que
+  // noyé dans Avant/Après : les listes de permissions sont longues.
+  if (permissions) details.permissions = permissions;
   if (avatarUrl) details.avatarUrl = avatarUrl;
   // `who` = auteur de l'action, résolu via Audit Log par l'appelant. Absent →
   // omis ; null → « inconnu » (jamais d'identité inventée).
@@ -36,6 +41,7 @@ async function handleRoleEvent({
     guildId: guild.id,
     channelKey: "log_role_update_channel_id",
     category: "roles",
+    language: resolveLanguage(config),
     action,
     title: localizeTitle(config, `logs.${action}`),
     details,

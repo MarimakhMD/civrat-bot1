@@ -81,7 +81,7 @@ test("le plan de déploiement reste valide après l'ajout du champ", () => {
   const loaded = commandHandler.loadCommands();
   const plan = prepareDeploymentPlan(loaded);
   assert.deepEqual(validateDeploymentPlan(plan), [], "aucun problème de catalogue");
-  assert.equal(plan.global.length, 22);
+  assert.equal(plan.global.length, 23);
   assert.equal(plan.technical.length, 1);
   assert.equal(plan.technical[0].name, "admin");
   assert.equal(plan.technical[0].default_member_permissions, ADMINISTRATOR_BITFIELD,
@@ -115,12 +115,13 @@ const GLOBAL_DEFAULT_MEMBER_PERMISSIONS = Object.freeze({
   unmute: "1099511627776",
   uploadsticker: "32",
   verrouiller: "16",
+  welcomeimage: "32",
   warn: "1099511627776",
 });
 
-test("les 22 commandes globales ne sont pas affectées par ce correctif", () => {
+test("les 23 commandes globales ne sont pas affectées par ce correctif", () => {
   const plan = prepareDeploymentPlan(commandHandler.loadCommands());
-  assert.equal(plan.global.length, 22);
+  assert.equal(plan.global.length, 23);
   for (const command of plan.global) {
     assert.deepEqual(command.contexts, [0], `/${command.name} reste guild-only`);
     assert.ok(command.name in GLOBAL_DEFAULT_MEMBER_PERMISSIONS,

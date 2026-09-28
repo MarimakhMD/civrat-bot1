@@ -260,6 +260,12 @@ class DiscordResponseTransport {
           .setStyle(field.style === "paragraph" ? TextInputStyle.Paragraph : TextInputStyle.Short)
           .setRequired(field.required !== false);
         if (field.value) input.setValue(String(field.value).slice(0, 4000));
+        // P9 — maxLength explicite transmis au TextInput (borné à la limite
+        // API Discord de 4000). Additif : aucune autre modale ne passait
+        // maxLength, donc aucun comportement existant n'est modifié.
+        if (Number.isInteger(field.maxLength) && field.maxLength > 0) {
+          input.setMaxLength(Math.min(4000, field.maxLength));
+        }
         if (field.placeholder) input.setPlaceholder(String(field.placeholder).slice(0, 100));
         return new ActionRowBuilder().addComponents(input);
       }));

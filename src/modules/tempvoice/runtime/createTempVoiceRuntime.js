@@ -3,6 +3,7 @@
 const { TempVoiceService } = require("../services/TempVoiceService");
 const { TempVoiceReconciliationService } = require("../services/TempVoiceReconciliationService");
 const { DiscordTempVoiceTransport } = require("../../../adapters/discord/DiscordTempVoiceTransport");
+const { sharedRateLimitGuard } = require("../../../core/rateLimit/ActionRateLimitGuard");
 const logger = require("../../../utils/logger");
 
 function createTempVoiceRuntime({ configService, transportFactory, tempChannels, repository, reconciliationServiceFactory, logger: customLogger } = {}) {
@@ -34,7 +35,7 @@ function createTempVoiceRuntime({ configService, transportFactory, tempChannels,
       const transport = makeTransport(guild);
       // B5-b — le service reçoit le dépôt durable ET le guildId, pour persister
       // avec un cloisonnement strict par guilde.
-      const service = new TempVoiceService({ transport, config, tempChannels: channels, repository: repo, guildId: guild.id });
+      const service = new TempVoiceService({ transport, config, tempChannels: channels, repository: repo, guildId: guild.id, rateLimitGuard: sharedRateLimitGuard });
 
       // Join lobby → create temp
       if (newChannelId && service.isLobby(newChannelId)) {

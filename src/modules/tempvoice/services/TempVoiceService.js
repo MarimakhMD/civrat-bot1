@@ -1,7 +1,9 @@
 "use strict";
 
+const { RATE_LIMITS } = require("../../../core/rateLimit/ActionRateLimitGuard");
+
 class TempVoiceService {
-  constructor({ transport, config, tempChannels, repository = null, guildId = null } = {}) {
+  constructor({ transport, config, tempChannels, repository = null, guildId = null, rateLimitGuard = null } = {}) {
     this.transport = transport;
     this.config = config;
     this.tempChannels = tempChannels instanceof Set ? tempChannels : new Set();
@@ -9,6 +11,10 @@ class TempVoiceService {
     // service conserve EXACTEMENT son comportement historique (Set mémoire).
     this.repository = repository;
     this.guildId = guildId;
+    // P6 §3 — rate-limit de création de salon (4 / 60 s par guild+user).
+    // Instance ABSENTE = pas de garde (tests unitaires historiques) ; la
+    // production passe `sharedRateLimitGuard` via le runtime.
+    this.rateLimitGuard = rateLimitGuard;
   }
 
   isLobby(channelId) {
@@ -22,6 +28,18 @@ class TempVoiceService {
   async handleJoin({ member, channelId }) {
     if (!this.config.tempvoice_enabled) return { handled: false, code: "TEMPVOICE_DISABLED" };
     if (!this.isLobby(channelId)) return { handled: false, code: "NOT_LOBBY" };
+    // P6 §3 — rate-limit UNIQUEMENT quand une room doit être créée : le credit
+    // est consommé ici, AVANT `createChannel` et toute écriture DB. Rejoindre
+    // une room existante ne passe jamais par handleJoin (runtime : lobby
+    // seulement) et ne consomme donc rien. Au dépassement : ni salon créé, ni
+    // INSERT — le membre reste dans le lobby, cohérent avec l'échec historique.
+    const guildId = this.guildId || (member && member.guild && member.guild.id) || null;
+    if (this.rateLimitGuard && guildId && member && member.id) {
+      const { group, limit, windowMs } = RATE_LIMITS.TEMPVOICE;
+      const gate = this.rateLimitGuard.check({ guildId, userId: member.id, group, limit, windowMs });
+      if (!gate.allowed) return { handled: false, code: "TEMPVOICE_RATE_LIMITED" };
+      this.rateLimitGuard.record({ guildId, userId: member.id, group, limit, windowMs });
+    }
     const name = `${member.user.username}'s room`;
     const parentId = this.config.tempvoice_category_id || null;
     let channel;
