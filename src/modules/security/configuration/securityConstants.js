@@ -1,12 +1,15 @@
 "use strict";
 
+// P10 — l'ancienne clé LOG_CHANNEL_ID (`security_log_channel_id`) a été
+// supprimée : plus aucune UI ni consommateur. Les alertes Security passent
+// par le Logs central (catégorie moderation, `log_moderation_channel_id`).
+// La colonne SQL reste en base pour compatibilité historique (aucun DROP).
 const SecurityConfigKey = Object.freeze({
   ENABLED: "security_enabled",
   ANTI_RAID: "security_anti_raid",
   ANTI_BOT: "security_anti_bot",
   WHITELIST: "security_whitelist",
   ANTI_NUKE: "security_anti_nuke",
-  LOG_CHANNEL_ID: "security_log_channel_id",
 });
 
 const SecurityComponentId = Object.freeze({
@@ -26,7 +29,6 @@ const SECURITY_DEFAULTS = Object.freeze({
   security_anti_bot: false,
   security_whitelist: [],
   security_anti_nuke: false,
-  security_log_channel_id: null,
 });
 
 /**

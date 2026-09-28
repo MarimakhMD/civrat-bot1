@@ -13,7 +13,6 @@
     "whitelist": "Whitelist bots",
     "whitelistModalTitle": "Whitelist bots",
     "fieldWhitelist": "IDs de bots séparés par des virgules",
-    "logChannel": "Salon logs sécurité",
     "log": {
       "raidTitle": "Sécurité : Raid détecté",
       "raidDescription": "Raid détecté : {{count}} arrivées en {{window}}s (seuil {{threshold}})",

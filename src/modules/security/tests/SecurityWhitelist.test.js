@@ -184,13 +184,15 @@ test("read: an already-clean list resurfaces identical and other Security keys a
   const clean = [ID_22, ID_18, ID_15];
   const config = await readStored({
     security_enabled: true,
-    security_log_channel_id: "555555555555555555",
+    security_anti_raid: true,
     [Key.WHITELIST]: clean,
   });
   assert.deepEqual(config[Key.WHITELIST], clean, "clean input must come back identical");
   assert.equal(config.security_enabled, true, "other Security keys must not change");
-  assert.equal(config.security_log_channel_id, "555555555555555555");
+  assert.equal(config.security_anti_raid, true, "other Security keys must not change");
   assert.equal(config.security_anti_bot, false, "defaults still merge for missing keys");
+  // P10 — l'ancienne clé n'apparaît plus nulle part (ni defaults, ni stored).
+  assert.equal("security_log_channel_id" in config, false);
 });
 
 // ── Décision 12 — sécurité ─────────────────────────────────────────────────

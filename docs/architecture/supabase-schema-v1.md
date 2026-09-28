@@ -120,7 +120,15 @@ côté code (le code applique des défauts applicatifs quand la clé est absente
 | `security_anti_nuke` | `boolean` | security |
 | `security_anti_bot` | `boolean` | security |
 | `security_whitelist` | `text[]`/`jsonb` (`à confirmer` : liste en code) | security |
-| `security_log_channel_id` | `text` | security |
+| `security_log_channel_id` | `text` — **héritée / historique : colonne conservée en base, plus consommée par le code actuel (P10)** | security |
+
+> **P10 — note sur `security_log_channel_id`** : ancienne destination des
+> alertes Security, remplacée par le Logs central (catégorie moderation,
+> `log_moderation_channel_id` via `handleModerationEvent`). La clé a été
+> retirée du code applicatif (constantes, defaults, whitelist de
+> validation, i18n) mais **la colonne et les éventuelles valeurs stockées
+> sont volontairement conservées en base** : aucun `DROP`, aucune migration,
+> aucune donnée modifiée.
 
 ### DDL documentaire (non exécutée)
 
@@ -203,7 +211,7 @@ create table if not exists public.guild_configs (
   security_anti_nuke boolean,
   security_anti_bot boolean,
   security_whitelist jsonb,           -- type à confirmer (text[] possible)
-  security_log_channel_id text
+  security_log_channel_id text        -- héritée/historique : plus consommée (P10)
 );
 ```
 

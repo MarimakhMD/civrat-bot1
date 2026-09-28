@@ -113,12 +113,14 @@ const LOGS_KEYS = Object.freeze([
 ]);
 
 /** Sécurité. */
+// P10 — `security_log_channel_id` retirée : ancienne clé inactive (aucune UI,
+// aucun consommateur ; alertes Security routées via log_moderation_channel_id).
+// La colonne SQL reste en base, non modifiée.
 const SECURITY_KEYS = Object.freeze([
   "security_enabled",
   "security_anti_bot",
   "security_anti_raid",
   "security_anti_nuke",
-  "security_log_channel_id",
   "security_whitelist",
 ]);
 

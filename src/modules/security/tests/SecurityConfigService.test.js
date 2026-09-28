@@ -22,7 +22,8 @@ test("read returns defaults when no stored config", async () => {
   const config = await service.read("g");
   assert.equal(config.security_enabled, false);
   assert.deepEqual(config.security_whitelist, []);
-  assert.equal(config.security_log_channel_id, null);
+  // P10 — l'ancienne clé security_log_channel_id n'est plus exposée par read().
+  assert.equal("security_log_channel_id" in config, false, "legacy security_log_channel_id must not be exposed anymore");
 });
 
 test("update writes through the resolver", async () => {
