@@ -9,6 +9,8 @@ const { SecurityComponentId: Id, SecurityConfigKey: Key } = require("../configur
 // P9 — e2e obligatoire : le plumbing routeur RÉEL (adapter → router →
 // context → handlers → persistance legacy), hors ligne, sans Discord/Supabase.
 const { createGuildSettingsRuntime } = require("../../../runtime/createGuildSettingsRuntime");
+// P11 — preuve que le refus de permission arrive AVANT enforceConfigWrite (P6).
+const { ActionRateLimitGuard, RATE_LIMITS, sharedRateLimitGuard } = require("../../../core/rateLimit/ActionRateLimitGuard");
 
 function fakeService() {
   return { read: async () => ({}), update: async () => ({}) };
@@ -153,4 +155,89 @@ test("e2e C — a submission never wipes the whitelist when valid entries are pr
   // régression du bug P9 : l'écriture ne doit PLUS être un [] aveugle
   assert.notDeepEqual(persisted[Key.WHITELIST], [], "a submission with valid entries must not empty the whitelist");
   assert.deepEqual(persisted[Key.WHITELIST], ["111111111111111"]);
+});
+
+// ── P11 — chemin DENY : refus réel du routeur sans MANAGE_GUILD ───────────
+// Verrouille interaction → permissions → refus AVANT execute :
+// aucun handler ne tourne, aucune écriture, aucun crédit P6 consommé.
+
+function deniedActor(interaction, userId) {
+  interaction.user = { id: userId };
+  interaction.member = { id: userId, permissions: { has: () => false }, roles: { cache: { has: () => false } } };
+  return interaction;
+}
+
+function deniedButton(customId, captured, userId) {
+  const interaction = base({}, captured);
+  interaction.isButton = () => true;
+  interaction.customId = customId;
+  return deniedActor(interaction, userId);
+}
+
+function deniedModal(customId, fields, captured, userId) {
+  const interaction = base({}, captured);
+  interaction.isModalSubmit = () => true;
+  interaction.customId = customId;
+  interaction.fields = { fields: Object.entries(fields).map(([id, value]) => ({ customId: id, value })) };
+  return deniedActor(interaction, userId);
+}
+
+test("P11 deny — a member without MANAGE_GUILD is refused before the toggle handler runs", async () => {
+  const updates = [];
+  const runtime = createGuildSettingsRuntime({ legacyConfigService: legacyConfig(updates) });
+  const captured = {};
+  const userId = "u-deny-btn";
+  const p6Key = ActionRateLimitGuard.key("g", userId, RATE_LIMITS.CONFIG.group);
+  assert.equal(sharedRateLimitGuard.entries.has(p6Key), false, "precondition: no P6 credit for this actor");
+
+  // le routeur consomme l'interaction (route trouvée) mais refuse AVANT execute
+  assert.equal(await runtime.tryHandle(deniedButton(Id.TOGGLE, captured, userId)), true);
+
+  // refus d'autorisation livré en éphémère — jamais une vue de succès
+  assert.ok(captured.reply, "denied route must answer with an authorisation refusal");
+  assert.equal(captured.reply.ephemeral, true);
+  assert.match(captured.reply.content, /permission/i, "response must be the permission refusal message");
+  assert.equal(captured.update, undefined, "no success view may be rendered");
+
+  // A — aucune écriture de configuration
+  assert.deepEqual(updates, [], "no configuration write may happen on a denied route");
+
+  // handler NON exécuté : enforceConfigWrite (1re ligne) n'a consommé aucun crédit P6
+  assert.equal(
+    sharedRateLimitGuard.entries.has(p6Key),
+    false,
+    "the handler must not have run (no P6 credit consumed)",
+  );
+});
+
+test("P11 deny — whitelist modal is refused before submitWhitelist, consuming no P6 credit", async () => {
+  const updates = [];
+  const runtime = createGuildSettingsRuntime({ legacyConfigService: legacyConfig(updates) });
+  const captured = {};
+  const userId = "u-deny-modal";
+  const p6Key = ActionRateLimitGuard.key("g", userId, RATE_LIMITS.CONFIG.group);
+  assert.equal(sharedRateLimitGuard.entries.has(p6Key), false, "precondition: no P6 credit for this actor");
+
+  assert.equal(
+    await runtime.tryHandle(deniedModal(Id.WHITELIST_MODAL, { whitelist: "111111111111111" }, captured, userId)),
+    true,
+    "denied modal must still be routed to the permission refusal",
+  );
+
+  // refus d'autorisation livré en éphémère — jamais un succès de soumission
+  assert.ok(captured.reply, "denied modal must answer with an authorisation refusal");
+  assert.equal(captured.reply.ephemeral, true);
+  assert.match(captured.reply.content, /permission/i, "response must be the permission refusal message");
+  assert.equal(captured.update, undefined, "no success view may be rendered after a denied submission");
+
+  // B — aucune écriture : security_whitelist (et toute config) reste intact
+  assert.deepEqual(updates, [], "no security_whitelist write may happen on a denied modal");
+
+  // C — le refus arrive AVANT le handler donc AVANT enforceConfigWrite :
+  // le crédit P6 n'est pas consommé
+  assert.equal(
+    sharedRateLimitGuard.entries.has(p6Key),
+    false,
+    "P6 config rate-limit must not be consumed when permission is denied",
+  );
 });
