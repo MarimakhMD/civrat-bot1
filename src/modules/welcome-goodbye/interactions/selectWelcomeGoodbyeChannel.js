@@ -3,6 +3,7 @@
 const { ValidationError } = require("../../../core/errors");
 const { WelcomeGoodbyeConfigKey: ConfigKey, WelcomeGoodbyeComponentId: ComponentId } = require("../configuration/welcomeGoodbyeConstants");
 const { updateWelcomeSettings } = require("./updateWelcomeSettings");
+const { updateGoodbyeSettings } = require("./updateGoodbyeSettings");
 
 const channelSettingByComponentId = Object.freeze({
   [ComponentId.WELCOME_CHANNEL]: ConfigKey.WELCOME_CHANNEL,
@@ -21,7 +22,12 @@ async function selectWelcomeGoodbyeChannel(context) {
     return updateWelcomeSettings(context, { [configKey]: channelId });
   }
 
-  return context.settings.update(context.guildId, { [configKey]: channelId });
+  // PHASE 2 (B4) — le select Goodbye écrivait en base via `settings.update` sans
+  // jamais acquitter l'interaction : la valeur était bien enregistrée, mais
+  // Discord affichait « Cette interaction a échoué » et le panneau ne se
+  // rafraîchissait pas. Il passe désormais par `updateGoodbyeSettings`, comme le
+  // Welcome et comme le bouton « même salon ».
+  return updateGoodbyeSettings(context, { [configKey]: channelId });
 }
 
 function channelSelectView({ customId, placeholder }) {

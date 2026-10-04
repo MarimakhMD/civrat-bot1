@@ -3,7 +3,7 @@
 const { PermissionName } = require("../../core/permissions");
 const { prefix } = require("../../core/interactions/routeMatchers");
 const { AutoModComponentId: Id } = require("./configuration/automodConstants");
-const { autoModView } = require("./interactions/automodViews");
+const { autoModView, autoModExemptView } = require("./interactions/automodViews");
 const {
   toggleAutoModEnable,
   toggleAutoModDelete,
@@ -13,12 +13,19 @@ const {
   openAutoModBadWords,
   submitAutoModBadWords,
   selectAutoModEnforcement,
+  selectAutoModExemptRoles,
+  selectAutoModExemptChannels,
+  resetAutoModExemptRoles,
+  resetAutoModExemptChannels,
 } = require("./interactions/configureAutoMod");
 
 function registerAutoMod({ registry, service, settingsHome = null }) {
   const permissions = { allOf: [PermissionName.MANAGE_GUILD] };
   const render = async (context) =>
     context.envelope.transport.update({ view: autoModView({ t: context.t, config: await service.read(context.guildId) }) });
+  // P7 — sous-vue Exemptions ; re-rendue après chaque écriture validée.
+  const renderExempt = async (context) =>
+    context.envelope.transport.update({ view: autoModExemptView({ t: context.t, config: await service.read(context.guildId) }) });
 
   registry.registerButton({ customId: Id.SECTION, permissions, execute: render });
   registry.registerButton({
@@ -41,9 +48,23 @@ function registerAutoMod({ registry, service, settingsHome = null }) {
   registry.registerButton({ customId: Id.BAD_WORDS_OPEN, permissions, execute: async (context) => openAutoModBadWords({ ...context, service }) });
   registry.registerButton({ customId: Id.BACK, permissions, execute: settingsHome });
   registry.registerButton({
+    // Route prefix DÉJÀ enregistrée depuis P2/P3 — AUCUNE route ajoutée.
+    // Dispatch par segment (GO correction routes P7) :
+    //   exempt-open / exempt-back / exempt-reset-* → sous-vue Exemptions ;
+    //   tout autre segment → toggle de règle historique (inchangé).
     matcher: prefix(`${Id.TOGGLE_PREFIX}:`),
     permissions,
     execute: async (context) => {
+      const segment = context.envelope.customId.split(":").pop();
+      if (segment === "exempt-open") return renderExempt(context);
+      if (segment === "exempt-back") return render(context);
+      if (segment === "exempt-reset-roles" || segment === "exempt-reset-channels") {
+        const saved = segment === "exempt-reset-roles"
+          ? await resetAutoModExemptRoles({ ...context, service })
+          : await resetAutoModExemptChannels({ ...context, service });
+        if (saved === null) return; // rate-limit P6 : réponse déjà éphémère, pas de render
+        return renderExempt(context);
+      }
       await toggleAutoModRule({ ...context, service });
       return render(context);
     },
@@ -65,9 +86,24 @@ function registerAutoMod({ registry, service, settingsHome = null }) {
     },
   });
   registry.registerSelectMenu({
-    customId: Id.ENFORCE_SELECT,
+    // Route prefix unique pour TOUS les selects AutoMod (GO correction
+    // routes P7) : enforce + exemptions rôles/salons partagent CE SEUL
+    // enregistrement — les compteurs Phase 0 restent à 21 SELECT_MENU
+    // (précédent : logs `prefix(CHANNEL_PREFIX:)`).
+    matcher: prefix(Id.SELECT_PREFIX),
     permissions,
     execute: async (context) => {
+      const customId = context.envelope.customId;
+      if (customId === Id.EXEMPT_ROLES_SELECT) {
+        const saved = await selectAutoModExemptRoles({ ...context, service });
+        if (saved === null) return; // rate-limit P6 : pas de render
+        return renderExempt(context);
+      }
+      if (customId === Id.EXEMPT_CHANNELS_SELECT) {
+        const saved = await selectAutoModExemptChannels({ ...context, service });
+        if (saved === null) return;
+        return renderExempt(context);
+      }
       await selectAutoModEnforcement({ ...context, service });
       return render(context);
     },

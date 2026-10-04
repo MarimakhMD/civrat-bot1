@@ -4,6 +4,7 @@ const { PermissionName } = require("../../core/permissions");
 const { InviteConfigKey: Key } = require("./configuration/inviteConstants");
 const { InviteComponentId: Id } = require("./configuration/inviteConstants");
 const { inviteView, inviteSettingsView } = require("./interactions/inviteViews");
+const { enforceConfigWrite } = require("../../core/rateLimit/ActionRateLimitGuard");
 
 // Phase 11 — câblage V1 du module Invites : commande publique /invites
 // (stats par membre + classement, lecture du MÊME stockage que le tracking
@@ -51,6 +52,9 @@ function registerInvites({ registry, configService, inviteService, settingsHome 
     customId: Id.TOGGLE,
     permissions,
     execute: async (context) => {
+      // P6 §5 — écriture de configuration : garde AVANT read/upsert ; au
+      // dépassement, réponse éphémère déjà envoyée, vue non rafraîchie.
+      if (!(await enforceConfigWrite(context))) return;
       const config = await configService.read(context.guildId);
       await configService.update(context.guildId, { [Key.ENABLED]: !config[Key.ENABLED] });
       return renderSettings(context);

@@ -1,4 +1,7 @@
 {
+  "ratelimit": {
+    "retry": "Cette action est temporairement limitée. Réessayez dans quelques instants."
+  },
   "errors": {
     "internal": "Une erreur inattendue est survenue. Veuillez réessayer plus tard.",
     "authorizationDenied": "Vous n’avez pas la permission d’effectuer cette action.",

@@ -54,7 +54,9 @@ test("P0: description explicitement vide est omise (pas de throw)", async () => 
     channelId: "CH",
     title: "logs.x",
     description: "",
-    details: {},
+    // PHASE 1 — un champ réel : un embed sans champ ni description ni
+    // thumbnail est désormais refusé (log_embed_empty), pas publié vide.
+    details: { reason: "spam" },
   });
   const embed = deliveredEmbed(sent);
   assert.equal(embed.description, undefined);
@@ -63,7 +65,7 @@ test("P0: description explicitement vide est omise (pas de throw)", async () => 
 test("P0: titre vide retombe sur le libellé par défaut non vide", async () => {
   const { guild, sent } = makeGuild();
   const transport = new DiscordLogsTransport({ guild });
-  await transport.deliver({ channelId: "CH", title: "", details: {} });
+  await transport.deliver({ channelId: "CH", title: "", details: { reason: "spam" } });
   const embed = deliveredEmbed(sent);
   assert.equal(embed.title, "Log");
 });
@@ -71,7 +73,7 @@ test("P0: titre vide retombe sur le libellé par défaut non vide", async () => 
 test("P0: titre ne contenant que des espaces est aussi assaini", async () => {
   const { guild, sent } = makeGuild();
   const transport = new DiscordLogsTransport({ guild });
-  await transport.deliver({ channelId: "CH", title: "   ", details: {} });
+  await transport.deliver({ channelId: "CH", title: "   ", details: { reason: "spam" } });
   const embed = deliveredEmbed(sent);
   assert.equal(embed.title, "Log");
 });
@@ -98,56 +100,79 @@ test("P1: les détails deviennent des fields, valeurs nulles/vides ignorées", a
   });
   const embed = deliveredEmbed(sent);
   assert.ok(Array.isArray(embed.fields), "fields présents");
-  // P1c — les identifiants sont regroupés dans un unique champ « 🆔 IDs »,
-  // puis les clés restantes sont rendues telles quelles.
-  assert.equal(embed.fields.length, 3);
+  // PHASE 1 — les identifiants sont regroupés dans un unique champ « 🆔 IDs »,
+  // les clés connues portent un libellé traduit, et les clés inconnues
+  // (`bot` ici) ne sont JAMAIS publiées sous leur nom technique.
+  assert.equal(embed.fields.length, 2);
   const names = embed.fields.map((f) => f.name);
-  assert.deepEqual(names, ["🆔 IDs", "count", "bot"]);
+  assert.deepEqual(names, ["🔢 Quantité", "🆔 IDs"]);
   const idsField = embed.fields.find((f) => f.name === "🆔 IDs");
   assert.equal(idsField.value, "message: MSG\nsalon: CH");
-  const countField = embed.fields.find((f) => f.name === "count");
+  const countField = embed.fields.find((f) => f.name === "🔢 Quantité");
   assert.equal(countField.value, "5");
-  const botField = embed.fields.find((f) => f.name === "bot");
-  assert.equal(botField.value, "true");
+  assert.equal(embed.fields.some((f) => f.name === "bot"), false, "aucune clé technique publiée");
 });
 
 test("P1: name tronqué à 256 et value à 1024", async () => {
   const { guild, sent } = makeGuild();
   const transport = new DiscordLogsTransport({ guild });
-  const longName = "k".repeat(300);
   const longValue = "v".repeat(2000);
+  // PHASE 1 — la troncature s'observe sur un champ reconnu : une clé inconnue
+  // n'est plus rendue du tout, elle ne peut donc plus servir de support au test.
   await transport.deliver({
     channelId: "CH",
     title: "logs.x",
-    details: { [longName]: longValue },
+    details: { reason: longValue },
   });
   const embed = deliveredEmbed(sent);
   assert.equal(embed.fields.length, 1);
-  assert.equal(embed.fields[0].name.length, 256);
+  assert.ok(embed.fields[0].name.length <= 256, "name borné à 256");
   assert.equal(embed.fields[0].value.length, 1024);
 });
 
 test("P1: maximum 25 fields respecté", async () => {
   const { guild, sent } = makeGuild();
   const transport = new DiscordLogsTransport({ guild });
-  const details = {};
-  for (let i = 0; i < 40; i++) details[`key${i}`] = `value${i}`;
+  // PHASE 1 — le plafond est exercé sur des champs reconnus : les clés
+  // inconnues sont écartées avant le rendu et ne comptent plus.
+  const details = {
+    who: "Alice", target: "Cible", channel: "#général", before: "avant", after: "après",
+    reason: "raison", invite: "abc", rule: "R1", rules: ["R1", "R2"], count: 3,
+    messageId: "M", channelId: "C", memberId: "U", roleId: "R", targetId: "T",
+    moderatorId: "MO", authorId: "AU", userId: "US", ticketChannelId: "TK",
+  };
   await transport.deliver({ channelId: "CH", title: "logs.x", details });
   const embed = deliveredEmbed(sent);
-  assert.equal(embed.fields.length, 25);
+  assert.ok(embed.fields.length <= 25, `plafond Discord respecté (${embed.fields.length} champs)`);
+  assert.equal(embed.fields.length, 11, "9 champs canoniques + IDs + quantité");
 });
 
-test("P1: détails non-objet (null / array / absent) ne produisent aucun field", async () => {
+test("PHASE1: aucune clé technique n'est publiée comme nom de champ", async () => {
   const { guild, sent } = makeGuild();
   const transport = new DiscordLogsTransport({ guild });
-  await transport.deliver({ channelId: "CH", title: "logs.x", details: null });
-  await transport.deliver({ channelId: "CH", title: "logs.x", details: ["a", "b"] });
-  await transport.deliver({ channelId: "CH", title: "logs.x" });
-  assert.equal(sent.length, 3);
-  for (const payload of sent) {
-    const embed = payload.embeds[0].toJSON();
-    assert.equal(embed.fields, undefined);
+  await transport.deliver({
+    channelId: "CH",
+    title: "logs.x",
+    details: { action: "ticket_created", result: "ticket_created", rule: "SECURITY_RAID", rules: ["A"], reason: "ok" },
+  });
+  const embed = deliveredEmbed(sent);
+  const names = embed.fields.map((f) => f.name);
+  for (const forbidden of ["action", "result", "rule", "rules", "logs.ticket_created"]) {
+    assert.equal(names.includes(forbidden), false, `« ${forbidden} » ne doit pas apparaître`);
   }
+  assert.deepEqual(names, ["💬 Raison", "📏 Règle", "📏 Règles"]);
+});
+
+test("PHASE1: détails non-objet → aucun embed vide n'est publié", async () => {
+  const { guild, sent } = makeGuild();
+  const transport = new DiscordLogsTransport({ guild });
+  for (const details of [null, ["a", "b"], undefined]) {
+    await assert.rejects(
+      () => transport.deliver({ channelId: "CH", title: "logs.x", details }),
+      /log_embed_empty/,
+    );
+  }
+  assert.equal(sent.length, 0, "rien n'est envoyé dans le salon");
 });
 
 // ───────────────────────────────────────────────────────────────
@@ -263,14 +288,16 @@ test("charte: member_left → ROUGE, champs membre dédiés, createdAt/avatar ab
 test("charte: couleurs représentatives (rouge/vert/orange/bleu) sans avatar", async () => {
   const { guild, sent } = makeGuild();
   const transport = new DiscordLogsTransport({ guild });
+  // PHASE 1 — chaque cas porte un champ réellement rendu par son action,
+  // sinon l'embed est refusé comme vide avant que la couleur ne soit observable.
   const cases = [
-    ["message_deleted", "#E74C3C"],
-    ["role_created", "#2ECC71"],
-    ["message_updated", "#E67E22"],
-    ["invite_used", "#3498DB"],
+    ["message_deleted", "#E74C3C", { who: "Alice (A)" }],
+    ["role_created", "#2ECC71", { target: "@Modo (R1)" }],
+    ["message_updated", "#E67E22", { who: "Alice (A)" }],
+    ["invite_used", "#3498DB", { member: "<@U>" }],
   ];
-  for (const [action, expected] of cases) {
-    await transport.deliver({ channelId: "CH", title: "logs.x", action, details: { target: "X" } });
+  for (const [action, expected, details] of cases) {
+    await transport.deliver({ channelId: "CH", title: "logs.x", action, details });
   }
   assert.equal(sent.length, cases.length);
   for (let i = 0; i < cases.length; i++) {

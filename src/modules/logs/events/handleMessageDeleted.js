@@ -2,6 +2,7 @@
 
 const { userLabel, channelLabel, avatarUrl } = require("../services/logLabels");
 const { localizeTitle } = require("../services/logTitles");
+const { resolveLanguage } = require("../services/logLanguage");
 
 async function handleMessageDeleted({ message, config, mapper, service, delivery }) {
   if (!config.logs_enabled || !message.guild || message.author?.bot) return null;
@@ -9,6 +10,7 @@ async function handleMessageDeleted({ message, config, mapper, service, delivery
     guildId: message.guild.id,
     channelKey: "log_message_delete_channel_id",
     category: "messages",
+    language: resolveLanguage(config),
     action: "message_deleted",
     title: localizeTitle(config, "logs.messageDeleted"),
     // `who` vaut null pour un message partiel (hors cache) : le transport

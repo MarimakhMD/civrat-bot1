@@ -174,6 +174,9 @@ const EXPECTED_GLOBAL_COMMAND_NAMES = Object.freeze([
   "uploadsticker",
   "verrouiller",
   "warn",
+  // Image Welcome personnalisée (Premium) : téléversement par pièce jointe.
+  // Une modale Discord ne peut pas porter de sélecteur de fichier.
+  "welcomeimage",
 ]);
 
 function validateDeploymentPlan(plan) {

@@ -4,6 +4,7 @@ const { SupportedLocale } = require("../../../core/i18n");
 const { settingsHomeView } = require("./settingsView");
 const { SettingsComponentId } = require("./settingsComponents");
 const { GuildSettingsTranslationKey: Key } = require("../translations/translationKeys");
+const { enforceConfigWrite } = require("../../../core/rateLimit/ActionRateLimitGuard");
 
 async function showLanguageMenu(context) {
   return context.envelope.transport.update({
@@ -25,6 +26,9 @@ async function showLanguageMenu(context) {
 
 async function selectLanguage(context) {
   const language = context.envelope.values?.[0];
+  // P6 §5 — garde d'écriture avant l'upsert de configuration ; au
+  // dépassement, réponse éphémère déjà envoyée, aucune écriture.
+  if (!(await enforceConfigWrite(context))) return;
   const config = await context.settings.updateLanguage(context.guildId, language);
   const t = context.i18n.forLocale(config.language);
   const configState = typeof context.settings.getConfigurationState === "function"
