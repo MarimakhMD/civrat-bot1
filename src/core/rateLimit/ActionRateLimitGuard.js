@@ -30,6 +30,10 @@ const RATE_LIMITS = Object.freeze({
   TEMPVOICE: Object.freeze({ group: "tempvoice", limit: 4, windowMs: 60 * 1000 }),
   // Welcome image — fetch + décodage + Storage + métadonnées : 5 / 5 minutes.
   WELCOME_IMAGE: Object.freeze({ group: "welcomeimg", limit: 5, windowMs: 5 * 60 * 1000 }),
+  // P12 /uploadsticker — prévalidation OK puis fetch CDN + buffer + API Discord :
+  // 5 / 10 minutes, aligné sur les 5 slots Free et deux fois plus strict que
+  // l'image Welcome (chaque tentative télécharge et téléverse réellement).
+  STICKER: Object.freeze({ group: "sticker", limit: 5, windowMs: 10 * 60 * 1000 }),
   // Écritures de configuration (upsert guild_configs) : 30 / 60 secondes.
   CONFIG: Object.freeze({ group: "config", limit: 30, windowMs: 60 * 1000 }),
 });
