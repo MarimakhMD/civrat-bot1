@@ -87,6 +87,11 @@ const CAPTCHA_KEYS = Object.freeze([
   "captcha_enabled",
   "captcha_channel_id",
   "captcha_role_id",
+  // P-CAPT L1 — réglages de session (doublon doc : colonnes à ajouter en
+  // manuel sur Supabase comme P7, aucun SQL exécuté par le code).
+  "captcha_expiry_minutes",
+  "captcha_attempts",
+  "captcha_cooldown_seconds",
 ]);
 
 /** Giveaways. */

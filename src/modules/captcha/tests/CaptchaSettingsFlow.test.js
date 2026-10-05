@@ -26,8 +26,8 @@ test("Captcha settings persist toggle channel and role", async () => {
   assert.equal(updates, 3);
 });
 
-test("Captcha reset clears enable channel and role", async () => {
-  let config = { captcha_enabled: true, captcha_channel_id: "c", captcha_role_id: "r" };
+test("Captcha reset clears enable channel role and session settings", async () => {
+  let config = { captcha_enabled: true, captcha_channel_id: "c", captcha_role_id: "r", captcha_expiry_minutes: 15, captcha_attempts: 5, captcha_cooldown_seconds: 30 };
   let updates = 0;
   const c = {
     guildId: "g",
@@ -41,6 +41,15 @@ test("Captcha reset clears enable channel and role", async () => {
 
   await resetCaptcha(c);
 
-  assert.deepEqual(config, { captcha_enabled: false, captcha_channel_id: null, captcha_role_id: null });
+  // P-CAPT L1 : le reset remet aussi les réglages de session à leurs défauts
+  // (colonnes présentes mais nulles ⇒ résolveur NORMAL).
+  assert.deepEqual(config, {
+    captcha_enabled: false,
+    captcha_channel_id: null,
+    captcha_role_id: null,
+    captcha_expiry_minutes: null,
+    captcha_attempts: null,
+    captcha_cooldown_seconds: null,
+  });
   assert.equal(updates, 1);
 });

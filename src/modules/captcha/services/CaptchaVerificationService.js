@@ -8,14 +8,20 @@ class CaptchaVerificationService {
     this.transport = transport;
   }
 
-  async verify({ guildId, member }) {
-    const config = await this.configService.read(guildId);
+  /**
+   * @param {{guildId, member, config?}} input — `config` déjà lu par le
+   *   routeur (P-CAPT L1) évite un second aller Supabase ; absent ⇒ lecture
+   *   interne (comportement historique conservé).
+   */
+  async verify({ guildId, member, config = null }) {
+    const resolved = config || await this.configService.read(guildId);
+    const configData = resolved || {};
     const result = (verified, code, details = {}) => ({ verified, code, guildId, memberId: member?.id || null, details });
 
     if (!guildId || !member) return result(false, "CAPTCHA_GUILD_OR_MEMBER_MISSING");
-    if (!config[Key.ENABLED]) return result(false, "CAPTCHA_DISABLED");
+    if (!configData[Key.ENABLED]) return result(false, "CAPTCHA_DISABLED");
 
-    const roleId = config[Key.ROLE_ID];
+    const roleId = configData[Key.ROLE_ID];
     if (!roleId) return result(false, "CAPTCHA_ROLE_NOT_CONFIGURED");
 
     const role = await this.transport.getRole(roleId);

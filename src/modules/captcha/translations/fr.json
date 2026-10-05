@@ -33,6 +33,17 @@
     "CAPTCHA_VERIFIED": "Vérification terminée.",
     "CAPTCHA_ASSIGNMENT_FAILED": "La vérification a échoué.",
     "CAPTCHA_GUILD_OR_MEMBER_MISSING": "La vérification est indisponible.",
-    "reminder": "Vérifiez votre compte dans {{channel}}."
+    "CAPTCHA_SESSION_IN_PROGRESS": "⏳ Une vérification est déjà en cours. Répondez-y ou patientez.",
+    "CAPTCHA_SESSION_EXPIRED": "⏰ Votre vérification a expiré. Cliquez à nouveau pour recommencer.",
+    "CAPTCHA_COOLDOWN": "⚠️ Patientez avant de réessayer.",
+    "CAPTCHA_TOO_MANY_ATTEMPTS": "⚠️ Trop de tentatives. Veuillez patienter avant de recommencer.",
+    "reminder": "Vérifiez votre compte dans {{channel}}.",
+    "advanced": "Paramètres avancés",
+    "duration": "Durée d'expiration",
+    "durationLabel": "Expiration de la session : {{minutes}} min",
+    "durationOption": "{{count}} min",
+    "limits": "Tentatives & cooldown",
+    "limitsLabel": "Tentatives : {{attempts}} · Cooldown : {{cooldown}} s",
+    "limitsOption": "{{attempts}} essais / {{cooldown}} s"
   }
 }

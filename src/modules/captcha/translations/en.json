@@ -33,6 +33,17 @@
     "CAPTCHA_VERIFIED": "Verification completed.",
     "CAPTCHA_ASSIGNMENT_FAILED": "Verification could not be completed.",
     "CAPTCHA_GUILD_OR_MEMBER_MISSING": "Verification is unavailable.",
-    "reminder": "Verify your account in {{channel}}."
+    "CAPTCHA_SESSION_IN_PROGRESS": "⏳ A verification is already in progress. Answer it or wait a moment.",
+    "CAPTCHA_SESSION_EXPIRED": "⏰ Your verification expired. Click again to restart.",
+    "CAPTCHA_COOLDOWN": "⚠️ Please wait before trying again.",
+    "CAPTCHA_TOO_MANY_ATTEMPTS": "⚠️ Too many attempts. Please wait before trying again.",
+    "reminder": "Verify your account in {{channel}}.",
+    "advanced": "Advanced settings",
+    "duration": "Expiration duration",
+    "durationLabel": "Session expiration: {{minutes}} min",
+    "durationOption": "{{count}} min",
+    "limits": "Attempts & cooldown",
+    "limitsLabel": "Attempts: {{attempts}} · Cooldown: {{cooldown}} s",
+    "limitsOption": "{{attempts}} attempts / {{cooldown}} s"
   }
 }

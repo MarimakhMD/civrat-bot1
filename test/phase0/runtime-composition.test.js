@@ -38,8 +38,10 @@ const EXPECTED_MODULE_COMMAND_COUNT = 22;
 const EXPECTED_ROUTE_COUNTS = Object.freeze({
   // Image personnalisée (Premium) : 132 -> 136, soit 4 contrôles de la
   // sous-vue « Image Welcome » (entrée, aide d'upload, suppression, retour).
-  [InteractionKind.BUTTON]: 136,
-  [InteractionKind.SELECT_MENU]: 21,
+  // P-CAPT L1 : 136 -> 137 (bouton « Avancé ») et 21 -> 23 (selects
+  // expiration + tentatives/cooldown) — sous-vue réglages CAPTCHA.
+  [InteractionKind.BUTTON]: 137,
+  [InteractionKind.SELECT_MENU]: 23,
   [InteractionKind.MODAL]: 27,
 });
 

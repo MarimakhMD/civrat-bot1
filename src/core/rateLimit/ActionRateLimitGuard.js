@@ -34,6 +34,10 @@ const RATE_LIMITS = Object.freeze({
   // 5 / 10 minutes, aligné sur les 5 slots Free et deux fois plus strict que
   // l'image Welcome (chaque tentative télécharge et téléverse réellement).
   STICKER: Object.freeze({ group: "sticker", limit: 5, windowMs: 10 * 60 * 1000 }),
+  // P-CAPT L1 — création de session CAPTCHA : 5 / 30 secondes, par
+  // (guild, membre) — borne les clics qui déclenchent réellement une session
+  // (les refus à l'état ne consomment aucun crédit).
+  CAPTCHA: Object.freeze({ group: "captcha", limit: 5, windowMs: 30 * 1000 }),
   // Écritures de configuration (upsert guild_configs) : 30 / 60 secondes.
   CONFIG: Object.freeze({ group: "config", limit: 30, windowMs: 60 * 1000 }),
 });
