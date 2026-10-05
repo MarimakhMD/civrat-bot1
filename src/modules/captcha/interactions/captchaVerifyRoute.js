@@ -158,6 +158,15 @@ async function handleCaptchaVerify(context, verificationService, runtime = {}) {
   if (result.verified) {
     // SUCCESS = terminal : supprimé (le rôle porte l'état « vérifié »).
     if (session) store.delete(guildId, memberId);
+    // P-CAPT L2 — DM de statut « vérifié » (best-effort, jamais un canal de
+    // vérification parallèle ; les DM fermés ne bloquent rien).
+    if (typeof member?.user?.send === "function") {
+      try {
+        await member.user.send(context.t("captcha.dmVerified"));
+      } catch {
+        // DM fermé / refusé : sans gravité.
+      }
+    }
     await context.envelope.transport.reply({ view: { content: context.t(`captcha.${result.code}`), components: [] }, ephemeral: true });
     return result;
   }

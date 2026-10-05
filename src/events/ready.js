@@ -26,5 +26,16 @@ module.exports = {
         error: error && error.message ? error.message : String(error),
       });
     }
+    // P-CAPT L2 — panneau CAPTCHA officiel au démarrage : l'ancien panneau
+    // persisté est supprimé (best-effort) puis un unique panneau par guilde
+    // est republié ; les nouveaux IDs sont persistés. Best-effort jamais fatal.
+    try {
+      await require("../modules/captcha/runtime/getCaptchaRuntime").getCaptchaRuntime().reconcilePanelsOnStartup(client);
+    } catch (error) {
+      logger.warn("captcha panel startup reconciliation failed", {
+        event: "captcha_panel_reconcile_failed",
+        error: error && error.message ? error.message : String(error),
+      });
+    }
   },
 };

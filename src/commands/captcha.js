@@ -35,6 +35,7 @@ module.exports = {
     const delivery = new CaptchaPanelDeliveryService({
       panelService: new CaptchaPanelService({ configService }),
       transport: new DiscordCaptchaTransport({ guild: interaction.guild }),
+      configService,
     });
 
     let result;

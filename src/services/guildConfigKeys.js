@@ -92,6 +92,12 @@ const CAPTCHA_KEYS = Object.freeze([
   "captcha_expiry_minutes",
   "captcha_attempts",
   "captcha_cooldown_seconds",
+  // P-CAPT L2 — rôle non vérifié, force-existing, panneau officiel persisté
+  // (4 colonnes manuelles supplémentaires — SQL fourni au rapport L2).
+  "captcha_unverified_role_id",
+  "captcha_force_existing",
+  "captcha_panel_channel_id",
+  "captcha_panel_message_id",
 ]);
 
 /** Giveaways. */

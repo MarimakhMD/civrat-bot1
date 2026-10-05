@@ -27,7 +27,7 @@ test("Captcha settings persist toggle channel and role", async () => {
 });
 
 test("Captcha reset clears enable channel role and session settings", async () => {
-  let config = { captcha_enabled: true, captcha_channel_id: "c", captcha_role_id: "r", captcha_expiry_minutes: 15, captcha_attempts: 5, captcha_cooldown_seconds: 30 };
+  let config = { captcha_enabled: true, captcha_channel_id: "c", captcha_role_id: "r", captcha_expiry_minutes: 15, captcha_attempts: 5, captcha_cooldown_seconds: 30, captcha_unverified_role_id: "u", captcha_force_existing: true, captcha_panel_channel_id: "pc", captcha_panel_message_id: "pm" };
   let updates = 0;
   const c = {
     guildId: "g",
@@ -50,6 +50,10 @@ test("Captcha reset clears enable channel role and session settings", async () =
     captcha_expiry_minutes: null,
     captcha_attempts: null,
     captcha_cooldown_seconds: null,
+    captcha_unverified_role_id: null,
+    captcha_force_existing: false,
+    captcha_panel_channel_id: null,
+    captcha_panel_message_id: null,
   });
   assert.equal(updates, 1);
 });

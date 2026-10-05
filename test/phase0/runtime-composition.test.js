@@ -40,8 +40,10 @@ const EXPECTED_ROUTE_COUNTS = Object.freeze({
   // sous-vue « Image Welcome » (entrée, aide d'upload, suppression, retour).
   // P-CAPT L1 : 136 -> 137 (bouton « Avancé ») et 21 -> 23 (selects
   // expiration + tentatives/cooldown) — sous-vue réglages CAPTCHA.
-  [InteractionKind.BUTTON]: 137,
-  [InteractionKind.SELECT_MENU]: 23,
+  // P-CAPT L2 : 137 -> 138 (bouton force-existing) et 23 -> 24 (select
+  // rôle non vérifié) — réglages rôles/join/panneau CAPTCHA.
+  [InteractionKind.BUTTON]: 138,
+  [InteractionKind.SELECT_MENU]: 24,
   [InteractionKind.MODAL]: 27,
 });
 

@@ -8,6 +8,11 @@ const CaptchaConfigKey = Object.freeze({
   EXPIRY_MINUTES: "captcha_expiry_minutes",
   ATTEMPTS: "captcha_attempts",
   COOLDOWN_SECONDS: "captcha_cooldown_seconds",
+  // P-CAPT L2 — rôle non vérifié, force-existing, panneau officiel persisté.
+  UNVERIFIED_ROLE_ID: "captcha_unverified_role_id",
+  FORCE_EXISTING: "captcha_force_existing",
+  PANEL_CHANNEL_ID: "captcha_panel_channel_id",
+  PANEL_MESSAGE_ID: "captcha_panel_message_id",
 });
 
 const CaptchaComponentId = Object.freeze({
@@ -23,7 +28,24 @@ const CaptchaComponentId = Object.freeze({
   ADVANCED: "civrat:v1:captcha:advanced",
   DURATION: "civrat:v1:captcha:duration",
   LIMITS: "civrat:v1:captcha:limits",
+  // P-CAPT L2 — rôle non vérifié + force-existing.
+  UNVERIFIED_ROLE: "civrat:v1:captcha:unverified-role",
+  FORCE_EXISTING: "civrat:v1:captcha:force-existing",
 });
+
+/**
+ * P-CAPT L2 — éléments provisionnés par l'auto-réparation.
+ * Les IDs restent la source de vérité : on ne recrée QUE l'élément manquant,
+ * jamais ceux déjà présents.
+ */
+const CaptchaProvisionDefaults = Object.freeze({
+  UNVERIFIED_ROLE_NAME: "CIVRAT • Non vérifié",
+  VERIFIED_ROLE_NAME: "CIVRAT • Vérifié",
+  CHANNEL_NAME: "captcha-verification",
+});
+
+/** P-CAPT L2 — force-existing : plafond dur par exécution (jamais infini). */
+const CAPTCHA_FORCE_EXISTING_MAX_MEMBERS = 1000;
 
 /**
  * Défauts de session = preset NORMAL (niveau par défaut validé P-CAPT).
@@ -67,7 +89,9 @@ module.exports = {
   CaptchaConfigKey,
   CaptchaComponentId,
   CaptchaSessionDefaults,
+  CaptchaProvisionDefaults,
   CAPTCHA_DURATION_PRESETS,
   CAPTCHA_LIMITS_PRESETS,
+  CAPTCHA_FORCE_EXISTING_MAX_MEMBERS,
   resolveCaptchaSessionSettings,
 };

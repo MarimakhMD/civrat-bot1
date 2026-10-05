@@ -363,7 +363,7 @@ test("Register routes — settings section renders within Discord limits", async
   // Forme brute : composants plats, chunkés en 2 lignes de ≤ 5 par le
   // transport — le contrat Discord complet est couvert par le test
   // `settings-views-discord-limits`.
-  assert.equal(view.components.length, 7, "7 composants après l'ajout du bouton Avancé");
+  assert.equal(view.components.length, 9, "9 composants (L1 : Avancé + L2 : rôle non vérifié, force-existing)");
   assert.ok(view.components.every((c) => c.customId), "composants valides");
   assert.ok(view.components.some((c) => c.customId === Id.ADVANCED), "le bouton Avancé est présent");
 });

@@ -3,7 +3,7 @@
 const { PermissionName } = require("../../core/permissions");
 const { CaptchaComponentId: Id } = require("./configuration/captchaConstants");
 const { captchaView, captchaAdvancedView } = require("./interactions/captchaViews");
-const { toggleCaptcha, selectCaptcha, resetCaptcha, selectDuration, selectLimits } = require("./interactions/configureCaptcha");
+const { toggleCaptcha, selectCaptcha, resetCaptcha, selectDuration, selectLimits, selectUnverifiedRole, toggleForceExisting } = require("./interactions/configureCaptcha");
 const { handleCaptchaVerify } = require("./interactions/captchaVerifyRoute");
 const { previewCaptcha } = require("./interactions/captchaPreview");
 const { CaptchaSessionStore } = require("./services/CaptchaSessionStore");
@@ -24,6 +24,9 @@ function registerCaptcha({ registry, service, verificationServiceFactory, settin
   registry.registerButton({ customId: Id.ADVANCED, permissions, execute: async (c) => c.envelope.transport.update({ view: captchaAdvancedView({ t: c.t, config: await service.read(c.guildId) }) }) });
   registry.registerSelectMenu({ customId: Id.DURATION, permissions, execute: async (c) => selectDuration({ ...c, service }) });
   registry.registerSelectMenu({ customId: Id.LIMITS, permissions, execute: async (c) => selectLimits({ ...c, service }) });
+  // P-CAPT L2 — rôle non vérifié + force-existing.
+  registry.registerSelectMenu({ customId: Id.UNVERIFIED_ROLE, permissions, execute: async (c) => selectUnverifiedRole({ ...c, service }) });
+  registry.registerButton({ customId: Id.FORCE_EXISTING, permissions, execute: async (c) => toggleForceExisting({ ...c, service }) });
   registry.registerButton({ customId: Id.VERIFY, permissions: { allOf: [] }, execute: async (c) => handleCaptchaVerify(c, verificationServiceFactory(c), {
     configService: service,
     sessionStore,

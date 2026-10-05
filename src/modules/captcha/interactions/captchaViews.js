@@ -13,6 +13,9 @@ function captchaView({ t, config }) {
     config.captcha_role_id
       ? `${t("captcha.role")} : <@&${config.captcha_role_id}>`
       : t("captcha.roleMissing"),
+    config.captcha_unverified_role_id
+      ? `${t("captcha.unverifiedRole")} : <@&${config.captcha_unverified_role_id}>`
+      : t("captcha.unverifiedRoleMissing"),
   ];
 
   return {
@@ -22,7 +25,9 @@ function captchaView({ t, config }) {
       { type: "button", customId: Id.TOGGLE, label: t(config.captcha_enabled ? "captcha.disable" : "captcha.enable"), style: config.captcha_enabled ? "success" : "secondary" },
       { type: "channel-select", customId: Id.CHANNEL, placeholder: t("captcha.channel"), channelTypes: [0] },
       { type: "role-select", customId: Id.ROLE, placeholder: t("captcha.role") },
+      { type: "role-select", customId: Id.UNVERIFIED_ROLE, placeholder: t("captcha.unverifiedRole") },
       { type: "button", customId: Id.ADVANCED, label: t("captcha.advanced"), style: "primary" },
+      { type: "button", customId: Id.FORCE_EXISTING, label: t("captcha.forceExisting"), style: "secondary" },
       { type: "button", customId: Id.PREVIEW, label: t("captcha.preview"), style: "primary" },
       { type: "button", customId: Id.RESET, label: t("captcha.reset"), style: "danger" },
       { type: "button", customId: Id.BACK, label: t("captcha.back"), style: "secondary" },
