@@ -42,8 +42,11 @@ const EXPECTED_ROUTE_COUNTS = Object.freeze({
   // expiration + tentatives/cooldown) — sous-vue réglages CAPTCHA.
   // P-CAPT L2 : 137 -> 138 (bouton force-existing) et 23 -> 24 (select
   // rôle non vérifié) — réglages rôles/join/panneau CAPTCHA.
+  // P-CAPT L3 : 24 -> 27 (selects niveau + mode + type de challenge) — les
+  // réponses de challenge sont routées par la route VERIFY existante
+  // (matcher `prefix`), donc AUCUN bouton supplémentaire : 138 inchangé.
   [InteractionKind.BUTTON]: 138,
-  [InteractionKind.SELECT_MENU]: 24,
+  [InteractionKind.SELECT_MENU]: 27,
   [InteractionKind.MODAL]: 27,
 });
 

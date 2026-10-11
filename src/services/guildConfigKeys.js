@@ -98,6 +98,11 @@ const CAPTCHA_KEYS = Object.freeze([
   "captcha_force_existing",
   "captcha_panel_channel_id",
   "captcha_panel_message_id",
+  // P-CAPT L3 — niveau, mode et type de challenge (3 colonnes manuelles
+  // supplémentaires — SQL fourni au rapport L3, jamais exécuté par le code).
+  "captcha_level",
+  "captcha_mode",
+  "captcha_challenge",
 ]);
 
 /** Giveaways. */

@@ -303,7 +303,7 @@ test("Register routes — advanced view, duration and limits presets end to end"
   const base = { guildId: "g", userId: "adv", t, envelope: { userId: "adv", transport: { update: async (p) => { views.push(p); }, reply: async () => {}, deferUpdate: async () => {} } } };
   await buttonRoute(Id.ADVANCED).execute(base);
   assert.equal(views.length, 1);
-  assert.deepEqual(views[0].view.components.map((c) => c.customId), [Id.DURATION, Id.LIMITS, Id.SECTION]);
+  assert.deepEqual(views[0].view.components.map((c) => c.customId), [Id.DURATION, Id.LIMITS, Id.MODE, Id.CHALLENGE, Id.FORCE_EXISTING, Id.SECTION]);
 
   // Durée valide → écriture, retour dans la vue Avancé.
   await selectRoute(Id.DURATION).execute({ ...base, envelope: { ...base.envelope, values: ["10"] } });
@@ -326,8 +326,12 @@ test("Register routes — advanced view, duration and limits presets end to end"
   await selectRoute(Id.LIMITS).execute({ ...base, envelope: { ...base.envelope, values: ["9/1"] } });
   assert.equal(updates.length, before2);
 
-  // Vue Avancé dans les limites Discord (5×5) : 3 composants seulement.
-  assert.ok(views.at(-1).view.components.length <= 5);
+  // Vue Avancé dans les limites Discord (5 lignes) : 4 selects = 4 lignes,
+  // plus une ligne de boutons (force-existing + retour) — vérifié via le
+  // transport réel, pas via un compte de composants.
+  const { rows: toActionRows, MAX_ACTION_ROWS } = require("../../../adapters/discord/DiscordResponseTransport");
+  assert.ok(toActionRows(views.at(-1).view.components).length <= MAX_ACTION_ROWS,
+    "la vue Avancé tient dans les 5 lignes d'action Discord");
 
   // Clic VERIFY via le registre complet (wrapper member + service réel).
   const verifyRoute = buttonRoute(Id.VERIFY);
@@ -363,7 +367,8 @@ test("Register routes — settings section renders within Discord limits", async
   // Forme brute : composants plats, chunkés en 2 lignes de ≤ 5 par le
   // transport — le contrat Discord complet est couvert par le test
   // `settings-views-discord-limits`.
-  assert.equal(view.components.length, 9, "9 composants (L1 : Avancé + L2 : rôle non vérifié, force-existing)");
+  assert.equal(view.components.length, 9, "9 composants (4 selects : salon/rôle/non vérifié/niveau + 5 boutons)");
   assert.ok(view.components.every((c) => c.customId), "composants valides");
   assert.ok(view.components.some((c) => c.customId === Id.ADVANCED), "le bouton Avancé est présent");
+  assert.ok(view.components.some((c) => c.customId === Id.LEVEL), "le select de niveau est présent (L3)");
 });

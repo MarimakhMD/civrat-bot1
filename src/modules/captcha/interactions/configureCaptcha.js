@@ -1,14 +1,58 @@
 "use strict";
 
-const { CaptchaConfigKey: Key, CaptchaComponentId: Id, CAPTCHA_DURATION_PRESETS, CAPTCHA_LIMITS_PRESETS, CAPTCHA_FORCE_EXISTING_MAX_MEMBERS } = require("../configuration/captchaConstants");
+const {
+  CaptchaConfigKey: Key,
+  CaptchaComponentId: Id,
+  CaptchaMode,
+  CAPTCHA_DURATION_PRESETS,
+  CAPTCHA_LIMITS_PRESETS,
+  CAPTCHA_FORCE_EXISTING_MAX_MEMBERS,
+  isCaptchaPremiumLevel,
+  isCaptchaMode,
+  isCaptchaChallengeType,
+  captchaLevelSelection,
+  resolveCaptchaRequestedPlan,
+} = require("../configuration/captchaConstants");
 const { captchaView, captchaAdvancedView } = require("./captchaViews");
 const { DiscordCaptchaTransport } = require("../../../adapters/discord/DiscordCaptchaTransport");
 const { CaptchaProvisioningService } = require("../services/CaptchaProvisioningService");
+const { resolveCaptchaEntitlement } = require("../services/captchaEntitlement");
 const logger = require("../../../utils/logger");
+
+/**
+ * P-CAPT L3 — décision d'entitlement affichée par une vue : `null` quand le
+ * serveur ne demande AUCUNE expérience Premium (aucun aller-retour Supabase),
+ * sinon le booléen strict du cœur d'entitlements (fail-closed).
+ */
+async function resolveViewGrant({ config, guildId, entitlementService }) {
+  if (!resolveCaptchaRequestedPlan(config || {}).premium) return null;
+  const decision = await resolveCaptchaEntitlement({ guildId, entitlementService: entitlementService || null });
+  return decision.granted;
+}
+
+/** Réponse claire et localisée quand une option Premium est refusée. */
+async function replyPremiumRequired(context, render = captchaView) {
+  const config = await context.service.read(context.guildId);
+  await context.envelope.transport.reply({
+    view: { title: context.t("captcha.title"), content: context.t("captcha.premiumRequired"), components: [] },
+    ephemeral: true,
+  });
+  // La configuration n'est JAMAIS modifiée par un refus Premium : la vue
+  // courante est simplement réaffichée.
+  await context.envelope.transport.update({
+    view: render({
+      t: context.t,
+      config,
+      granted: await resolveViewGrant({ config, guildId: context.guildId, entitlementService: context.entitlementService }),
+    }),
+  });
+  return null;
+}
 
 async function update(context, updates, render = captchaView) {
   const config = await context.service.update(context.guildId, updates);
-  await context.envelope.transport.update({ view: render({ t: context.t, config }) });
+  const granted = await resolveViewGrant({ config, guildId: context.guildId, entitlementService: context.entitlementService });
+  await context.envelope.transport.update({ view: render({ t: context.t, config, granted }) });
   return config;
 }
 
@@ -32,6 +76,10 @@ async function resetCaptcha(context) {
     [Key.FORCE_EXISTING]: false,
     [Key.PANEL_CHANNEL_ID]: null,
     [Key.PANEL_MESSAGE_ID]: null,
+    // P-CAPT L3 — niveau, mode et challenge (retour aux défauts NORMAL/bouton).
+    [Key.LEVEL]: null,
+    [Key.MODE]: null,
+    [Key.CHALLENGE]: null,
   });
   const view = captchaView({ t: context.t, config });
   view.content = `${context.t("captcha.resetDone")}\n${view.content}`;
@@ -194,4 +242,68 @@ async function toggleForceExisting(context) {
   return { updated: true, stats };
 }
 
-module.exports = { toggleCaptcha, selectCaptcha, resetCaptcha, selectDuration, selectLimits, selectUnverifiedRole, toggleForceExisting };
+/* ─────────────────────────── P-CAPT L3 ───────────────────────────
+ * Niveau, mode et type de challenge. Toute valeur hors whitelist est refusée
+ * sans écriture, et toute expérience Premium exige un entitlement ACCORDÉ
+ * (fail-closed : jamais de niveau/challenge Premium servi sans abonnement).
+ */
+
+/**
+ * Niveau de sécurité : applique le preset validé (mode + durée + tentatives +
+ * cooldown) dans les clés L1 existantes — aucune mécanique parallèle.
+ */
+async function selectLevel(context) {
+  const level = context.envelope.values?.[0] || null;
+  const selection = captchaLevelSelection(level); // null ⇒ valeur invalide
+  if (!selection) return null;
+  if (isCaptchaPremiumLevel(level)) {
+    const decision = await resolveCaptchaEntitlement({
+      guildId: context.guildId,
+      entitlementService: context.entitlementService || null,
+    });
+    if (!decision.granted) return replyPremiumRequired(context);
+  }
+  return update(context, selection);
+}
+
+/** Mode de vérification — le mode challenge est Premium. */
+async function selectMode(context) {
+  const mode = context.envelope.values?.[0] || null;
+  if (!isCaptchaMode(mode)) return null;
+  if (mode === CaptchaMode.CHALLENGE) {
+    const decision = await resolveCaptchaEntitlement({
+      guildId: context.guildId,
+      entitlementService: context.entitlementService || null,
+    });
+    if (!decision.granted) return replyPremiumRequired(context, captchaAdvancedView);
+  }
+  return update(context, { [Key.MODE]: mode }, captchaAdvancedView);
+}
+
+/** Type de challenge — Premium (les trois types du plan validé uniquement). */
+async function selectChallenge(context) {
+  const type = context.envelope.values?.[0] || null;
+  if (!isCaptchaChallengeType(type)) return null;
+  const decision = await resolveCaptchaEntitlement({
+    guildId: context.guildId,
+    entitlementService: context.entitlementService || null,
+  });
+  if (!decision.granted) return replyPremiumRequired(context, captchaAdvancedView);
+  return update(context, { [Key.CHALLENGE]: type }, captchaAdvancedView);
+}
+
+module.exports = {
+  toggleCaptcha,
+  selectCaptcha,
+  resetCaptcha,
+  selectDuration,
+  selectLimits,
+  selectUnverifiedRole,
+  toggleForceExisting,
+  // P-CAPT L3
+  selectLevel,
+  selectMode,
+  selectChallenge,
+  resolveViewGrant,
+  replyPremiumRequired,
+};

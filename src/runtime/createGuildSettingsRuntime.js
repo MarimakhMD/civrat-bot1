@@ -251,6 +251,9 @@ function createGuildSettingsRuntime({ legacyConfigService, logger = null }) {
         member: context.envelope.discordMember,
       }),
     }),
+    // P-CAPT L3 — même singleton EntitlementService que le reste du bot :
+    // aucun système Premium parallèle (fail-closed si indisponible).
+    entitlementService,
     settingsHome,
   });
   // Image Welcome personnalisée (Premium) : le panneau d'administration et la
