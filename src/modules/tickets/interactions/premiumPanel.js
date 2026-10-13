@@ -7,6 +7,7 @@ const {
 const { TicketConfigKey: Key, TicketComponentId: Id } = require("../configuration/ticketConstants");
 const { TicketPremiumConfigKey: PKey } = require("../configuration/ticketPremiumConstants");
 const { validateTicketPremiumUpdates } = require("../configuration/ticketPremiumValidation");
+const { enforceConfigWrite } = require("../../../core/rateLimit/ActionRateLimitGuard");
 const { TicketPanelService } = require("../services/TicketPanelService");
 const { TicketWelcomeService } = require("../services/TicketWelcomeService");
 
@@ -164,6 +165,9 @@ function normalizeModalValue(value) {
 // sans écrire (tout-ou-rien), sinon les clés sont persistées (champ vide =
 // null = retour au default Free pour cette clé) et la vue est rafraîchie.
 async function submitPremiumUpdates(context, updates, savedKey) {
+  // P6 §5 — garde d'écriture AVANT entitlement, validation et upsert ;
+  // au dépassement la réponse éphémère est déjà envoyée.
+  if (!(await enforceConfigWrite(context))) return { saved: false, decision: null, rateLimited: true };
   const decision = await requirePremium(context);
   if (!decision) return { saved: false, decision: null };
   try {
@@ -233,6 +237,8 @@ async function selectPremiumTranscript(context) {
 
 // Réinitialisation : toutes les clés de la sous-vue repassent à null → defaults Free.
 async function resetPremiumPanel(context) {
+  // P6 §5 — garde d'écriture avant toute opération (y compris entitlement).
+  if (!(await enforceConfigWrite(context))) return { reset: false };
   const decision = await requirePremium(context);
   if (!decision) return { reset: false };
   const updates = Object.fromEntries(RESETTABLE_KEYS.map((key) => [key, null]));

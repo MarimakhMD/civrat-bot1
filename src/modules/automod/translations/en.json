@@ -37,6 +37,12 @@
     "log": {
       "title": "AutoMod",
       "description": "User {{user}} triggered {{rule}} ({{reason}})"
-    }
+    },
+    "exemptOpen": "Exemptions",
+    "exemptHelp": "Members with an exempt role or messages posted in an exempt channel are not moderated (role OR channel, 10 each maximum).",
+    "exemptRoles": "Exempt roles",
+    "exemptChannels": "Exempt channels",
+    "exemptResetRoles": "Reset roles",
+    "exemptResetChannels": "Reset channels"
   }
 }

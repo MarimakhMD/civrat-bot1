@@ -63,6 +63,11 @@ const AUTOMOD_KEYS = Object.freeze([
   "automod_delete_message",
   "automod_punishment",
   "automod_timeout_minutes",
+  // P7 — exemptions AutoMod (listes d'IDs, text[] NOT NULL DEFAULT '{}').
+  // Colonne Supabase à créer manuellement (SQL fourni au rapport P7) avant
+  // toute écriture en production ; la lecture reste safe sans la colonne (défaut []).
+  "automod_exempt_roles",
+  "automod_exempt_channels",
 ]);
 
 /** AutoRole. */
@@ -82,6 +87,22 @@ const CAPTCHA_KEYS = Object.freeze([
   "captcha_enabled",
   "captcha_channel_id",
   "captcha_role_id",
+  // P-CAPT L1 — réglages de session (doublon doc : colonnes à ajouter en
+  // manuel sur Supabase comme P7, aucun SQL exécuté par le code).
+  "captcha_expiry_minutes",
+  "captcha_attempts",
+  "captcha_cooldown_seconds",
+  // P-CAPT L2 — rôle non vérifié, force-existing, panneau officiel persisté
+  // (4 colonnes manuelles supplémentaires — SQL fourni au rapport L2).
+  "captcha_unverified_role_id",
+  "captcha_force_existing",
+  "captcha_panel_channel_id",
+  "captcha_panel_message_id",
+  // P-CAPT L3 — niveau, mode et type de challenge (3 colonnes manuelles
+  // supplémentaires — SQL fourni au rapport L3, jamais exécuté par le code).
+  "captcha_level",
+  "captcha_mode",
+  "captcha_challenge",
 ]);
 
 /** Giveaways. */
@@ -108,12 +129,14 @@ const LOGS_KEYS = Object.freeze([
 ]);
 
 /** Sécurité. */
+// P10 — `security_log_channel_id` retirée : ancienne clé inactive (aucune UI,
+// aucun consommateur ; alertes Security routées via log_moderation_channel_id).
+// La colonne SQL reste en base, non modifiée.
 const SECURITY_KEYS = Object.freeze([
   "security_enabled",
   "security_anti_bot",
   "security_anti_raid",
   "security_anti_nuke",
-  "security_log_channel_id",
   "security_whitelist",
 ]);
 
@@ -170,6 +193,11 @@ const WELCOME_GOODBYE_KEYS = Object.freeze([
   // welcome_image_enabled boolean. Sans cette entrée, le rejet strict A1
   // (DCA2) refuserait toute écriture du toggle.
   "welcome_image_enabled",
+  // Image Welcome personnalisée (Premium) : clé d'objet dans le bucket privé
+  // civrat-welcome-images. La COLONNE doit exister dans guild_configs avant
+  // tout déploiement ; sans cette entrée, le rejet strict A1 (DCA2) refuserait
+  // l'écriture après l'upload.
+  "welcome_image_key",
   "goodbye_enabled",
   "goodbye_channel_id",
   "goodbye_message",

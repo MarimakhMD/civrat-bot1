@@ -3,9 +3,17 @@
 const { LogsConfigKey: Key, LogsComponentId: Id } = require("../configuration/logsConstants");
 const { LogsCategory, LogsCategoryChannelKey } = require("../configuration/logsCategories");
 const { logsView, channelView } = require("./logsViews");
+const { enforceConfigWrite } = require("../../../core/rateLimit/ActionRateLimitGuard");
+
+// P6 §5 — les ÉCRITURES (toggle, sélection de salon, désactivation de
+// catégorie) passent par enforceConfigWrite AVANT le read et l'upsert ;
+// au dépassement la réponse éphémère est déjà envoyée et le rendu interne
+// est sauté. Les vues de lecture (render, category, preview, back) ne sont
+// jamais limitées.
 
 // Active/désactive les journaux et rafraîchit la vue principale.
 async function toggleLogs(context) {
+  if (!(await enforceConfigWrite(context))) return null;
   const config = await context.service.read(context.guildId);
   const saved = await context.service.update(context.guildId, { [Key.ENABLED]: !config[Key.ENABLED] });
   await context.envelope.transport.update({ view: logsView({ t: context.t, config: saved }) });
@@ -25,6 +33,7 @@ async function selectLogsChannel(context) {
   const category = context.envelope.customId.split(":").at(-1);
   const key = LogsCategoryChannelKey[category];
   if (!key) throw new Error("Unknown logs category");
+  if (!(await enforceConfigWrite(context))) return null;
   const channel = context.envelope.values?.[0] || null;
   const saved = await context.service.update(context.guildId, { [key]: channel });
   const base = logsView({ t: context.t, config: saved });
@@ -40,6 +49,7 @@ async function disableLogsCategory(context) {
   const category = context.envelope.customId.split(":").at(-1);
   const key = LogsCategoryChannelKey[category];
   if (!key) throw new Error("Unknown logs category");
+  if (!(await enforceConfigWrite(context))) return null;
   const saved = await context.service.update(context.guildId, { [key]: null });
   const base = logsView({ t: context.t, config: saved });
   const notice = context.t("logs.categoryDisabled", { category: context.t(`logs.${category}`) });

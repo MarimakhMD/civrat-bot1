@@ -5,11 +5,13 @@ const assert = require("node:assert/strict");
 const { SecurityConfigService, SECURITY_DEFAULTS } = require("../services/SecurityConfigService");
 
 test("read merges stored config with safe defaults", async () => {
-  const stored = { security_enabled: true, security_whitelist: ["123"] };
+  // P9 — une liste déjà propre ressort identique ; un ID court (junk) serait
+  // filtré — couvert explicitement dans SecurityWhitelist.test.js.
+  const stored = { security_enabled: true, security_whitelist: ["111111111111111"] };
   const service = new SecurityConfigService({ guildConfigResolver: { get: async () => stored, update: async () => ({}) } });
   const config = await service.read("g");
   assert.equal(config.security_enabled, true);
-  assert.deepEqual(config.security_whitelist, ["123"]);
+  assert.deepEqual(config.security_whitelist, ["111111111111111"]);
   assert.equal(config.security_anti_raid, SECURITY_DEFAULTS.security_anti_raid);
   assert.equal(config.security_anti_bot, SECURITY_DEFAULTS.security_anti_bot);
   assert.equal(config.security_anti_nuke, SECURITY_DEFAULTS.security_anti_nuke);
@@ -20,7 +22,8 @@ test("read returns defaults when no stored config", async () => {
   const config = await service.read("g");
   assert.equal(config.security_enabled, false);
   assert.deepEqual(config.security_whitelist, []);
-  assert.equal(config.security_log_channel_id, null);
+  // P10 — l'ancienne clé security_log_channel_id n'est plus exposée par read().
+  assert.equal("security_log_channel_id" in config, false, "legacy security_log_channel_id must not be exposed anymore");
 });
 
 test("update writes through the resolver", async () => {

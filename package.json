@@ -11,11 +11,14 @@
     "check:commands": "node scripts/verify-commands.js",
     "check:repository": "node scripts/verify-repository.js",
     "check": "npm run check:syntax && npm run check:commands && npm run check:repository",
-    "test:core": "node --test test/core/*.test.js",
-    "test:adapters": "node --test test/adapters/discord/*.test.js",
-    "test:guild-settings": "node --test src/modules/guild-settings/tests/*.test.js test/runtime/*.test.js",
+    "test": "node scripts/run-tests.js",
+    "test:list": "node scripts/run-tests.js --list",
+    "test:core": "node scripts/run-tests.js test/core",
+    "test:adapters": "node scripts/run-tests.js test/adapters",
+    "test:guild-settings": "node scripts/run-tests.js src/modules/guild-settings/tests test/runtime",
+    "test:modules": "node scripts/run-tests.js src/modules",
+    "test:welcome-goodbye": "node scripts/run-tests.js src/modules/welcome-goodbye/tests",
     "test:phase-2": "npm run test:core && npm run test:adapters && npm run test:guild-settings",
-    "test:welcome-goodbye": "node --test src/modules/welcome-goodbye/tests/*.test.js",
     "test:phase-3": "npm run test:phase-2 && npm run test:welcome-goodbye"
   },
   "keywords": [
@@ -27,7 +30,7 @@
   "author": "CIVRAT",
   "license": "ISC",
   "dependencies": {
-    "@napi-rs/canvas": "^1.0.3",
+    "@napi-rs/canvas": "^1.0.9",
     "@supabase/supabase-js": "^2.108.1",
     "cors": "^2.8.5",
     "discord.js": "^14.25.1",

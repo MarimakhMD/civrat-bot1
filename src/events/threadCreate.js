@@ -12,6 +12,8 @@ module.exports = {
     try {
       if (!thread.guild) return;
       const config = await guildConfigService.getGuildConfig(thread.guild.id);
+      // PHASE 1 — aucune requête Audit Log si les logs sont coupés.
+      if (!config?.logs_enabled) return;
       // P1b — auteur du fil résolu via Audit Log (cible = le thread).
       const actor = await resolveAuditActor({ guild: thread.guild, type: AuditLogEvent.ThreadCreate, targetId: thread.id });
       await getLogsRuntime().handleChannelEvent({

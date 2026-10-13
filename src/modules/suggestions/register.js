@@ -8,6 +8,7 @@ const { toggleSuggestion, selectSuggestionChannel } = require("./interactions/co
 const { SuggestionService } = require("./services/SuggestionService");
 const { SupabaseSuggestionRepository } = require("./persistence/SupabaseSuggestionRepository");
 const { DiscordSuggestionTransport } = require("../../adapters/discord/DiscordSuggestionTransport");
+const { sharedRateLimitGuard, RATE_LIMITS } = require("../../core/rateLimit/ActionRateLimitGuard");
 
 function registerSuggestions({ registry, configService, supabase, logsRuntimeFactory, settingsHome = null }) {
   const permissions = { allOf: [PermissionName.MANAGE_GUILD] };
@@ -18,7 +19,8 @@ function registerSuggestions({ registry, configService, supabase, logsRuntimeFac
     customId: Id.TOGGLE,
     permissions,
     execute: async (context) => {
-      await toggleSuggestion({ service: configService, guildId: context.guildId });
+      const saved = await toggleSuggestion({ service: configService, guildId: context.guildId, userId: context.userId, t: context.t, envelope: context.envelope, rateLimitGuard: context.rateLimitGuard });
+      if (saved === null) return; // refus rate-limit déjà répondu (P6)
       return render(context);
     },
   });
@@ -26,7 +28,8 @@ function registerSuggestions({ registry, configService, supabase, logsRuntimeFac
     customId: Id.CHANNEL,
     permissions,
     execute: async (context) => {
-      await selectSuggestionChannel({ service: configService, guildId: context.guildId, values: context.envelope.values });
+      const saved = await selectSuggestionChannel({ service: configService, guildId: context.guildId, userId: context.userId, t: context.t, envelope: context.envelope, rateLimitGuard: context.rateLimitGuard, values: context.envelope.values });
+      if (saved === null) return; // refus rate-limit déjà répondu (P6)
       return render(context);
     },
   });
@@ -38,12 +41,28 @@ function registerSuggestions({ registry, configService, supabase, logsRuntimeFac
     permissions: null,
     options: [{ type: "string", name: "content", description: "Suggestion content", required: true }],
     execute: async (context) => {
+      // P6 §2 — rate-limit /suggest : 3 créations / 10 min par (guild, user).
+      // Le garde précède TOUT (defer, INSERT Supabase, envoi Discord) et
+      // répond lui-même, éphémèrement, au dépassement.
+      const { group, limit, windowMs } = RATE_LIMITS.SUGGEST;
+      const guard = context.rateLimitGuard || sharedRateLimitGuard;
+      const guildId = context.guildId;
+      const authorId = context.envelope.discordMember.id;
+      if (guildId && authorId) {
+        const gate = guard.check({ guildId, userId: authorId, group, limit, windowMs });
+        if (!gate.allowed) {
+          await context.envelope.transport.reply({
+            view: { content: context.t("ratelimit.retry"), components: [] },
+            ephemeral: true,
+          });
+          return { ok: false, code: "RATE_LIMITED" };
+        }
+        guard.record({ guildId, userId: authorId, group, limit, windowMs });
+      }
       // Déferrement immédiat : la création fait de l'I/O Supabase avant de
       // répondre (évite l'expiration de l'interaction).
       await context.envelope.transport.deferReply?.({ ephemeral: true });
       const content = context.envelope.options.getString("content");
-      const guildId = context.guildId;
-      const authorId = context.envelope.discordMember.id;
       const guild = context.envelope.discordMember.guild;
       const repository = new SupabaseSuggestionRepository({ supabase: supabase || context.envelope.supabase });
       const transport = new DiscordSuggestionTransport({ guild });

@@ -13,7 +13,6 @@
     "whitelist": "Bot whitelist",
     "whitelistModalTitle": "Bot whitelist",
     "fieldWhitelist": "Comma-separated bot IDs",
-    "logChannel": "Security log channel",
     "log": {
       "raidTitle": "Security: Raid detected",
       "raidDescription": "Raid detected: {{count}} joins in {{window}}s (threshold {{threshold}})",

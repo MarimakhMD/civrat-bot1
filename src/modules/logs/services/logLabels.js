@@ -7,7 +7,23 @@
 // « inconnu » (pour `who`) ou omet le champ (pour les autres), sans jamais
 // produire une identité ou une valeur fabriquée.
 
-const UNKNOWN = "inconnu";
+// PHASE 1 (correctif 3) — les VALEURS aussi doivent respecter la langue de la
+// guilde, pas seulement les titres et les libellés de champs. Jusqu'ici
+// `channelTypeLabel` et `formatDuration` étaient codés en français : un serveur
+// réglé en anglais affichait « Catégorie » et « 2 h 15 min ».
+//
+// Chaque fonction accepte une langue optionnelle dont le défaut reste `"fr"`,
+// ce qui préserve à l'identique tous les appelants hors périmètre Logs
+// (Welcome, TempVoice, Moderation…).
+const UNKNOWN_LABELS = Object.freeze({ fr: "inconnu", en: "unknown" });
+
+/** Conservé pour compatibilité : valeur française historique. */
+const UNKNOWN = UNKNOWN_LABELS.fr;
+
+/** « inconnu » / « unknown » selon la langue. */
+function unknownLabel(language) {
+  return language === "en" ? UNKNOWN_LABELS.en : UNKNOWN_LABELS.fr;
+}
 
 function userLabel(user) {
   if (!user || typeof user !== "object") return null;
@@ -115,38 +131,59 @@ function resolveCachedUser(member, inviterId) {
 }
 
 // Type de salon lisible (`null` si inconnu). Couvre les salons classiques et
-// les fils (public/privé).
+// les fils (public/privé), en français et en anglais.
 const CHANNEL_TYPE_LABELS = Object.freeze({
-  0: "Texte",
-  2: "Vocal",
-  4: "Catégorie",
-  5: "Annonce",
-  13: "Scène",
-  15: "Forum",
-  11: "Fil public",
-  12: "Fil privé",
+  fr: Object.freeze({
+    0: "Texte",
+    2: "Vocal",
+    4: "Catégorie",
+    5: "Annonce",
+    13: "Scène",
+    15: "Forum",
+    11: "Fil public",
+    12: "Fil privé",
+  }),
+  en: Object.freeze({
+    0: "Text",
+    2: "Voice",
+    4: "Category",
+    5: "Announcement",
+    13: "Stage",
+    15: "Forum",
+    11: "Public Thread",
+    12: "Private Thread",
+  }),
 });
 
-function channelTypeLabel(channel) {
+function channelTypeLabel(channel, language = "fr") {
   if (!channel || channel.type === undefined || channel.type === null) return null;
-  return CHANNEL_TYPE_LABELS[channel.type] || null;
+  const table = language === "en" ? CHANNEL_TYPE_LABELS.en : CHANNEL_TYPE_LABELS.fr;
+  return table[channel.type] || null;
 }
 
-// Durée lisible (`null` si non calculable). Ex. « 45 min », « 2 h 15 min ».
-function formatDuration(ms) {
+// Durée lisible (`null` si non calculable).
+// FR : « 45 min », « 2 h 15 min », « 3 j 4 h » — EN : « 45 min », « 2h 15m », « 3d 4h ».
+function formatDuration(ms, language = "fr") {
   if (!Number.isFinite(ms) || ms <= 0) return null;
   const minutes = Math.round(ms / 60000);
+  const english = language === "en";
   if (minutes < 60) return `${minutes} min`;
   const hours = Math.floor(minutes / 60);
   const remMin = minutes % 60;
-  if (hours < 24) return remMin ? `${hours} h ${remMin} min` : `${hours} h`;
+  if (hours < 24) {
+    if (!remMin) return english ? `${hours}h` : `${hours} h`;
+    return english ? `${hours}h ${remMin}m` : `${hours} h ${remMin} min`;
+  }
   const days = Math.floor(hours / 24);
   const remH = hours % 24;
-  return remH ? `${days} j ${remH} h` : `${days} j`;
+  if (!remH) return english ? `${days}d` : `${days} j`;
+  return english ? `${days}d ${remH}h` : `${days} j ${remH} h`;
 }
 
 module.exports = {
   UNKNOWN,
+  UNKNOWN_LABELS,
+  unknownLabel,
   userLabel,
   memberLabel,
   channelLabel,
@@ -158,6 +195,7 @@ module.exports = {
   avatarUrl,
   inviterDisplayLabel,
   resolveCachedUser,
+  CHANNEL_TYPE_LABELS,
   channelTypeLabel,
   formatDuration,
 };

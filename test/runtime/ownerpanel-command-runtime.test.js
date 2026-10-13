@@ -88,7 +88,7 @@ test("full runtime removes /ownerpanel and exposes its replacement /admin", () =
   assert.equal(names.includes("ownerpanel"), false);
   assert.equal(names.includes("recovery"), false);
   assert.ok(names.includes("admin"));
-  assert.equal(names.length, 21, "20 normal modular commands + /admin");
+  assert.equal(names.length, 22, "21 normal modular commands + /admin");
   assert.equal(new Set(names).size, names.length, "aucune duplique");
 });
 

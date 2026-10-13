@@ -1,6 +1,7 @@
 "use strict";
 
 const { localizeTitle } = require("../services/logTitles");
+const { resolveLanguage } = require("../services/logLanguage");
 
 async function handleModerationEvent({
   guild,
@@ -39,6 +40,7 @@ async function handleModerationEvent({
     guildId: guild.id,
     channelKey: "log_moderation_channel_id",
     category: "moderation",
+    language: resolveLanguage(config),
     action,
     title: localizeTitle(config, `logs.${action}`),
     details,

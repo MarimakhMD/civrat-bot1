@@ -7,6 +7,7 @@ const { I18nService, resolveGuildLocale } = require("../core/i18n");
 const captchaFr = require("../modules/captcha/translations/fr.json");
 const captchaEn = require("../modules/captcha/translations/en.json");
 const guildConfigService = require("../services/guildConfig");
+const { logPanelPublished } = require("../modules/captcha/runtime/captchaLifecycleLogs");
 
 // Traducteur localisé pour la commande autonome /captcha (le panneau envoyé
 // doit montrer du vrai texte FR/EN, pas des clés de traduction brutes).
@@ -35,6 +36,7 @@ module.exports = {
     const delivery = new CaptchaPanelDeliveryService({
       panelService: new CaptchaPanelService({ configService }),
       transport: new DiscordCaptchaTransport({ guild: interaction.guild }),
+      configService,
     });
 
     let result;
@@ -45,6 +47,10 @@ module.exports = {
         content: `❌ ${error?.message || "captcha.channelMissing"}`,
       });
     }
+
+    // P-CAPT L4 — publication/régénération réellement effectuée : journalisée
+    // dans le canal de modération (best-effort, jamais bloquant).
+    if (result.delivered) await logPanelPublished({ guild: interaction.guild, result });
 
     const content = result.delivered
       ? `✅ ${t("captcha.panelSent", { channel: `<#${result.channelId}>` })}`

@@ -17,6 +17,7 @@ const { TicketChannelNamingService } = require("../modules/tickets/services/Tick
 const { getTicketPanelRepository } = require("../modules/tickets/runtime/getTicketPanelRepository");
 const { DiscordTicketTransport } = require("../adapters/discord/DiscordTicketTransport");
 const { getLogsRuntime } = require("../modules/logs/runtime/getLogsRuntime");
+const { getSecurityRuntime } = require("../modules/security/runtime/getSecurityRuntime");
 const { config } = require("../config");
 const { supabase } = require("../config/database");
 const ticketEn = require("../modules/tickets/translations/en.json");
@@ -41,10 +42,11 @@ const { GuildSettingsService, registerGuildSettings } = require("../modules/guil
 const { WelcomeGoodbyeService, registerWelcomeGoodbye } = require("../modules/welcome-goodbye");
 const { WelcomeImagePipeline } = require("../modules/welcome-goodbye/image/pipeline/WelcomeImagePipeline");
 const { WelcomeImageRenderer } = require("../modules/welcome-goodbye/image/rendering/WelcomeImageRenderer");
-const { WelcomeTemplateRegistry } = require("../modules/welcome-goodbye/rendering/WelcomeTemplateRegistry");
+const { WelcomeTemplateRegistry, defaultTemplateRoots } = require("../modules/welcome-goodbye/rendering/WelcomeTemplateRegistry");
 const { WelcomeResourceCache } = require("../modules/welcome-goodbye/rendering/WelcomeResourceCache");
 const imageTheme = require("../modules/welcome-goodbye/image/themes/civrat-default/theme");
 const { WelcomeAdminLogService } = require("../modules/welcome-goodbye/services/WelcomeAdminLogService");
+const { createWelcomeImageStorage } = require("../modules/welcome-goodbye/runtime/createWelcomeImageStorage");
 const { returnSettingsHome } = require("../modules/guild-settings/interactions/openSettingsPanel");
 const en = require("../modules/guild-settings/translations/en.json");
 const fr = require("../modules/guild-settings/translations/fr.json");
@@ -118,7 +120,19 @@ function createGuildSettingsRuntime({ legacyConfigService, logger = null }) {
     logger,
   });
   const errorResponder = new ErrorResponder({ logger });
-  const contextFactory = new InteractionContextFactory({ guildConfigResolver, i18n, permissions, errorResponder, logger });
+  // PHASE 2 (UI-1) — le constructeur de InteractionContextFactory déstructure
+  // `configResolver` ; la composition passait `guildConfigResolver`, donc
+  // `this.configResolver` restait null. Conséquence silencieuse (aucune erreur) :
+  // resolveConfiguration() court-circuitait sur `{ config: {} }`, d'où
+  //   • `context.config.language` toujours undefined ⇒ la locale retombait sur
+  //     celle du client Discord : un serveur persisté en "en" affichait le
+  //     panneau Welcome/Goodbye en français ;
+  //   • `context.config` vide pour les modales (message, MP, couleur d'embed)
+  //     qui pré-remplissaient donc des valeurs par défaut au lieu des valeurs
+  //     enregistrées ;
+  //   • le fail-closed BackendUnavailableError déjà testé n'était jamais armé.
+  // Le nom de la variable locale est conservé, seule la clé passée change.
+  const contextFactory = new InteractionContextFactory({ configResolver: guildConfigResolver, i18n, permissions, errorResponder, logger });
   const registry = new InteractionRegistry(); const router = new InteractionRouter({ registry, contextFactory, logger });
   const entitlementService = getEntitlementService();
   const configurationReader = typeof legacyConfigService.getGuildConfigState === "function"
@@ -154,7 +168,7 @@ function createGuildSettingsRuntime({ legacyConfigService, logger = null }) {
   const registration = registerGuildSettings({ registry, settings, i18n });
   const moderationRegistration = registerModeration({ registry });
   const channelModerationRegistration = registerChannelModeration({ registry });
-  const welcomeTemplateRegistry = new WelcomeTemplateRegistry(); welcomeTemplateRegistry.discover();
+  const welcomeTemplateRegistry = new WelcomeTemplateRegistry({ templatesPaths: defaultTemplateRoots() }); welcomeTemplateRegistry.discover();
   const imagePipeline = new WelcomeImagePipeline({ renderer: new WelcomeImageRenderer({ resourceCache: new WelcomeResourceCache() }), theme: imageTheme });
   registerAutoRole({ registry, service: new AutoRoleService({ guildConfigResolver }) });
   registerLogs({
@@ -238,15 +252,40 @@ function createGuildSettingsRuntime({ legacyConfigService, logger = null }) {
         member: context.envelope.discordMember,
       }),
     }),
+    // P-CAPT L3 — même singleton EntitlementService que le reste du bot :
+    // aucun système Premium parallèle (fail-closed si indisponible).
+    entitlementService,
+    // P-CAPT L4 — même singleton de journaux (canal de modération existant) :
+    // aucun système de journalisation parallèle.
+    logsRuntime: getLogsRuntime(),
+    // P-CAPT L5 — signal raid : peek du moteur anti-raid EXISTANT, résolu
+    // paresseusement à chaque vérification (aucun couplage d'initialisation,
+    // aucun état persisté, aucune écriture de configuration).
+    raidSignal: (guildId) => {
+      try {
+        return getSecurityRuntime().isRaidActive(guildId) === true;
+      } catch {
+        return false;
+      }
+    },
     settingsHome,
   });
-  registerWelcomeGoodbye({
+  // Image Welcome personnalisée (Premium) : le panneau d'administration et la
+  // livraison utilisent le MÊME bucket et la même résolution, donc l'aperçu ne
+  // peut pas différer de la carte réellement envoyée.
+  const welcomeImageStorage = createWelcomeImageStorage({ logger });
+  const welcomeGoodbyeRegistration = registerWelcomeGoodbye({
     imagePipeline,
     templateRegistry: welcomeTemplateRegistry,
     settingsHome,
     registry,
     service: new WelcomeGoodbyeService({ guildConfigResolver }),
     adminLogService: new WelcomeAdminLogService({ logger }),
+    imageStore: welcomeImageStorage.imageStore,
+    resourceCache: welcomeImageStorage.resourceCache,
+    // Observabilité : sans logger, tout refus d'upload était invisible dans la
+    // console du hosting (aucun log produit sur le chemin de rejet).
+    logger,
     // Phase Premium — gate centralisée : l'aperçu de la carte Welcome image
     // exige l'entitlement WELCOME_IMAGE (le service est partagé avec le
     // panneau Tickets/Admin, une seule source de vérité Premium).
@@ -278,6 +317,7 @@ function createGuildSettingsRuntime({ legacyConfigService, logger = null }) {
   const discord = new DiscordInteractionAdapter({ router, registry });
   const commandDefinitions = [
     ...registration.commands,
+    ...welcomeGoodbyeRegistration.commands,
     ...moderationRegistration.commands,
     ...channelModerationRegistration.commands,
     ...autoModRegistration.commands,

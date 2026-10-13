@@ -67,6 +67,86 @@ class DiscordCaptchaTransport {
   async assignRole(member, role) {
     await member.roles.add(role);
   }
+
+  async unassignRole(member, role) {
+    await member.roles.remove(role);
+  }
+
+  /**
+   * P-CAPT L2 — création d'un rôle provisionné. Le rôle est repositionné
+   * sous le rôle le plus haut du bot (best-effort) : sans cela le rôle créé
+   * en haut de la hiérarchie serait inexploitable (canManageRole strict).
+   */
+  async createRole(name) {
+    const role = await this.guild.roles.create({ name, mentionable: false, hoist: false, reason: "CIVRAT Captcha provisioning" });
+    const highest = this.guild.members.me?.roles?.highest;
+    if (highest && typeof role.setPosition === "function" && role.position >= highest.position) {
+      try {
+        await role.setPosition(Math.max(1, highest.position - 1), "CIVRAT Captcha role hierarchy");
+      } catch {
+        // Hiérarchie non ajustable : l'attribut est peut-être impossible —
+        // le contrôleur renverra un code clair plus tard.
+      }
+    }
+    return role;
+  }
+
+  /**
+   * P-CAPT L2 — recrée UNIQUEMENT le canal captcha manquant, avec le seul
+   * overwrite nécessaire (lecture pour tous, aucune écriture membre).
+   * Aucun autre salon ni permission globale n'est touché.
+   */
+  async createCaptchaChannel(name) {
+    return this.guild.channels.create({
+      name,
+      type: 0,
+      reason: "CIVRAT Captcha provisioning",
+      permissionOverwrites: [{ id: this.guild.roles.everyone.id, deny: [PermissionsBitField.Flags.SendMessages] }],
+    });
+  }
+
+  /**
+   * P-CAPT L2 — applique l'overwrite du canal SI absent (jamais d'écrasement
+   * d'un réglage déjà présent, jamais d'autre salon).
+   */
+  async ensureChannelControl(channelId) {
+    const channel = this.guild.channels.cache.get(channelId);
+    if (!channel || typeof channel.permissionOverwrites?.cache?.has !== "function") {
+      return { ok: false, reason: "captcha.channelInvalid" };
+    }
+    const everyoneId = this.guild.roles.everyone.id;
+    const existing = channel.permissionOverwrites.cache.get(everyoneId);
+    if (existing && existing.deny?.has?.(PermissionsBitField.Flags.SendMessages)) {
+      return { ok: true, changed: false };
+    }
+    if (existing) return { ok: true, changed: false, untouched: true };
+    try {
+      await channel.permissionOverwrites.edit(everyoneId, { SendMessages: false }, "CIVRAT Captcha channel control");
+      return { ok: true, changed: true };
+    } catch (error) {
+      return { ok: false, reason: "captcha.channelPermissionsMissing", error: error?.message || String(error) };
+    }
+  }
+
+  /** P-CAPT L2 — membre vu par le runtime (wrapper {id, roleIds, discordMember}). */
+  wrapMember(member) {
+    return { id: member.id, roleIds: [...member.roles.cache.keys()], discordMember: member };
+  }
+
+  /** P-CAPT L2 — échantillon borné de membres pour force-existing (best-effort). */
+  async fetchMembers(limit) {
+    try {
+      const fetched = await this.guild.members.fetch();
+      const all = [...fetched.values()];
+      return all.slice(0, Math.max(0, limit));
+    } catch (error) {
+      throw new Error(`captcha_members_fetch_failed:${error?.message || String(error)}`);
+    }
+  }
+
+  async sendStatusDM(discordMember, content) {
+    await discordMember.user.send(content);
+  }
 }
 
 module.exports = { DiscordCaptchaTransport };

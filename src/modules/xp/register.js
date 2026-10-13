@@ -4,6 +4,7 @@ const { PermissionName } = require("../../core/permissions");
 const { XPConfigKey: Key } = require("./configuration/xpConstants");
 const { XPComponentId: Id } = require("./configuration/xpConstants");
 const { xpSettingsView } = require("./interactions/xpSettingsViews");
+const { enforceConfigWrite } = require("../../core/rateLimit/ActionRateLimitGuard");
 
 // A2 — intégration /settings du module XP : activation et retour au panneau via
 // settingsHome. Le gain (xp_per_message) et le cooldown (xp_cooldown) sont lus
@@ -28,6 +29,11 @@ function registerXPSettings({ registry, configService, settingsHome = null }) {
     customId: Id.TOGGLE,
     permissions,
     execute: async (context) => {
+      // P6 §5 — écriture de configuration : garde AVANT read/upsert ; au
+      // dépassement, réponse éphémère déjà envoyée, vue non rafraîchie.
+      // (Seul ce toggle écrit ici — le moteur XP, son cooldown et ses dépôts
+      // restent strictement intouchés.)
+      if (!(await enforceConfigWrite(context))) return;
       const config = await configService.read(context.guildId);
       await configService.update(context.guildId, { [Key.ENABLED]: !config[Key.ENABLED] });
       return renderSettings(context);
