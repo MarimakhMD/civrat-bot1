@@ -7,6 +7,7 @@ const { CaptchaPanelService } = require("../services/CaptchaPanelService");
 const { CaptchaPanelDeliveryService } = require("../services/CaptchaPanelDeliveryService");
 const { DiscordCaptchaTransport } = require("../../../adapters/discord/DiscordCaptchaTransport");
 const { CaptchaConfigKey: Key } = require("../configuration/captchaConstants");
+const { logProvisionFailures, logPanelPublished } = require("./captchaLifecycleLogs");
 const { I18nService, resolveGuildLocale } = require("../../../core/i18n");
 const captchaEn = require("../translations/en.json");
 const captchaFr = require("../translations/fr.json");
@@ -31,7 +32,7 @@ function translatorFor(guild) {
  * Bots ignorés, aucune sanction, aucun membre existant traité ici
  * (force-existing reste opt-in, géré dans les réglages).
  */
-function createCaptchaRuntime({ guildConfigResolver, transportFactory = null }) {
+function createCaptchaRuntime({ guildConfigResolver, transportFactory = null, logsRuntime = null }) {
   const configService = new CaptchaConfigService({ guildConfigResolver });
   const makeTransport = transportFactory || (({ guild, member }) => new DiscordCaptchaTransport({ guild, member }));
 
@@ -59,6 +60,9 @@ function createCaptchaRuntime({ guildConfigResolver, transportFactory = null }) 
     } catch {
       // jamais fatal : le reste du join continue avec la config lue.
     }
+    // P-CAPT L4 — un échec de réparation automatique est journalisé (best-effort,
+    // dédupliqué) : jamais de journal quand tout est intact.
+    await logProvisionFailures({ guild: member.guild, config, results: provision, logsRuntime });
 
     // 2. Rôles : retrait du rôle vérifié, application du rôle non vérifié.
     const roles = { verifiedRemoved: false, unverifiedApplied: false, failures: [] };
@@ -100,6 +104,8 @@ function createCaptchaRuntime({ guildConfigResolver, transportFactory = null }) 
       } catch (error) {
         panel = { delivered: false, reason: "captcha.panelSendFailed", details: { error: error?.message || String(error) } };
       }
+      // P-CAPT L4 — seule une publication RÉELLE est journalisée.
+      await logPanelPublished({ guild: member.guild, config, result: panel, logsRuntime });
     }
 
     // 4. DM de statut « non vérifié » (best-effort : les DM peuvent être fermés).
@@ -134,8 +140,13 @@ function createCaptchaRuntime({ guildConfigResolver, transportFactory = null }) 
           configService,
         });
         const result = await delivery.deliver(guild.id, translatorFor(guild));
-        if (result.delivered) summary.delivered += 1;
-        else summary.skipped += 1;
+        if (result.delivered) {
+          summary.delivered += 1;
+          // P-CAPT L4 — panneau publié/régénéré au démarrage.
+          await logPanelPublished({ guild, config, result, logsRuntime });
+        } else {
+          summary.skipped += 1;
+        }
       } catch {
         summary.failed += 1;
       }

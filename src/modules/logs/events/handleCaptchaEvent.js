@@ -16,6 +16,7 @@ async function handleCaptchaEvent({
   action,
   memberId = null,
   roleId = null,
+  details: extraDetails = null,
   mapper,
   service,
   delivery,
@@ -25,6 +26,16 @@ async function handleCaptchaEvent({
   const details = {};
   if (memberId) details.memberId = memberId;
   if (roleId) details.roleId = roleId;
+  // P-CAPT L4 — champs supplémentaires fournis par l'appelant (cycle de vie
+  // CAPTCHA : panneau, provisioning, force-existing). Le rendu de chaque
+  // action est déclaré dans le transport ; une clé qui n'y figure pas est
+  // écartée par le contrôle d'intégrité habituel (jamais publiée brute).
+  if (extraDetails && typeof extraDetails === "object" && !Array.isArray(extraDetails)) {
+    for (const [key, value] of Object.entries(extraDetails)) {
+      if (value === undefined) continue;
+      details[key] = value;
+    }
+  }
 
   const entry = mapper.map({
     guildId: guild.id,

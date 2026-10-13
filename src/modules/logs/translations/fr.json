@@ -88,6 +88,9 @@
     "suggestion_approved": "✅ Suggestion approuvée",
     "suggestion_rejected": "❌ Suggestion refusée",
     "suggestion_deleted": "🗑️ Suggestion supprimée",
-    "xp_level_up": "⬆️ Niveau supérieur atteint"
+    "xp_level_up": "⬆️ Niveau supérieur atteint",
+    "captcha_provision_failed": "⚠️ Provisionnement CAPTCHA en échec",
+    "captcha_panel_published": "📌 Panneau CAPTCHA publié",
+    "captcha_force_existing": "🧹 CAPTCHA appliqué aux membres existants"
   }
 }

@@ -166,6 +166,41 @@ const CaptchaLevelPresets = Object.freeze({
   [CaptchaLevel.RAID]: Object.freeze({ mode: CaptchaMode.CHALLENGE, expiryMinutes: 1, attempts: 2, cooldownSeconds: 60 }),
 });
 
+/**
+ * P-CAPT L5 — durcissement pendant un raid (valeurs du preset RAID, plan
+ * validé) : 2 tentatives, 60 s de cooldown, 1 min d'expiration, donc un
+ * blocage temporaire de 120 s (cooldown × tentatives).
+ *
+ * Aucune configuration n'est écrite : le durcissement est une VUE calculée à
+ * l'exécution, appliquée tant que le moteur anti-raid signale l'état raid, et
+ * relâchée automatiquement dès qu'il ne le signale plus (fenêtre glissante).
+ */
+const CaptchaRaidHardening = Object.freeze({
+  ATTEMPTS: 2,
+  COOLDOWN_SECONDS: 60,
+  EXPIRY_MINUTES: 1,
+});
+
+/**
+ * Limites durcies : RÈGLE MONOTONE — le durcissement ne peut que réduire le
+ * nombre de tentatives, allonger le cooldown et raccourcir l'expiration. Une
+ * configuration déjà plus stricte que le preset RAID est donc CONSERVÉE
+ * (jamais assouplie), et les tentatives ne peuvent jamais tomber sous 1.
+ */
+function hardenCaptchaSessionSettings(settings) {
+  const maxAttempts = Math.max(1, Math.min(settings.maxAttempts, CaptchaRaidHardening.ATTEMPTS));
+  const cooldownMs = Math.max(settings.cooldownMs, CaptchaRaidHardening.COOLDOWN_SECONDS * 1000);
+  const expiryMs = Math.min(settings.expiryMs, CaptchaRaidHardening.EXPIRY_MINUTES * 60 * 1000);
+  return Object.freeze({
+    expiryMs,
+    maxAttempts,
+    cooldownMs,
+    // Blocage dérivé comme en L1 (cooldown × tentatives) : 60 s × 2 = 120 s.
+    blockMs: cooldownMs * maxAttempts,
+    hardened: true,
+  });
+}
+
 /** Expérience Premium : niveaux HIGH/RAID ou mode challenge. */
 const CAPTCHA_PREMIUM_LEVELS = Object.freeze([CaptchaLevel.HIGH, CaptchaLevel.RAID]);
 function isCaptchaPremiumLevel(level) {
@@ -265,6 +300,31 @@ function resolveCaptchaPlan(config, { granted = false } = {}) {
   return Object.freeze({ ...requested, requestedPremium: requested.premium, fellBack: false });
 }
 
+/**
+ * P-CAPT L5 — plan EFFECTIF pendant un raid.
+ *
+ *  • entitlement ACCORDÉ → niveau RAID (mode challenge, type configuré ou
+ *    CHOICE) : l'expérience la plus stricte du plan validé ;
+ *  • entitlement REFUSÉ → plan standard calculé normalement (fail-closed) :
+ *    un serveur Free conserve son bouton, jamais un challenge Premium.
+ *
+ * Le durcissement des LIMITES (axe A) est indépendant de ce plan : il protège
+ * tous les serveurs, Free compris.
+ */
+function resolveCaptchaRaidPlan(config, { granted = false } = {}) {
+  const standard = resolveCaptchaPlan(config || {}, { granted });
+  if (granted !== true) return Object.freeze({ ...standard, raid: true });
+  return Object.freeze({
+    level: CaptchaLevel.RAID,
+    mode: CaptchaLevelPresets[CaptchaLevel.RAID].mode,
+    challengeType: resolveCaptchaChallengeType(config || {}),
+    premium: true,
+    requestedPremium: standard.requestedPremium,
+    fellBack: false,
+    raid: true,
+  });
+}
+
 /** Suffixe de routage d'une réponse de challenge (la route VERIFY est prefix). */
 const CAPTCHA_CHALLENGE_CUSTOM_ID_SEPARATOR = ":";
 
@@ -329,6 +389,10 @@ module.exports = {
   captchaLevelSelection,
   resolveCaptchaRequestedPlan,
   resolveCaptchaPlan,
+  // P-CAPT L5
+  CaptchaRaidHardening,
+  hardenCaptchaSessionSettings,
+  resolveCaptchaRaidPlan,
   buildCaptchaChallengeCustomId,
   parseCaptchaChallengeCustomId,
 };

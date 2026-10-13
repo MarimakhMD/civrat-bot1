@@ -17,6 +17,7 @@ const { TicketChannelNamingService } = require("../modules/tickets/services/Tick
 const { getTicketPanelRepository } = require("../modules/tickets/runtime/getTicketPanelRepository");
 const { DiscordTicketTransport } = require("../adapters/discord/DiscordTicketTransport");
 const { getLogsRuntime } = require("../modules/logs/runtime/getLogsRuntime");
+const { getSecurityRuntime } = require("../modules/security/runtime/getSecurityRuntime");
 const { config } = require("../config");
 const { supabase } = require("../config/database");
 const ticketEn = require("../modules/tickets/translations/en.json");
@@ -254,6 +255,19 @@ function createGuildSettingsRuntime({ legacyConfigService, logger = null }) {
     // P-CAPT L3 — même singleton EntitlementService que le reste du bot :
     // aucun système Premium parallèle (fail-closed si indisponible).
     entitlementService,
+    // P-CAPT L4 — même singleton de journaux (canal de modération existant) :
+    // aucun système de journalisation parallèle.
+    logsRuntime: getLogsRuntime(),
+    // P-CAPT L5 — signal raid : peek du moteur anti-raid EXISTANT, résolu
+    // paresseusement à chaque vérification (aucun couplage d'initialisation,
+    // aucun état persisté, aucune écriture de configuration).
+    raidSignal: (guildId) => {
+      try {
+        return getSecurityRuntime().isRaidActive(guildId) === true;
+      } catch {
+        return false;
+      }
+    },
     settingsHome,
   });
   // Image Welcome personnalisée (Premium) : le panneau d'administration et la

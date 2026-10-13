@@ -15,6 +15,9 @@ const {
   resolveCaptchaSessionSettings,
   resolveCaptchaRequestedPlan,
   resolveCaptchaPlan,
+  // P-CAPT L5 — durcissement raid (limites + plan Premium).
+  hardenCaptchaSessionSettings,
+  resolveCaptchaRaidPlan,
 } = require("../configuration/captchaConstants");
 
 /** Échecs « système / configuration » : n'imputent AUCUNE tentative au membre
@@ -66,14 +69,50 @@ async function readConfig(configService, guildId) {
 }
 
 /**
+ * P-CAPT L5 — état raid, en LECTURE SEULE.
+ *
+ * `raidSignal` est le peek du moteur anti-raid existant (SecurityRaidService
+ * `check()`, déjà branché sur `security_anti_raid`) : aucun enregistrement,
+ * aucun seuil modifié, aucun état persisté. Signal absent (module Sécurité non
+ * injecté), guilde inconnue ou signal en erreur ⇒ pas de durcissement :
+ * l'indisponibilité d'un indicateur ne bloque JAMAIS la vérification d'un
+ * membre légitime.
+ */
+function isRaidActive({ guildId, raidSignal = null }) {
+  if (!guildId || typeof raidSignal !== "function") return false;
+  try {
+    return raidSignal(guildId) === true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Réglages de session EFFECTIFS : ceux configurés (L1/L3), durcis tant que le
+ * moteur anti-raid signale un raid. Aucune écriture : la configuration reste
+ * intacte et le relâchement est automatique dès la fin de la fenêtre.
+ */
+function resolveEffectiveSessionSettings({ config, guildId, raidSignal = null, raidActive = null }) {
+  const settings = resolveCaptchaSessionSettings(config || {});
+  // `raidActive` peut être fourni par l'appelant : une seule évaluation du
+  // signal par interaction (état cohérent du début à la fin du traitement).
+  const raid = raidActive === null ? isRaidActive({ guildId, raidSignal }) : raidActive === true;
+  if (!raid) return settings;
+  return hardenCaptchaSessionSettings(settings);
+}
+
+/**
  * Plan effectif du serveur. L'entitlement n'est interrogé QUE pour une
  * expérience Premium demandée : les serveurs Free ne paient aucun aller-retour
- * supplémentaire (aucune régression de latence L1).
+ * supplémentaire (aucune régression de latence L1) — SAUF pendant un raid, où
+ * le niveau RAID Premium est résolu (fail-closed : sans entitlement accordé,
+ * le mode standard configuré est conservé, jamais un challenge Premium).
  */
-async function resolveEffectivePlan({ config, guildId, entitlementService }) {
+async function resolveEffectivePlan({ config, guildId, entitlementService, raidActive = false }) {
   const requested = resolveCaptchaRequestedPlan(config || {});
-  if (!requested.premium) return resolveCaptchaPlan(config || {}, { granted: false });
+  if (!requested.premium && !raidActive) return resolveCaptchaPlan(config || {}, { granted: false });
   const decision = await resolveCaptchaEntitlement({ guildId, entitlementService });
+  if (raidActive) return resolveCaptchaRaidPlan(config || {}, { granted: decision.granted === true });
   return resolveCaptchaPlan(config || {}, { granted: decision.granted });
 }
 
@@ -226,6 +265,7 @@ async function startSession(context, verificationService, runtime = {}) {
     rateLimitGuard = null,
     entitlementService = null,
     challenges = null,
+    raidSignal = null,
     clock = Date.now,
   } = runtime;
 
@@ -242,8 +282,10 @@ async function startSession(context, verificationService, runtime = {}) {
   const challengeService = challenges || new CaptchaChallengeService({ clock });
 
   // 2. Config : réglages (durée/tentatives/cooldown) + transmission à verify.
+  // P-CAPT L5 — un raid en cours durcit les limites SANS toucher la config.
   const config = await readConfig(configService, guildId);
-  const settings = resolveCaptchaSessionSettings(config || {});
+  const raidActive = isRaidActive({ guildId, raidSignal });
+  const settings = resolveEffectiveSessionSettings({ config, guildId, raidSignal, raidActive });
   const now = clock();
 
   // Désactivé (config lue) : refus immédiat, AVANT toute session et tout crédit.
@@ -291,7 +333,9 @@ async function startSession(context, verificationService, runtime = {}) {
   }
 
   // 5. Mode effectif (entitlement fail-closed) : challenge uniquement si accordé.
-  const plan = await resolveEffectivePlan({ config, guildId, entitlementService });
+  // Pendant un raid : niveau RAID si l'entitlement est accordé, sinon plan
+  // standard (bouton) — et les limites restent durcies pour tout le monde.
+  const plan = await resolveEffectivePlan({ config, guildId, entitlementService, raidActive });
   if (plan.mode === CaptchaMode.CHALLENGE && session && guildId && memberId) {
     return issueChallenge(context, { store, guildId, memberId, plan, challenges: challengeService });
   }
@@ -315,6 +359,7 @@ async function handleChallengeAnswer(context, verificationService, runtime) {
     sessionStore = null,
     entitlementService = null,
     challenges = null,
+    raidSignal = null,
     clock = Date.now,
     parsed,
   } = runtime;
@@ -334,7 +379,9 @@ async function handleChallengeAnswer(context, verificationService, runtime) {
   if (!guildId || !memberId) return replyWith("CAPTCHA_SESSION_EXPIRED");
 
   const config = await readConfig(configService, guildId);
-  const settings = resolveCaptchaSessionSettings(config || {});
+  // P-CAPT L5 — mêmes limites effectives qu'au démarrage (lecture synchrone :
+  // aucun await n'est inséré entre la lecture d'état et la validation).
+  const settings = resolveEffectiveSessionSettings({ config, guildId, raidSignal });
 
   // Entitlement re-vérifié (fail-closed) AVANT le chemin critique : un droit
   // retiré en cours de session ne laisse jamais consommer une expérience

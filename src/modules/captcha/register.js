@@ -22,7 +22,7 @@ const { previewCaptcha } = require("./interactions/captchaPreview");
 const { CaptchaSessionStore } = require("./services/CaptchaSessionStore");
 const { CaptchaChallengeService } = require("./services/CaptchaChallengeService");
 
-function registerCaptcha({ registry, service, verificationServiceFactory, settingsHome = null, entitlementService = null }) {
+function registerCaptcha({ registry, service, verificationServiceFactory, settingsHome = null, entitlementService = null, logsRuntime = null, raidSignal = null }) {
   const permissions = { allOf: [PermissionName.MANAGE_GUILD] };
   // P-CAPT L1 — store mémoire partagé par toutes les routes CAPTCHA de ce
   // runtime (singleton de process, comme les autres runtimes du bot).
@@ -30,7 +30,11 @@ function registerCaptcha({ registry, service, verificationServiceFactory, settin
   // P-CAPT L3 — service de challenges partagé (historique anti-répétition par
   // membre) : une seule instance, aucune session parallèle.
   const challengeService = new CaptchaChallengeService();
-  const context = (c) => ({ ...c, service, entitlementService });
+  // P-CAPT L4 — runtime de journaux injecté (même singleton que le reste du
+  // bot) : les interactions CAPTCHA journalisent sans dépendance circulaire.
+  // P-CAPT L5 — `raidSignal` : peek LECTURE SEULE du moteur anti-raid (jamais
+  // un second moteur, jamais un état persisté par le CAPTCHA).
+  const context = (c) => ({ ...c, service, entitlementService, logsRuntime, raidSignal });
 
   // Vues : le `granted` n'est résolu que pour une expérience Premium demandée.
   const renderView = async (c, render) => {
@@ -67,6 +71,7 @@ function registerCaptcha({ registry, service, verificationServiceFactory, settin
       sessionStore,
       challenges: challengeService,
       entitlementService,
+      raidSignal: c.raidSignal ?? raidSignal,
       rateLimitGuard: c.rateLimitGuard ?? null,
     }),
   });

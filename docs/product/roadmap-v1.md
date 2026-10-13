@@ -14,7 +14,7 @@ Le développement suit des petites missions ciblées : plan validé, développem
 | 4 | Modération | Partielle | Moderniser les commandes et règles legacy. |
 | 5 | Tickets | Développement complet / validation réelle en attente | Cycle complet Tickets, Transcript, logs locaux et Claim. |
 | 6 | Logs & Audit serveur | Développement complet / validation réelle en attente | Logs guild-locales via Logs Foundation. |
-| 7 | AutoMod & Protection | Partielle | Moderniser AutoMod et Security legacy. |
+| 7 | AutoMod & Protection | Développement complet / validation réelle en attente | Moderniser AutoMod et Security legacy. |
 | 8 | Roles & Automatisation | Partielle | AutoRole achevé offline ; automatisations restantes. |
 | 9 | Analytics | Développement complet / validation réelle en attente | Runtime unifié (une seule instance lue/écrite), classements XP/Invites sur les mêmes stockages que l'écriture, `/settings` XP + Invites, `/invites` câblée. Migration `analytics_events` documentée (cf. docs/architecture/phase-11-analytics-unification.md). |
 | 10 | Premium | Partielle — Ticket Premium livré / validation réelle en attente | Entitlements via `guild_entitlements` livrés pour Ticket Premium 10.1–10.4 : panneau personnalisé, contenu (accueil + salon transcript), nommage atomique `{number}` — socle Free inchangé, fail-closed sans entitlement. Autres capacités Premium non démarrées. |

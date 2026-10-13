@@ -190,6 +190,7 @@ const LOG_COLORS = Object.freeze({
   ticket_creation_rolled_back: "#E74C3C",
   ticket_creation_orphan: "#E74C3C",
   captcha_verification_failed: "#E74C3C",
+  captcha_provision_failed: "#E74C3C",
   security_raid: "#C0392B",
   security_bot: "#C0392B",
   security_nuke: "#C0392B",
@@ -203,11 +204,13 @@ const LOG_COLORS = Object.freeze({
   member_timed_out: "#E67E22",
   member_kicked: "#E67E22",
   automod: "#E67E22",
+  captcha_force_existing: "#E67E22",
   warn: "#E67E22",
   ticket_closed: "#E67E22",
   ticket_renamed: "#E67E22",
   // bleu/cyan — invitations / information
   invite_created: "#3498DB",
+  captcha_panel_published: "#3498DB",
   invite_used: "#3498DB",
   ticket_reopened: "#3498DB",
   ticket_claimed: "#3498DB",
@@ -465,6 +468,30 @@ const CAPTCHA_FIELDS = Object.freeze([
   ["roleId", "idRole"],
 ]);
 
+// P-CAPT L4 — rendus dédiés aux événements de cycle de vie CAPTCHA.
+// Aucun nouveau libellé : `target`, `reason`, `rule`, `channel`, `before`,
+// `idRole`, `idChannel`, `idMessage`, `idModerator` existent déjà en FR et EN.
+const CAPTCHA_PROVISION_FIELDS = Object.freeze([
+  ["target", "target"],
+  ["reason", "reason"],
+  ["roleId", "role"],
+  ["channelId", "channel"],
+]);
+
+const CAPTCHA_PANEL_FIELDS = Object.freeze([
+  ["rule", "rule"],
+  ["channel", "channel"],
+  ["roleId", "role"],
+  ["messageId", "messageId"],
+  ["reason", "reason"],
+]);
+
+const CAPTCHA_FORCE_EXISTING_FIELDS = Object.freeze([
+  ["rule", "rule"],
+  ["moderatorId", "moderator"],
+  ["reason", "reason"],
+]);
+
 const ACTION_FIELDS = Object.freeze({
   member_joined: MEMBER_JOIN_FIELDS,
   member_left: MEMBER_LEAVE_FIELDS,
@@ -507,6 +534,9 @@ const ACTION_FIELDS = Object.freeze({
   ticket_creation_orphan: TICKET_FIELDS,
   captcha_verified: CAPTCHA_FIELDS,
   captcha_verification_failed: CAPTCHA_FIELDS,
+  captcha_provision_failed: CAPTCHA_PROVISION_FIELDS,
+  captcha_panel_published: CAPTCHA_PANEL_FIELDS,
+  captcha_force_existing: CAPTCHA_FORCE_EXISTING_FIELDS,
 });
 
 const CANONICAL_KEYS = new Set(CANONICAL_FIELDS.map(([key]) => key));

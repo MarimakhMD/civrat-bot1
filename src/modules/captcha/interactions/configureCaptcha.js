@@ -17,6 +17,7 @@ const { captchaView, captchaAdvancedView } = require("./captchaViews");
 const { DiscordCaptchaTransport } = require("../../../adapters/discord/DiscordCaptchaTransport");
 const { CaptchaProvisioningService } = require("../services/CaptchaProvisioningService");
 const { resolveCaptchaEntitlement } = require("../services/captchaEntitlement");
+const { logProvisionFailures, logForceExisting } = require("../runtime/captchaLifecycleLogs");
 const logger = require("../../../utils/logger");
 
 /**
@@ -187,6 +188,8 @@ async function toggleForceExisting(context) {
   const provisioning = new CaptchaProvisioningService({ configService: context.service, transport });
   const provision = await provisioning.ensure(context.guildId, { force: true });
   const freshConfig = provision.config || config;
+  // P-CAPT L4 — tout échec de réparation est journalisé (best-effort, dédupliqué).
+  await logProvisionFailures({ guild, config: freshConfig, results: provision, logsRuntime: context.logsRuntime || null });
   if (provision.failed.some((f) => f.element === "unverifiedRole")) {
     const failure = provision.failed.find((f) => f.element === "unverifiedRole");
     await context.envelope.transport.reply({
@@ -234,6 +237,9 @@ async function toggleForceExisting(context) {
 
   await context.service.update(context.guildId, { [Key.FORCE_EXISTING]: true });
   logger.info("Captcha force-existing executed", { event: "captcha_force_existing", guildId: context.guildId, actorId: context.userId, ...stats });
+  // P-CAPT L4 — trace dans le canal de modération (le logger.info ne sort que
+  // dans la console) ; jamais bloquant, jamais dupliqué à court terme.
+  await logForceExisting({ guild, config: freshConfig, moderatorId: context.userId, stats, logsRuntime: context.logsRuntime || null });
 
   await context.envelope.transport.reply({
     view: { title: context.t("captcha.title"), content: context.t("captcha.forceSummary", stats), components: [] },

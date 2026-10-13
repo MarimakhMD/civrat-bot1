@@ -408,6 +408,17 @@ function createSecurityRuntime({
       return { handled: true, contentBurst: burst };
     },
 
+    /**
+     * P-CAPT L5 — état raid en LECTURE SEULE (peek du moteur existant).
+     * `check()` ne consomme rien et n'écrit rien : seuils et décisions du
+     * moteur anti-raid restent strictement inchangés. Un raid n'est signalé
+     * que si le moteur a enregistré des arrivées — donc uniquement quand
+     * `security_enabled` ET `security_anti_raid` sont actifs — et l'état
+     * retombe tout seul à la fin de la fenêtre glissante (aucun état
+     * persistant, aucune écriture de configuration).
+     */
+    isRaidActive: (guildId) => raid.check(guildId).isRaid === true,
+
     // Expose services for testing
     _raid: raid,
     _bot: bot,

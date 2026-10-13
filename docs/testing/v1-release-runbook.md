@@ -127,7 +127,9 @@ Renseigner les IDs/noms réels dans le compte rendu d’exécution, pas dans Git
       lien `https://discord.gg/BA3aDFqtXr`, demande d’ouverture de ticket ;
 - [ ] panne entitlement simulée/contrôlée : message « indisponible », distinct
       de « Premium requis » ;
-- [ ] CAPTCHA vérifié selon son protocole dédié, sans régression.
+- [ ] CAPTCHA vérifié selon son protocole dédié (socle, provisionnement,
+      panneau, niveaux/challenges Premium, journaux de cycle de vie,
+      durcissement raid), sans régression ;
 
 ### 5.2 Guilde technique
 
@@ -164,13 +166,17 @@ Renseigner les IDs/noms réels dans le compte rendu d’exécution, pas dans Git
 - [ ] personnalisation Ticket Premium active puis retour Free après révocation ;
 - [ ] Welcome/Goodbye, image Premium, AutoRole, AutoMod, sécurité, TempVoice,
       giveaways, suggestions, logs, Analytics, XP et invitations ;
+- [ ] AutoMod et Sécurité (anti-raid, anti-bot, anti-nuke, permissions,
+      mises à jour) validés selon
+      `security-automod-real-environment-protocol.md` ;
 - [ ] persistance après redémarrage pour les stockages configurés ;
 - [ ] démarrage normal sans PUT de commandes inattendu.
 
 Références spécialisées :
 `tickets-production-validation.md`, `welcome-image-production-validation.md`,
 `captcha-production-validation.md`, `autorole-production-validation.md`,
-`logs-production-validation.md`, `phase-3-real-environment-protocol.md`.
+`logs-production-validation.md`, `phase-3-real-environment-protocol.md`,
+`security-automod-real-environment-protocol.md`.
 
 ## 7. GO / NO-GO
 
