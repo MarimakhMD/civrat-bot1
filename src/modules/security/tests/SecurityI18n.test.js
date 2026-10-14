@@ -39,8 +39,6 @@ test("Global runtime parity still holds with Security", () => {
   const welcomeFr = require("../../welcome-goodbye/translations/fr.json");
   const autoRoleEn = require("../../autorole/translations/en.json");
   const autoRoleFr = require("../../autorole/translations/fr.json");
-  const captchaEn = require("../../captcha/translations/en.json");
-  const captchaFr = require("../../captcha/translations/fr.json");
   const ticketEn = require("../../tickets/translations/en.json");
   const ticketFr = require("../../tickets/translations/fr.json");
   const moderationEn = require("../../moderation/translations/en.json");
@@ -50,8 +48,8 @@ test("Global runtime parity still holds with Security", () => {
   const autoModEn = require("../../automod/translations/en.json");
   const autoModFr = require("../../automod/translations/fr.json");
   const dictionaries = {
-    en: { ...en, ...guildSettingsEn, ...welcomeEn, ...autoRoleEn, ...logsEn2, ...captchaEn, ...ticketEn, ...moderationEn, ...autoModEn, ...secEn },
-    fr: { ...fr, ...guildSettingsFr, ...welcomeFr, ...autoRoleFr, ...logsFr2, ...captchaFr, ...ticketFr, ...moderationFr, ...autoModFr, ...secFr },
+    en: { ...en, ...guildSettingsEn, ...welcomeEn, ...autoRoleEn, ...logsEn2, ...ticketEn, ...moderationEn, ...autoModEn, ...secEn },
+    fr: { ...fr, ...guildSettingsFr, ...welcomeFr, ...autoRoleFr, ...logsFr2, ...ticketFr, ...moderationFr, ...autoModFr, ...secFr },
   };
   assert.equal(validateTranslationParity(dictionaries), true);
 });

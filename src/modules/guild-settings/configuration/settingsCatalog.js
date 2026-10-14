@@ -82,13 +82,6 @@ const SETTINGS_CATALOG = Object.freeze([
         customId: "civrat:v1:security:section",
         isEnabled: enabledBy("security_enabled"),
       }),
-      feature({
-        id: "captcha",
-        labelKey: "captcha.section",
-        customId: "civrat:v1:captcha:section",
-        isEnabled: enabledBy("captcha_enabled"),
-        isConfigured: configuredByAll("captcha_channel_id", "captcha_role_id"),
-      }),
     ]),
   }),
   Object.freeze({

@@ -28,13 +28,26 @@ test("P0.2: messageUpdate ne compare le contenu que pour des messages non partie
   assert.match(src, /oldMessage\.partial/, "vérifie oldMessage.partial");
 });
 
-test("P0.4: guildMemberAdd isole l'appel captcha dans un try/catch", () => {
+test("P0.4: guildMemberAdd isole chaque délégation de module dans un try/catch", () => {
   const src = fs.readFileSync("src/events/guildMemberAdd.js", "utf8");
-  assert.match(src, /captcha_join_failed/, "un log ciblé captcha_join_failed est présent");
-  const idx = src.indexOf("getCaptchaRuntime().handleMemberJoined(member)");
-  assert.ok(idx > 0, "l'appel captcha est présent");
-  assert.match(src.slice(0, idx), /try\s*\{/, "un try { précède l'appel captcha");
-  assert.match(src.slice(idx), /\}\s*catch/, "un } catch suit l'appel captcha");
+  // Le CAPTCHA a été retiré en V1 : aucune délégation ne doit subsister.
+  assert.doesNotMatch(src, /getCaptchaRuntime|captcha/i, "plus aucune référence CAPTCHA dans l'événement");
+  // La garantie P0.4 est conservée et étendue : chaque appel de module reste
+  // isolé, afin qu'un échec d'onboarding ne prive jamais le membre de son log.
+  const delegations = [
+    ["getAutoRoleRuntime().handleMemberJoined(member)", "autorole_join_failed"],
+    ["getWelcomeGoodbyeRuntime().handleMemberAdded(member)", "welcome_join_failed"],
+    ["getLogsRuntime().handleMemberJoined(member, inviteResult, inviterStats)", "member_join_log_failed"],
+    ["getSecurityRuntime().handleMemberJoined(member)", "security_join_failed"],
+    ["getAnalyticsRuntime().trackMember(member)", "analytics_member_failed"],
+  ];
+  for (const [call, event] of delegations) {
+    const idx = src.indexOf(call);
+    assert.ok(idx > 0, `l'appel ${call} est présent`);
+    assert.match(src.slice(0, idx), /try\s*\{/, `un try { précède ${call}`);
+    assert.match(src.slice(idx), /\}\s*catch/, `un } catch suit ${call}`);
+    assert.match(src, new RegExp(event), `le log ciblé ${event} est présent`);
+  }
 });
 
 // ───────────────────────────────────────────────────────────────

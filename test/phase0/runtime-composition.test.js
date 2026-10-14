@@ -38,15 +38,13 @@ const EXPECTED_MODULE_COMMAND_COUNT = 22;
 const EXPECTED_ROUTE_COUNTS = Object.freeze({
   // Image personnalisée (Premium) : 132 -> 136, soit 4 contrôles de la
   // sous-vue « Image Welcome » (entrée, aide d'upload, suppression, retour).
-  // P-CAPT L1 : 136 -> 137 (bouton « Avancé ») et 21 -> 23 (selects
-  // expiration + tentatives/cooldown) — sous-vue réglages CAPTCHA.
-  // P-CAPT L2 : 137 -> 138 (bouton force-existing) et 23 -> 24 (select
-  // rôle non vérifié) — réglages rôles/join/panneau CAPTCHA.
-  // P-CAPT L3 : 24 -> 27 (selects niveau + mode + type de challenge) — les
-  // réponses de challenge sont routées par la route VERIFY existante
-  // (matcher `prefix`), donc AUCUN bouton supplémentaire : 138 inchangé.
-  [InteractionKind.BUTTON]: 138,
-  [InteractionKind.SELECT_MENU]: 27,
+  // V1 — CAPTCHA retiré : 138 -> 130 boutons et 27 -> 19 selects, soit les
+  // 8 boutons (section, toggle, preview, reset, avancé, force-existing,
+  // verify, retour) et les 8 selects (salon, rôle, durée, limites, rôle non
+  // vérifié, niveau, mode, type de challenge) du module supprimé. Les MODALES
+  // ne sont pas concernées : le CAPTCHA n'en enregistrait aucune.
+  [InteractionKind.BUTTON]: 130,
+  [InteractionKind.SELECT_MENU]: 19,
   [InteractionKind.MODAL]: 27,
 });
 
@@ -56,7 +54,6 @@ const EXPECTED_ROUTE_COUNTS = Object.freeze({
  * ce test.
  */
 const EXPECTED_PERMISSION_FREE_ROUTES = Object.freeze([
-  "civrat:v1:captcha:verify",
   "civrat:v1:tickets:add-member",
   "civrat:v1:tickets:add-member:submit",
   "civrat:v1:tickets:claim",

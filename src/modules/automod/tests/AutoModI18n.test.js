@@ -40,15 +40,13 @@ test("Global runtime dictionary parity still holds after AutoMod log keys", () =
   const welcomeFr = require("../../welcome-goodbye/translations/fr.json");
   const autoRoleEn = require("../../autorole/translations/en.json");
   const autoRoleFr = require("../../autorole/translations/fr.json");
-  const captchaEn = require("../../captcha/translations/en.json");
-  const captchaFr = require("../../captcha/translations/fr.json");
   const ticketEn = require("../../tickets/translations/en.json");
   const ticketFr = require("../../tickets/translations/fr.json");
   const moderationEn = require("../../moderation/translations/en.json");
   const moderationFr = require("../../moderation/translations/fr.json");
   const dictionaries = {
-    en: { ...en, ...guildSettingsEn, ...welcomeEn, ...autoRoleEn, ...logsEn, ...captchaEn, ...ticketEn, ...moderationEn, ...autoModEn },
-    fr: { ...fr, ...guildSettingsFr, ...welcomeFr, ...autoRoleFr, ...logsFr, ...captchaFr, ...ticketFr, ...moderationFr, ...autoModFr },
+    en: { ...en, ...guildSettingsEn, ...welcomeEn, ...autoRoleEn, ...logsEn, ...ticketEn, ...moderationEn, ...autoModEn },
+    fr: { ...fr, ...guildSettingsFr, ...welcomeFr, ...autoRoleFr, ...logsFr, ...ticketFr, ...moderationFr, ...autoModFr },
   };
   assert.equal(validateTranslationParity(dictionaries), true);
 });

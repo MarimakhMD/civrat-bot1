@@ -74,7 +74,7 @@ test("PHASE0 — 22 commandes modulaires + 2 adapters statiques", () => {
   });
   assert.equal(moduleCommands.length, 22, `attendu 22 commandes modulaires, obtenu ${moduleCommands.length}`);
   // Les deux adapters legacy de src/commands/ complètent le catalogue.
-  for (const legacy of ["captcha", "ticketpanel"]) {
+  for (const legacy of ["ticketpanel"]) {
     assert.ok(loaded.has(legacy), `l'adapter legacy /${legacy} est absent du catalogue`);
     assert.ok(!moduleCommands.includes(legacy), `/${legacy} ne doit pas être exposé deux fois`);
   }

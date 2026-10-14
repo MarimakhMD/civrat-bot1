@@ -80,17 +80,12 @@
     "ticket_member_removed": "➖ Member removed from ticket",
     "ticket_creation_rolled_back": "↩️ Ticket creation rolled back",
     "ticket_creation_orphan": "⚠️ Orphan ticket detected",
-    "captcha_verified": "✅ CAPTCHA verified",
-    "captcha_verification_failed": "❌ CAPTCHA verification failed",
     "giveaway_created": "🎁 Giveaway created",
     "giveaway_drawn": "🏆 Giveaway drawn",
     "suggestion_created": "💡 Suggestion created",
     "suggestion_approved": "✅ Suggestion approved",
     "suggestion_rejected": "❌ Suggestion rejected",
     "suggestion_deleted": "🗑️ Suggestion deleted",
-    "xp_level_up": "⬆️ Level up reached",
-    "captcha_provision_failed": "⚠️ CAPTCHA provisioning failed",
-    "captcha_panel_published": "📌 CAPTCHA panel published",
-    "captcha_force_existing": "🧹 CAPTCHA applied to existing members"
+    "xp_level_up": "⬆️ Level up reached"
   }
 }

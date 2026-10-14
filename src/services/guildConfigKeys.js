@@ -77,33 +77,6 @@ const AUTOROLE_KEYS = Object.freeze([
   "autorole_bot_role_id",
 ]);
 
-/**
- * CAPTCHA — module GELÉ.
- *
- * Ces clés sont déclarées pour ne pas casser un réglage existant, mais aucun
- * fichier de src/modules/captcha/** n'est modifié par A1.
- */
-const CAPTCHA_KEYS = Object.freeze([
-  "captcha_enabled",
-  "captcha_channel_id",
-  "captcha_role_id",
-  // P-CAPT L1 — réglages de session (doublon doc : colonnes à ajouter en
-  // manuel sur Supabase comme P7, aucun SQL exécuté par le code).
-  "captcha_expiry_minutes",
-  "captcha_attempts",
-  "captcha_cooldown_seconds",
-  // P-CAPT L2 — rôle non vérifié, force-existing, panneau officiel persisté
-  // (4 colonnes manuelles supplémentaires — SQL fourni au rapport L2).
-  "captcha_unverified_role_id",
-  "captcha_force_existing",
-  "captcha_panel_channel_id",
-  "captcha_panel_message_id",
-  // P-CAPT L3 — niveau, mode et type de challenge (3 colonnes manuelles
-  // supplémentaires — SQL fourni au rapport L3, jamais exécuté par le code).
-  "captcha_level",
-  "captcha_mode",
-  "captcha_challenge",
-]);
 
 /** Giveaways. */
 const GIVEAWAYS_KEYS = Object.freeze([
@@ -270,7 +243,6 @@ const GUILD_CONFIG_KEY_GROUPS = Object.freeze({
   analytics: ANALYTICS_KEYS,
   automod: AUTOMOD_KEYS,
   autorole: AUTOROLE_KEYS,
-  captcha: CAPTCHA_KEYS,
   giveaways: GIVEAWAYS_KEYS,
   invites: INVITES_KEYS,
   logs: LOGS_KEYS,

@@ -5,4 +5,4 @@ vérifier l’attribution sur arrivée humaine et bot. Vérifier séparément Au
 désactivé, rôle absent, rôle géré, rôle au-dessus de CIVRAT, ManageRoles absent,
 membre non gérable et rôle déjà détenu. Confirmer les logs guild
 `AUTOROLE_ASSIGNED`, `AUTOROLE_SKIPPED`, `AUTOROLE_ASSIGNMENT_FAILED` et la
-continuité Welcome, Captcha, Invites et Security.
+continuité Welcome, Invites et Security.

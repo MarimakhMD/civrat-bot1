@@ -157,7 +157,6 @@ const EXPECTED_GLOBAL_COMMAND_NAMES = Object.freeze([
   "analytics_xp",
   "automod",
   "bannir",
-  "captcha",
   "debannir",
   "deverrouiller",
   "expulser",

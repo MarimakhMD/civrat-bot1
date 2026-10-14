@@ -31,10 +31,10 @@ et exemptions.
       alerte, comportement identique ;
 - [ ] deux guildes de test simultanées : aucun mélange de compteurs ;
 - [ ] `security_anti_raid` désactivé : aucune alerte malgré 20 arrivées ;
-- [ ] avec CAPTCHA activé : les limites CAPTCHA sont durcies pendant le raid
-      (2 tentatives / 60 s / 1 min / blocage 120 s) et reviennent à la
-      configuration après le raid (voir le protocole CAPTCHA) ;
-- [ ] seuils et décisions du moteur anti-raid identiques avec et sans CAPTCHA.
+- [ ] `isRaidActive(guildId)` (lecture seule) reflète l'état du moteur sans
+      consommer ni écrire : `true` pendant la fenêtre, `false` après, isolation
+      par guilde ; le CAPTCHA retiré en V1 ne consomme plus ce signal ;
+- [ ] aucun seuil ni décision du moteur anti-raid n'est modifié par ce peek.
 
 ## 3. Anti-bot et whitelist
 
@@ -86,7 +86,7 @@ vérification qu'une exemption s'applique sans journal parasite.
 - [ ] `logs_enabled = false` : aucune alerte, aucune erreur visible ;
 - [ ] FR puis EN : titres et champs localisés ;
 - [ ] panne de livraison de journal : la détection reste effective (best-effort) ;
-- [ ] continuité AutoRole, Welcome, Captcha, Tickets et Invites après un
+- [ ] continuité AutoRole, Welcome, Tickets et Invites après un
       redémarrage complet du bot ;
 - [ ] aucune écriture de configuration déclenchée par une alerte.
 

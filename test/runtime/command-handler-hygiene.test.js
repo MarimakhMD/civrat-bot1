@@ -14,7 +14,7 @@ const commandHandler = require("../../src/handlers/commandHandler");
 
 const EXPECTED_COMMANDS = [
   "admin", "analytics", "analytics_invites", "analytics_xp", "automod", "bannir",
-  "captcha", "debannir", "deverrouiller", "expulser", "giveaway", "invites",
+  "debannir", "deverrouiller", "expulser", "giveaway", "invites",
   "mute", "pseudo", "settings", "slowmode", "suggest", "supprimer", "ticketpanel",
   "unmute", "uploadsticker", "verrouiller", "warn", "welcomeimage",
 ];

@@ -202,7 +202,7 @@ test("PHASE1: aucun embed vide n'est publié", async () => {
     /log_embed_empty/,
   );
   await assert.rejects(
-    () => transport.deliver({ channelId: "CH", language: "en", action: "captcha_verified", title: "Title", details: {} }),
+    () => transport.deliver({ channelId: "CH", language: "en", action: "role_deleted", title: "Title", details: {} }),
     /log_embed_empty/,
   );
   assert.equal(sent.length, 0, "rien n'est envoyé dans le salon");
@@ -228,7 +228,7 @@ test("PHASE1: un auteur inconnu est affiché comme tel, jamais inventé", async 
 });
 
 // ─────────────────────────────────────────────────────────────
-// Tickets et CAPTCHA : même système de rendu
+// Tickets et Sécurité : même système de rendu
 // ─────────────────────────────────────────────────────────────
 
 test("PHASE1: les logs Tickets utilisent le rendu et la traduction partagés", async () => {
@@ -247,15 +247,15 @@ test("PHASE1: les logs Tickets utilisent le rendu et la traduction partagés", a
   assert.equal(sent[0].fields.some((field) => field.name === "action" || field.name === "result"), false);
 });
 
-test("PHASE1: les logs CAPTCHA utilisent le rendu et la traduction partagés (module gelé)", async () => {
+test("PHASE1: les logs Sécurité utilisent le rendu et la traduction partagés", async () => {
   const { createLogsRuntime } = require("../../src/modules/logs/runtime/createLogsRuntime");
   const config = { logs_enabled: true, language: "en", log_moderation_channel_id: "CH" };
   const runtime = createLogsRuntime({ guildConfigResolver: { get: async () => config } });
   const { guild, sent } = makeGuild();
 
-  await runtime.handleCaptchaEvent({ guild, config, action: "captcha_verified", memberId: "U1", roleId: "R1" });
+  await runtime.handleModerationEvent({ guild, config, action: "security_raid", targetId: "U1", reason: "burst", rule: "SECURITY_RAID" });
   assert.equal(sent.length, 1);
-  assert.match(sent[0].title, /CAPTCHA verified/);
+  assert.equal(/^logs\./.test(sent[0].title), false, "plus de clé brute comme titre");
   for (const field of sent[0].fields) {
     assert.ok(KNOWN_LABELS.has(field.name), `libellé hors table : ${field.name}`);
   }

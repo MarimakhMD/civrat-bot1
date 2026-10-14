@@ -92,9 +92,9 @@ côté code (le code applique des défauts applicatifs quand la clé est absente
 | `xp_channel_id` | `text` | xp |
 | `xp_rate` | `numeric`/`integer` (`à confirmer` : multiplicateur JS) | xp |
 | `analytics_enabled` | `boolean` | analytics |
-| `captcha_enabled` | `boolean` | captcha |
-| `captcha_channel_id` | `text` | captcha |
-| `captcha_role_id` | `text` | captcha |
+| `captcha_enabled` | `boolean` | captcha — **héritée V1** (module retiré, colonnes conservées) |
+| `captcha_channel_id` | `text` | captcha — **héritée V1** |
+| `captcha_role_id` | `text` | captcha — **héritée V1** |
 | `autorole_enabled` | `boolean` | autorole |
 | `autorole_member_role_id` | `text` | autorole |
 | `autorole_bot_role_id` | `text` | autorole |
@@ -183,6 +183,9 @@ create table if not exists public.guild_configs (
   xp_channel_id text,
   xp_rate integer,
   analytics_enabled boolean,
+  -- Colonnes héritées : le module CAPTCHA a été retiré de la V1. Elles sont
+  -- CONSERVÉES en base (aucune migration de suppression) et simplement ignorées
+  -- par le code : aucune clé captcha_* n'est plus déclarée dans la whitelist.
   captcha_enabled boolean,
   captcha_channel_id text,
   captcha_role_id text,

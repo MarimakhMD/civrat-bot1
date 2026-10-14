@@ -8,7 +8,7 @@
  * PHASE 0 — PÉRIMÈTRE ÉTENDU À L'ARCHITECTURE RÉELLE
  * ─────────────────────────────────────────────────────────────────────────────
  * L'ancienne version de ce script ne lisait QUE `src/commands/*.js` en regex :
- * 2 fichiers (`captcha.js`, `ticketpanel.js`). Les 21 commandes modulaires
+ * 2 fichiers (dont l'adaptateur `ticketpanel.js`). Les 21 commandes modulaires
  * exposées par la composition runtime n'étaient donc jamais vérifiées — le
  * contrôle passait au vert alors que 91 % du catalogue n'était pas inspecté.
  *

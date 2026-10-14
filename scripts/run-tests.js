@@ -11,7 +11,7 @@
  * dont les globs étaient maintenus à la main. Résultat mesuré : 86 fichiers
  * `*.test.js` sur 265 étaient atteignables, et il n'existait AUCUN `npm test`.
  * 179 fichiers — dont toute la suite Logs, Modération, Tickets, AutoRole,
- * Security, XP, Captcha, Admin Panel — ne tournaient que si on les invoquait
+ * Security, XP, Admin Panel — ne tournaient que si on les invoquait
  * un par un à la main.
  *
  * Ce lanceur supprime la dérive des globs : il DÉCOUVRE les fichiers de test

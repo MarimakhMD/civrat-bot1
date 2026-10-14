@@ -58,7 +58,7 @@ in-memory elevation for the dedicated transfer path.
 | Category | Sections |
 | --- | --- |
 | General and roles | AutoRole, temporary voice |
-| Protection | AutoMod, security, CAPTCHA |
+| Protection | AutoMod, security |
 | Welcome and goodbye | Welcome/Goodbye |
 | Tickets | Tickets |
 | Community | Giveaways, suggestions |

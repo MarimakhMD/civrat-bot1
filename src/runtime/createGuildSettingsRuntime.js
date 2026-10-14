@@ -17,7 +17,6 @@ const { TicketChannelNamingService } = require("../modules/tickets/services/Tick
 const { getTicketPanelRepository } = require("../modules/tickets/runtime/getTicketPanelRepository");
 const { DiscordTicketTransport } = require("../adapters/discord/DiscordTicketTransport");
 const { getLogsRuntime } = require("../modules/logs/runtime/getLogsRuntime");
-const { getSecurityRuntime } = require("../modules/security/runtime/getSecurityRuntime");
 const { config } = require("../config");
 const { supabase } = require("../config/database");
 const ticketEn = require("../modules/tickets/translations/en.json");
@@ -26,11 +25,6 @@ const moderationEn = require("../modules/moderation/translations/en.json");
 const moderationFr = require("../modules/moderation/translations/fr.json");
 const { registerModeration } = require("../modules/moderation/register");
 const { registerChannelModeration } = require("../modules/moderation/channelRegister");
-const { CaptchaConfigService, registerCaptcha } = require("../modules/captcha");
-const { CaptchaVerificationService } = require("../modules/captcha/services/CaptchaVerificationService");
-const { DiscordCaptchaTransport } = require("../adapters/discord/DiscordCaptchaTransport");
-const captchaEn = require("../modules/captcha/translations/en.json");
-const captchaFr = require("../modules/captcha/translations/fr.json");
 const { LogsConfigService, LogsEventMapper, LogsDeliveryService, registerLogs } = require("../modules/logs");
 const { DiscordLogsTransport } = require("../adapters/discord/DiscordLogsTransport");
 const logsEn = require("../modules/logs/translations/en.json");
@@ -98,8 +92,8 @@ const adminPanelFr = require("../modules/admin-panel/translations/fr.json");
 const legacyInviteService = require("../services/inviteService");
 function createGuildSettingsRuntime({ legacyConfigService, logger = null }) {
   const dictionaries = {
-    en: { ...coreDictionaries.en, ...en, ...welcomeEn, ...autoRoleEn, ...logsEn, ...captchaEn, ...ticketEn, ...moderationEn, ...autoModEn, ...securityEn, ...stickerEn, ...tempVoiceEn, ...giveawayEn, ...suggestionEn, ...analyticsEn, ...xpEn, ...invitesEn, ...recoveryEn, ...ownerPanelEn, ...adminPanelEn },
-    fr: { ...coreDictionaries.fr, ...fr, ...welcomeFr, ...autoRoleFr, ...logsFr, ...captchaFr, ...ticketFr, ...moderationFr, ...autoModFr, ...securityFr, ...stickerFr, ...tempVoiceFr, ...giveawayFr, ...suggestionFr, ...analyticsFr, ...xpFr, ...invitesFr, ...recoveryFr, ...ownerPanelFr, ...adminPanelFr },
+    en: { ...coreDictionaries.en, ...en, ...welcomeEn, ...autoRoleEn, ...logsEn, ...ticketEn, ...moderationEn, ...autoModEn, ...securityEn, ...stickerEn, ...tempVoiceEn, ...giveawayEn, ...suggestionEn, ...analyticsEn, ...xpEn, ...invitesEn, ...recoveryEn, ...ownerPanelEn, ...adminPanelEn },
+    fr: { ...coreDictionaries.fr, ...fr, ...welcomeFr, ...autoRoleFr, ...logsFr, ...ticketFr, ...moderationFr, ...autoModFr, ...securityFr, ...stickerFr, ...tempVoiceFr, ...giveawayFr, ...suggestionFr, ...analyticsFr, ...xpFr, ...invitesFr, ...recoveryFr, ...ownerPanelFr, ...adminPanelFr },
   }; validateTranslationParity(dictionaries);
   const i18n = new I18nService({ dictionaries, logger });
   const repository = new LegacyGuildConfigRepository({ getConfig: legacyConfigService.getGuildConfig, updateConfig: legacyConfigService.updateGuildConfig, invalidateConfig: legacyConfigService.invalidateCache });
@@ -182,7 +176,6 @@ function createGuildSettingsRuntime({ legacyConfigService, logger = null }) {
     }),
     settingsHome,
   });
-  const captchaConfigService = new CaptchaConfigService({ guildConfigResolver });
   const ticketConfigService = new TicketConfigService({ guildConfigResolver });
   // Le resolver Tickets et tous les autres consommateurs Premium partagent le
   // même EntitlementService runtime ; aucun cache ou repository parallèle.
@@ -240,34 +233,6 @@ function createGuildSettingsRuntime({ legacyConfigService, logger = null }) {
       ticketLog: (event) => getLogsRuntime().handleTicketEvent({ guild: context.envelope.discordMember.guild, ...event }),
       transport: new DiscordTicketTransport({ guild: context.envelope.discordMember?.guild }),
     }),
-    settingsHome,
-  });
-  registerCaptcha({
-    registry,
-    service: captchaConfigService,
-    verificationServiceFactory: (context) => new CaptchaVerificationService({
-      configService: captchaConfigService,
-      transport: new DiscordCaptchaTransport({
-        guild: context.envelope.discordMember.guild,
-        member: context.envelope.discordMember,
-      }),
-    }),
-    // P-CAPT L3 — même singleton EntitlementService que le reste du bot :
-    // aucun système Premium parallèle (fail-closed si indisponible).
-    entitlementService,
-    // P-CAPT L4 — même singleton de journaux (canal de modération existant) :
-    // aucun système de journalisation parallèle.
-    logsRuntime: getLogsRuntime(),
-    // P-CAPT L5 — signal raid : peek du moteur anti-raid EXISTANT, résolu
-    // paresseusement à chaque vérification (aucun couplage d'initialisation,
-    // aucun état persisté, aucune écriture de configuration).
-    raidSignal: (guildId) => {
-      try {
-        return getSecurityRuntime().isRaidActive(guildId) === true;
-      } catch {
-        return false;
-      }
-    },
     settingsHome,
   });
   // Image Welcome personnalisée (Premium) : le panneau d'administration et la

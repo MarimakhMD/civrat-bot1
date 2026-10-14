@@ -6,7 +6,6 @@ const { LogsDeliveryService } = require("../services/LogsDeliveryService");
 const { DiscordLogsTransport, unrecognizedDetailKeys } = require("../../../adapters/discord/DiscordLogsTransport");
 const { handleMessageDeleted } = require("../events/handleMessageDeleted");
 const { handleMemberJoined } = require("../events/handleMemberJoined");
-const { handleCaptchaEvent } = require("../events/handleCaptchaEvent");
 const { handleMessageBulkDeleted } = require("../events/handleMessageBulkDeleted");
 const { handleMemberNicknameChanged } = require("../events/handleMemberNicknameChanged");
 const { handleInviteEvent } = require("../events/handleInviteEvent");
@@ -89,11 +88,6 @@ function createLogsRuntime({ guildConfigResolver }) {
         ...payload,
         ...deps(payload.guild || (payload.newMember && payload.newMember.guild) || null),
       }),
-
-    // P-CAPT L4 — `details` transporte les champs de cycle de vie (panneau,
-    // provisioning, force-existing) ; absent ⇒ comportement historique exact.
-    handleCaptchaEvent: async ({ guild, config, action, memberId, roleId, details }) =>
-      handleCaptchaEvent({ guild, config: config || await guildConfigResolver.get(guild.id), action, memberId, roleId, details: details || null, ...deps(guild) }),
 
     handleTicketEvent: async ({ guild, config, action, ticketChannelId, userId, reason }) =>
       handleTicketEvent({ guild, config: config || await guildConfigResolver.get(guild.id), action, ticketChannelId, userId, reason, ...deps(guild) }),

@@ -1,15 +1,16 @@
 "use strict";
 
-// Exposition Discord finale : 22 commandes normales Guild-only et /admin
+// Exposition Discord finale : 21 commandes normales Guild-only et /admin
 // Guild-only déployée uniquement dans la guilde technique. /ownerpanel et
 // /recovery ne sont plus des commandes concurrentes. Offline intégral.
+// Le CAPTCHA retiré en V1 n'est plus exposé (ni commande, ni route).
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-// Les 22 commandes qui doivent rester strictement serveur.
+// Les 21 commandes qui doivent rester strictement serveur.
 const GUILD_ONLY_COMMANDS = [
-  "settings", "captcha", "ticketpanel", "automod", "analytics",
+  "settings", "ticketpanel", "automod", "analytics",
   "analytics_xp", "analytics_invites", "invites", "suggest", "giveaway",
   "uploadsticker", "warn", "mute", "unmute", "bannir", "debannir",
   "expulser", "supprimer", "slowmode", "verrouiller", "deverrouiller", "pseudo",
@@ -32,22 +33,22 @@ function allCommands() {
   const runtime = makeRuntime();
   const modularDefinitions = runtime.getDiscordCommands();
   const modular = modularDefinitions.map((command) => command.data.toJSON());
-  // Commandes legacy chargées hors composition (captcha, ticketpanel).
+  // Commande legacy chargée hors composition (ticketpanel).
   const legacy = [
-    require("../../src/commands/captcha").data.toJSON(),
     require("../../src/commands/ticketpanel").data.toJSON(),
   ];
   return { modularDefinitions, modular, legacy, all: [...modular, ...legacy] };
 }
 
-test("the full command set is exactly 23 normal commands plus /admin", () => {
+test("the full command set is exactly 22 normal commands plus /admin", () => {
   const { all } = allCommands();
-  assert.equal(all.length, 24, "24 commands expected");
-  assert.equal(new Set(all.map((command) => command.name)).size, 24, "no duplicate");
+  assert.equal(all.length, 23, "23 commands expected");
+  assert.equal(new Set(all.map((command) => command.name)).size, 23, "no duplicate");
+  assert.equal(all.some(({ name }) => name === "captcha"), false, "/captcha retiré en V1");
   assert.equal(all.some(({ name }) => name === "ownerpanel" || name === "recovery"), false);
 });
 
-test("the 23 normal commands are guild-only (contexts = [0])", () => {
+test("the 22 normal commands are guild-only (contexts = [0])", () => {
   const { all } = allCommands();
   const byName = new Map(all.map((c) => [c.name, c]));
   for (const name of GUILD_ONLY_COMMANDS) {
@@ -76,9 +77,9 @@ test("/settings is strictly guild-only", () => {
   assert.deepEqual(settings.contexts, [0]);
 });
 
-test("/captcha and /ticketpanel are explicitly guild-only", () => {
+test("/ticketpanel is explicitly guild-only", () => {
   const { all } = allCommands();
-  for (const name of ["captcha", "ticketpanel"]) {
+  for (const name of ["ticketpanel"]) {
     const command = all.find((c) => c.name === name);
     assert.ok(command, `/${name} must exist`);
     assert.deepEqual(command.contexts, [0], `/${name} must be Guild-only`);

@@ -38,7 +38,7 @@ test("lists only guild data genuinely present in the Discord cache", () => {
   assert.deepEqual(service().listInstalledGuilds(null), { available: false, guilds: [], total: null });
 });
 
-test("technical configuration exposes public IDs and exactly 13 feature states", async () => {
+test("technical configuration exposes public IDs and exactly 12 feature states", async () => {
   const result = await service({
     snapshot: {
       config: {
@@ -53,7 +53,8 @@ test("technical configuration exposes public IDs and exactly 13 feature states",
     },
   }).getTechnicalConfiguration();
   assert.deepEqual(result.technical, technicalConfig);
-  assert.equal(result.guild.features.length, 13);
+  // V1 — CAPTCHA retiré : 13 -> 12 sections réelles du catalogue.
+  assert.equal(result.guild.features.length, 12);
   assert.deepEqual(result.guild.features.find(({ id }) => id === "tickets").state, {
     enabled: true,
     configured: true,

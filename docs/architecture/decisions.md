@@ -131,7 +131,6 @@ values must never enter either domain.
 
 - Preserve reliable existing behavior unless an approved phase changes it.
 - Prefer incremental migrations over broad rewrites.
-- Keep CAPTCHA behavior and its transport independent of Admin/Settings changes.
 - Keep startup and slash-command deployment as separate operations.
 - Automated tests are offline evidence only. Never report a Discord deployment,
   guild interaction, or DM check as completed unless it was actually performed.

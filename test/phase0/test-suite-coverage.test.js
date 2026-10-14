@@ -91,7 +91,6 @@ test("PHASE0 — les modules métier historiquement non couverts sont désormais
     "src/modules/tickets/tests",
     "src/modules/autorole/tests",
     "src/modules/security/tests",
-    "src/modules/captcha/tests",
     "src/modules/xp/tests",
     "src/modules/analytics/tests",
     "src/modules/admin-panel/tests",

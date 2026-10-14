@@ -38,7 +38,7 @@ test("home renders one seven-option category selector and summaries", () => {
   assert.ok(toActionRows(view.components).length <= 5);
 });
 
-test("category views expose exactly all 13 real feature controls", () => {
+test("category views expose exactly all 12 real feature controls", () => {
   const renderedIds = [];
   for (const category of SETTINGS_CATALOG) {
     const view = settingsCategoryView({
@@ -57,8 +57,9 @@ test("category views expose exactly all 13 real feature controls", () => {
     assert.ok(view.content.includes("guildSettings.premiumLabel"));
     assert.ok(toActionRows(view.components).length <= 5);
   }
-  assert.equal(renderedIds.length, 13);
-  assert.equal(new Set(renderedIds).size, 13);
+  // V1 — CAPTCHA retiré : 13 -> 12 contrôles de section réels.
+  assert.equal(renderedIds.length, 12);
+  assert.equal(new Set(renderedIds).size, 12);
 });
 
 test("Premium capability states remain visible and distinct", () => {
@@ -89,5 +90,6 @@ test("configuration outage is explicit and does not hide feature controls", () =
     premiumDecisions,
   });
   assert.ok(view.content.includes("guildSettings.configurationUnavailable"));
-  assert.equal(view.components.filter(({ customId }) => customId.includes(":section")).length, 3);
+  // V1 — CAPTCHA retiré : la catégorie Protection expose AutoMod + Sécurité.
+  assert.equal(view.components.filter(({ customId }) => customId.includes(":section")).length, 2);
 });

@@ -47,10 +47,10 @@ catalog or its configured technical guild changes.
 Deployment validates a closed catalog before making any Discord request:
 
 - **22 global Guild commands:** `/analytics`, `/analytics_invites`,
-  `/analytics_xp`, `/automod`, `/bannir`, `/captcha`, `/debannir`,
-  `/deverrouiller`, `/expulser`, `/giveaway`, `/invites`, `/mute`, `/pseudo`,
-  `/settings`, `/slowmode`, `/suggest`, `/supprimer`, `/ticketpanel`, `/unmute`,
-  `/uploadsticker`, `/verrouiller`, `/warn`;
+  `/analytics_xp`, `/automod`, `/bannir`, `/debannir`, `/deverrouiller`,
+  `/expulser`, `/giveaway`, `/invites`, `/mute`, `/pseudo`, `/settings`,
+  `/slowmode`, `/suggest`, `/supprimer`, `/ticketpanel`, `/unmute`,
+  `/uploadsticker`, `/verrouiller`, `/warn`, `/welcomeimage`;
 - **one technical Guild command:** `/admin`, deployed only through the guild
   endpoint for `CIVRAT_ADMIN_GUILD_ID`.
 
@@ -149,11 +149,6 @@ FR/EN explanation with the support link `https://discord.gg/BA3aDFqtXr` and asks
 the user to open a ticket. A backend outage is reported separately and remains
 fail-closed. Free Ticket behavior still falls back safely when Premium data is
 not available.
-
-## CAPTCHA
-
-The CAPTCHA command, module, runtime transport, and existing behavior are
-preserved. This architecture change does not alter CAPTCHA source files.
 
 ## Scripts and verification
 
