@@ -15,11 +15,10 @@
 // counts, the HTTP status, the Discord error code, and the endpoint template.
 //
 // Used in two ways:
-//   - standalone: `node deploy.js` / `npm run deploy` deploys the production
-//     22+1 catalog, while `node deploy.js deploy <guildId>` updates one Guild
-//     endpoint with a target-safe catalog;
-//   - from index.js when DEPLOY_COMMANDS=1 (best-effort: the bot still starts
-//     even if the production deploy fails).
+//   - standalone: explicit targets, preview by default, then confirmation;
+//     see docs/operations/command-maintenance.md.
+//   - legacy exported helpers remain available for compatibility; automatic
+//     startup deployment is disabled.
 
 try {
   require("dotenv").config();
@@ -212,11 +211,11 @@ async function putScope({ restClient, route, body, endpointLabel }) {
     if (count !== null && count !== body.length) {
       logger.warn(`Read-back mismatch on ${endpointLabel}: sent ${body.length}, Discord reports ${count}.`);
     }
-    return { ok: true, registered: count };
+    return { ok: count === body.length && require("./src/deployment/commandMaintenance").schema(registered) === require("./src/deployment/commandMaintenance").schema(body), registered: count };
   } catch (error) {
     const detail = describeError(error);
     logger.warn(`Read-back failed on ${endpointLabel} — HTTP ${detail.status ?? "?"}, Discord code ${detail.code ?? "?"}. The PUT succeeded.`);
-    return { ok: true, registered: null };
+    return { ok: false, registered: null };
   }
 }
 
@@ -297,7 +296,7 @@ async function deployCommands({ commands = null, rest = null, guildId = undefine
   const technicalRoute = Routes.applicationGuildCommands(config.clientId, config.civratAdminGuildId);
 
   logger.info("Discord deployment started (22 global commands + 1 technical command).");
-  await clearLegacyGuildCommands(restClient, config.clientId);
+  // Legacy cleanup now requires explicit maintenance targets and confirmation.
 
   const globalResult = await putScope({
     restClient,
@@ -465,26 +464,15 @@ function parseCliArgs(argv) {
 }
 
 async function main() {
-  const parsed = parseCliArgs(process.argv.slice(2));
-  const { mode, guildId } = parsed;
-  if (mode === "invalid" || parsed.invalidGuildId) {
-    logger.error("Invalid command or explicit guild id. No Discord request was made.");
-    process.exitCode = 1;
-    return { ok: false, sent: 0, registered: null, status: null, code: null };
-  }
-  if (mode === "clear") {
-    const result = await clearGuildCommands({ guildId });
-    if (!result.ok) process.exitCode = 1;
-    return result;
-  }
-  if (mode === "list") {
-    const result = await listCommands({ guildId });
-    if (!result.ok) process.exitCode = 1;
-    return result;
-  }
-  const result = parsed.targetProvided
-    ? await deployCommands({ guildId })
-    : await deployCommands();
+  const { maintenanceCli } = require("./src/deployment/maintenanceCli");
+  if (!config.token || config.token.startsWith("replace_with_")) throw new Error("DISCORD_TOKEN missing");
+  const catalog = prepareDeploymentPlan(commandHandler.loadCommands());
+  const issues = [...validateDeploymentPlan(catalog), ...validatePayload(catalog.global), ...validatePayload(catalog.technical)];
+  if (issues.length) throw new Error("Invalid deployment catalog");
+  const result = await maintenanceCli(process.argv.slice(2), {
+    rest: new REST({ version: "10" }).setToken(config.token), config, catalog,
+  });
+  console.log(JSON.stringify(result, null, 2));
   if (!result.ok) process.exitCode = 1;
   return result;
 }
