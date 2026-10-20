@@ -65,9 +65,61 @@ des tests locaux.
 ## Compatibilité et limites
 
 Le déploiement automatique au démarrage (`DEPLOY_COMMANDS=1`) est neutralisé :
-un avertissement renvoie à cette procédure explicite. Les anciennes fonctions
-exportées par deploy.js sont conservées pour compatibilité interne/tests ;
-l'interface opérateur sûre est `main` via le CLI, pas un appel direct à ces
-helpers. Le nettoyage implicite LEGACY_GUILD_ID n'est plus déclenché par DEPLOY.
+un avertissement renvoie à cette procédure explicite. Les anciens helpers d'écriture exportés sont désormais soumis au même service :
+simulation par défaut et application avec empreinte. Le nettoyage implicite
+LEGACY_GUILD_ID est désactivé (appel refusé). Aucun lanceur ne les appelle.
 Pas de reprise automatique ni de rollback multi-portées. Conserver le rapport
 avant d'appliquer ; limiter les accès au rapport (IDs et métadonnées de commandes).
+
+## Pterodactyl : démarrage et maintenance séparés
+
+Le champ « Start bash file » reste `start.sh`. Le démarrage par défaut est
+`MODE="start"` : il charge uniquement le bot. Pour une opération ponctuelle,
+configurer le script (sans toucher aux secrets) :
+
+```bash
+MODE="clear"
+GUILD_ID=""
+MAINTENANCE_ARGS=(--all-guilds)
+```
+
+Cela **simule** le nettoyage des guildes, sans toucher au global. Ajouter
+`--global` dans le tableau pour inclure explicitement le global. Pour une seule
+guilde, utiliser `GUILD_ID="<identifiant valide>"` ou `--guild ID`.
+Un GUILD_ID vide est donc normal pour les autres cibles. Sans aucune cible,
+la maintenance est refusée. Ne pas utiliser de chaîne d'arguments ni `eval`.
+
+Si l'hébergeur transmet les arguments après le nom du fichier :
+
+```
+start.sh list --global --all-guilds
+start.sh clear --all-guilds
+start.sh deploy --global --all-guilds --guild <guilde-technique>
+```
+
+Les arguments explicites remplacent intégralement MODE/GUILD_ID/MAINTENANCE_ARGS.
+La chaîne est `start.sh → start.js → deploy.main(argv) → maintenanceCli`.
+Les anciennes syntaxes positionnelles `deploy ID` et `clear ID` sont refusées.
+
+Après revue d'une simulation et **GO d'application distinct**, reprendre la même
+sélection avec `--apply --confirm EMPREINTE`. Ne pas laisser ce mode appliqué dans
+la configuration de démarrage. Restaurer ensuite MODE="start" et vider le tableau.
+
+La maintenance affiche le bilan JSON puis **termine sans connecter le bot**.
+Code de sortie 0 : lecture/simulation valide ou application vérifiée ; code 1 :
+arguments invalides, confirmation refusée, découverte incomplète ou échec partiel.
+Prévoir une fenêtre de maintenance : le bot n'est pas démarré par cette opération.
+Désactiver la relance automatique de l'hébergeur pour cette exécution ponctuelle,
+sinon il peut répéter le mode au lieu de démarrer normalement.
+
+Chaque cible expose `role` (global/technical/ordinary), `stage`, `written`,
+`before`, `desired`, puis `after` si relu. `error.stage` distingue inventory,
+preflight, write, readback et schema. `ok:false` avec `written:true` signifie
+qu'une écriture a pu réussir malgré l'échec de validation : ne pas la présenter
+comme un échec total ni relancer aveuglément. Aucun diagnostic ne prétend
+identifier rétroactivement la cause du précédent échec Pterodactyl.
+
+La validation réelle doit commencer par LIST puis simulation seulement, après
+accord. Le retrait d'anciennes commandes (dont CAPTCHA) reste une application
+séparée, explicitement approuvée et vérifiée. Aucune correction MongoDB/Supabase
+n'est incluse ici.

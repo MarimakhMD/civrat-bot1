@@ -51,12 +51,12 @@ async function maintainCommands({ rest, clientId, adminGuildId, action, targets,
   for (const guildId of [...guilds].sort()) routes.push({ scope: "guild", guildId, route: `/applications/${clientId}/guilds/${guildId}/commands` });
   for (const target of routes) {
     const body = action !== "deploy" ? [] : target.scope === "global" ? catalog.global : target.guildId === adminGuildId ? catalog.technical : [];
-    const entry = { ...target, desired: body, ok: false };
+    const entry = { ...target, role: target.scope === "global" ? "global" : target.guildId === adminGuildId ? "technical" : "ordinary", desired: body, ok: false, stage: "inventory" };
     try {
       entry.before = await rest.get(target.route);
       if (!Array.isArray(entry.before)) throw new Error("Invalid command inventory");
       entry.ok = true;
-    } catch (error) { entry.error = failure(error); }
+    } catch (error) { entry.error = { stage: entry.stage, ...failure(error) }; }
     result.scopes.push(entry);
   }
   const ready = result.discovery.ok && result.scopes.every(s => s.ok);
@@ -69,14 +69,17 @@ async function maintainCommands({ rest, clientId, adminGuildId, action, targets,
     entry.ok = false;
     try {
       // Recheck immediately before writing: never overwrite a stale preview.
+      entry.stage = "preflight";
       const current = await rest.get(entry.route);
-      if (!Array.isArray(current) || schema(current) !== schema(entry.before)) throw new Error("Inventory changed");
+      if (!Array.isArray(current) || schema(current) !== schema(entry.before)) { entry.error = { stage: "preflight", reason: "Inventory changed" }; continue; }
+      entry.stage = "write";
       await rest.put(entry.route, { body: entry.desired });
       entry.written = true;
+      entry.stage = "readback";
       entry.after = await rest.get(entry.route);
       entry.ok = Array.isArray(entry.after) && schema(entry.after) === schema(entry.desired);
-      if (!entry.ok) entry.error = { reason: "Read-back mismatch" };
-    } catch (error) { entry.error = failure(error); }
+      if (!entry.ok) entry.error = { stage: "schema", reason: "Read-back mismatch", expectedCount: entry.desired.length, actualCount: Array.isArray(entry.after) ? entry.after.length : null };
+    } catch (error) { entry.error = { stage: entry.stage, ...failure(error) }; }
   }
   result.ok = result.scopes.every(s => s.ok);
   return result;

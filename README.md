@@ -34,13 +34,13 @@ The frozen product reference is
 cp .env.example .env
 # Fill in the required values in .env
 npm ci
-npm run deploy
+npm run deploy -- list --global --all-guilds # inventory only; see maintenance procedure
 npm start
 ```
 
 Normal startup and command deployment are separate operations. `npm start` does
-not need to deploy commands. Run `npm run deploy` explicitly when the command
-catalog or its configured technical guild changes.
+not deploy commands. Command maintenance requires explicit targets, a preview,
+and confirmation before writes. See [the Pterodactyl procedure](docs/operations/command-maintenance.md).
 
 ## Slash-command scopes
 
@@ -58,32 +58,23 @@ A global deployment replaces the previous global catalog, which removes the old
 `/ownerpanel` and `/recovery` command definitions. Their useful services and
 security controls are reused inside `/admin`.
 
-### Targeted preview and stale Guild commands
+### Explicit command maintenance
 
-`npm run deploy` (or `node deploy.js deploy`) is the production operation: it
-updates the 22-command global catalog and then the technical `/admin` catalog.
-A valid explicit guild argument instead performs exactly one Guild PUT and no
-global PUT:
+Both `node deploy.js` and `start.sh → start.js` use the secure CLI:
 
 ```bash
-node deploy.js deploy <guildId>
+node deploy.js list --global --all-guilds
+node deploy.js deploy --global --all-guilds
+node deploy.js clear --guild <guildId>
 ```
 
-- a normal guild receives only the 22 normal commands for an instant,
-  reversible preview;
-- `CIVRAT_ADMIN_GUILD_ID` receives only `/admin`;
-- `/admin` is never included for another guild.
-
-Inspect a Guild scope before and after a preview, then remove its temporary
-commands when testing is complete:
-
-```bash
-node deploy.js list <guildId>
-node deploy.js clear <guildId>
-```
-
-`clear` never touches global commands. An explicitly supplied invalid ID aborts
-the requested REST operation and never falls back to a production deploy.
+These are read-only inventories/simulations. Writes additionally require
+`--apply --confirm <preview fingerprint>` after approval. Global scope is
+separate from `--all-guilds`. Deploy reconciles ordinary guilds to **empty**
+local catalogs to remove historical copies; `/admin` is only placed in the
+technical guild. No implicit global target, no positional guild ID syntax.
+Maintenance exits without starting the bot, with status 1 for a failure.
+See [the procedure](docs/operations/command-maintenance.md) before any real use.
 
 ## Technical `/admin` panel
 
@@ -156,10 +147,10 @@ not available.
 | --- | --- |
 | `npm start` | Starts the bot runtime without requiring a command deploy. |
 | `npm run dev` | Starts the runtime in Node watch mode. |
-| `npm run deploy` | Production deploy: 22 global commands plus technical guild-scoped `/admin`. |
-| `node start.js deploy <guildId>` | One target-safe Guild deploy, then starts the bot even if deployment fails. |
-| `node deploy.js list <guildId>` | Reads one Guild command catalog without modifying it. |
-| `node deploy.js clear <guildId>` | Clears one Guild command catalog without touching global commands. |
+| `npm run deploy -- deploy --global --all-guilds` | Preview reconciliation; explicit confirmation required to apply. |
+| `node start.js deploy --guild <guildId>` | Preview one Guild reconciliation; does not start the bot. |
+| `node deploy.js list --guild <guildId>` | Reads one Guild command catalog without modifying it. |
+| `node deploy.js clear --guild <guildId>` | Previews one Guild clear without touching global commands. |
 | `npm run check:syntax` | Performs JavaScript syntax checks. |
 | `npm run check:commands` | Verifies the real 23-command catalog (22 global + technical `/admin`) against `deploy.js`, plus static `src/commands` source checks. |
 | `npm run check:repository` | Verifies repository safety baselines. |

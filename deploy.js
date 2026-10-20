@@ -10,15 +10,9 @@
 //   - /admin only -> applicationGuildCommands for CIVRAT_ADMIN_GUILD_ID.
 // No CLI/environment override may move /admin to another guild.
 //
-// Safety: this module NEVER logs the bot token, the client/application id, the
-// guild id, or any command payload. It logs only non-secret facts: command
-// counts, the HTTP status, the Discord error code, and the endpoint template.
-//
-// Used in two ways:
-//   - standalone: explicit targets, preview by default, then confirmation;
-//     see docs/operations/command-maintenance.md.
-//   - legacy exported helpers remain available for compatibility; automatic
-//     startup deployment is disabled.
+// Maintenance prints a per-target JSON report (IDs and command schemas, never
+// credentials). Both start.js and this CLI use the same explicit target /
+// preview / confirmation workflow. See docs/operations/command-maintenance.md.
 
 try {
   require("dotenv").config();
@@ -34,14 +28,6 @@ const {
   CommandDeploymentScope,
   resolveCommandDeploymentScope,
 } = require("./src/core/interactions");
-
-// Non-secret labels for the endpoints we call. Never built from URLs: the
-// actual ids are intentionally left out of every log line.
-const ENDPOINT_LABEL = Object.freeze({
-  global: "PUT /applications/{clientId}/commands",
-  guild: "PUT /applications/{clientId}/guilds/{guildId}/commands",
-  legacyClear: "PUT /applications/{clientId}/guilds/{legacyGuildId}/commands (legacy clear)",
-});
 
 // Extracts only safe, non-secret fields from an error.
 // `url` and `requestBody` are deliberately ignored (they can contain ids/payload).
@@ -114,40 +100,13 @@ function prepareDeploymentPlan(loaded) {
   });
 }
 
-// Placeholder documenté dans .env.example : s'il est encore configuré, il ne
-// correspond à aucune vraie guild et ne doit jamais déclencher un clear.
-const LEGACY_GUILD_ID_PLACEHOLDER = "1234567890123456789";
-
 function isSnowflake(value) {
   return typeof value === "string" && /^\d{15,21}$/.test(value);
 }
 
-// Clears historically guild-scoped commands registered on LEGACY_GUILD_ID.
-// Kept for backward compatibility (see docs/archive/INTEGRATION_SUMMARY.md).
-// Failures here are non-fatal and never leak any secret.
-async function clearLegacyGuildCommands(rest, clientId) {
-  if (!config.legacyGuildId) return false;
-  if (config.legacyGuildId === LEGACY_GUILD_ID_PLACEHOLDER) {
-    logger.info("LEGACY_GUILD_ID is still the documented placeholder — skipping legacy guild clear.");
-    return false;
-  }
-  try {
-    await rest.put(Routes.applicationGuildCommands(clientId, config.legacyGuildId), { body: [] });
-    logger.info(`Legacy guild-scoped commands cleared (legacy guild configured).`);
-    return true;
-  } catch (error) {
-    const detail = describeError(error);
-    if (detail.status === null && detail.code === null && detail.networkCode) {
-      logger.warn(
-        `Legacy guild clear failed — network error (${detail.networkCode}) (${ENDPOINT_LABEL.legacyClear}). Continuing with the main deploy.`
-      );
-    } else {
-      logger.warn(
-        `Legacy guild clear failed — HTTP ${detail.status ?? "?"}, Discord code ${detail.code ?? "?"} (${ENDPOINT_LABEL.legacyClear}). Continuing with the main deploy.`
-      );
-    }
-    return false;
-  }
+// Deprecated: implicit historical cleanup must never write.
+async function clearLegacyGuildCommands() {
+  throw new Error("Implicit legacy clear disabled; use explicit maintenance targets");
 }
 
 const EXPECTED_GLOBAL_COMMAND_NAMES = Object.freeze([
@@ -191,148 +150,18 @@ function validateDeploymentPlan(plan) {
   return issues;
 }
 
-async function putScope({ restClient, route, body, endpointLabel }) {
-  try {
-    await restClient.put(route, { body });
-  } catch (error) {
-    const detail = describeError(error);
-    if (detail.status === null && detail.code === null && detail.networkCode) {
-      logger.error(`Deployment failed — network error (${detail.networkCode}), endpoint ${endpointLabel}. No Discord response received.`);
-    } else {
-      logger.error(`Deployment failed — HTTP ${detail.status ?? "?"}, Discord code ${detail.code ?? "?"}, endpoint ${endpointLabel}.`);
-      logDiscordHint(detail.code, detail.status);
-    }
-    return { ok: false, registered: null, ...detail };
-  }
-
-  try {
-    const registered = await restClient.get(route);
-    const count = Array.isArray(registered) ? registered.length : null;
-    if (count !== null && count !== body.length) {
-      logger.warn(`Read-back mismatch on ${endpointLabel}: sent ${body.length}, Discord reports ${count}.`);
-    }
-    return { ok: count === body.length && require("./src/deployment/commandMaintenance").schema(registered) === require("./src/deployment/commandMaintenance").schema(body), registered: count };
-  } catch (error) {
-    const detail = describeError(error);
-    logger.warn(`Read-back failed on ${endpointLabel} — HTTP ${detail.status ?? "?"}, Discord code ${detail.code ?? "?"}. The PUT succeeded.`);
-    return { ok: false, registered: null };
-  }
-}
-
-// Without a target, deploys the production catalog through two explicit
-// scopes: 22 normal commands globally and /admin only in the configured
-// technical guild. A targeted deployment performs exactly one Guild PUT:
-// normal guilds receive the 22 normal commands, while the technical guild
-// receives /admin only. This keeps /admin impossible to redirect while
-// preserving an instant, reversible preview workflow for normal commands.
-async function deployCommands({ commands = null, rest = null, guildId = undefined } = {}) {
-  const targeted = guildId !== undefined;
-  if (targeted && !isSnowflake(String(guildId || ""))) {
-    logger.error("The explicit deployment target is invalid. Deployment aborted (no network call made).");
-    return { ok: false, sent: 0, registered: null, status: null, code: null };
-  }
-  if (!config.token || config.token.startsWith("replace_with_")) {
-    logger.error("DISCORD_TOKEN is missing or still a placeholder. Deployment aborted (no network call made).");
-    return { ok: false, sent: 0, registered: null, status: null, code: null };
-  }
-  if (!config.clientId) {
-    logger.error("CLIENT_ID is missing. Deployment aborted (no network call made).");
-    return { ok: false, sent: 0, registered: null, status: null, code: null };
-  }
-  if (!isSnowflake(config.civratAdminGuildId)) {
-    logger.error("CIVRAT_ADMIN_GUILD_ID is invalid. Deployment aborted (no network call made).");
-    return { ok: false, sent: 0, registered: null, status: null, code: null };
-  }
-
-  const loaded = commands || commandHandler.loadCommands();
-  let plan;
-  try {
-    plan = prepareDeploymentPlan(loaded);
-  } catch (error) {
-    logger.error("Command deployment scope validation failed.", { error: error?.message || String(error) });
-    return { ok: false, sent: 0, registered: null, status: null, code: null };
-  }
-
-  const issues = [
-    ...validatePayload(plan.global).map((issue) => `global: ${issue}`),
-    ...validatePayload(plan.technical).map((issue) => `technical: ${issue}`),
-    ...validateDeploymentPlan(plan),
-  ];
-  if (issues.length > 0) {
-    for (const issue of issues) logger.error(`Payload error: ${issue}`);
-    logger.error("Deployment aborted before any network call.");
-    return { ok: false, sent: 0, registered: null, status: null, code: null };
-  }
-
-  const restClient = rest || new REST({ version: "10" }).setToken(config.token);
-
-  if (targeted) {
-    const targetsTechnicalGuild = guildId === config.civratAdminGuildId;
-    const body = targetsTechnicalGuild ? plan.technical : plan.global;
-    const route = Routes.applicationGuildCommands(config.clientId, guildId);
-    const scopeLabel = targetsTechnicalGuild ? "technical /admin" : "normal-command preview";
-
-    logger.info(`Discord guild-scoped deployment started (${body.length} ${scopeLabel} command(s)).`);
-    const guildResult = await putScope({
-      restClient,
-      route,
-      body,
-      endpointLabel: ENDPOINT_LABEL.guild,
-    });
-    if (guildResult.ok) logger.success("Guild-scoped deployment successful.");
-    return {
-      ok: guildResult.ok,
-      mode: "guild",
-      scope: targetsTechnicalGuild ? "technical" : "normal",
-      sent: body.length,
-      registered: guildResult.registered,
-      global: null,
-      technical: targetsTechnicalGuild ? { sent: body.length, ...guildResult } : null,
-      guild: { sent: body.length, ...guildResult },
-    };
-  }
-
-  const globalRoute = Routes.applicationCommands(config.clientId);
-  const technicalRoute = Routes.applicationGuildCommands(config.clientId, config.civratAdminGuildId);
-
-  logger.info("Discord deployment started (22 global commands + 1 technical command).");
-  // Legacy cleanup now requires explicit maintenance targets and confirmation.
-
-  const globalResult = await putScope({
-    restClient,
-    route: globalRoute,
-    body: plan.global,
-    endpointLabel: ENDPOINT_LABEL.global,
+// Compatibility API: preview by default, confirmed application only. Normal
+// guild targets are reconciled to an empty local catalog, not duplicate globals.
+async function deployCommands({ commands = null, rest = null, guildId = undefined, apply = false, confirm = null } = {}) {
+  if (guildId !== undefined && !isSnowflake(guildId)) return { ok: false, blocked: "Invalid guild target" };
+  const catalog = prepareDeploymentPlan(commands || commandHandler.loadCommands());
+  if (validateDeploymentPlan(catalog).length || validatePayload(catalog.global).length || validatePayload(catalog.technical).length) return { ok: false, blocked: "Invalid catalog" };
+  return require("./src/deployment/commandMaintenance").maintainCommands({
+    rest: rest || new REST({ version: "10" }).setToken(config.token),
+    clientId: config.clientId, adminGuildId: config.civratAdminGuildId,
+    action: "deploy", targets: guildId === undefined ? { global: true, guildIds: [config.civratAdminGuildId] } : { guildIds: [guildId] },
+    catalog, apply, confirm,
   });
-  if (!globalResult.ok) {
-    return {
-      ok: false,
-      mode: "production",
-      sent: plan.global.length,
-      registered: globalResult.registered,
-      global: globalResult,
-      technical: null,
-    };
-  }
-
-  const technicalResult = await putScope({
-    restClient,
-    route: technicalRoute,
-    body: plan.technical,
-    endpointLabel: ENDPOINT_LABEL.guild,
-  });
-  const ok = technicalResult.ok;
-  if (ok) logger.success("Deployment successful: global and technical catalogs updated.");
-  return {
-    ok,
-    mode: "production",
-    sent: plan.global.length + plan.technical.length,
-    registered: globalResult.registered !== null && technicalResult.registered !== null
-      ? globalResult.registered + technicalResult.registered
-      : null,
-    global: { sent: plan.global.length, ...globalResult },
-    technical: { sent: plan.technical.length, ...technicalResult },
-  };
 }
 
 // Read-only listing of registered commands (global or guild-scoped). Useful to
@@ -378,46 +207,13 @@ async function listCommands({ rest = null, guildId = null } = {}) {
 // Explicit, targeted clear of GUILD-SCOPED commands on one guild. This only
 // affects `PUT /applications/{clientId}/guilds/{guildId}/commands` — the
 // GLOBAL commands (the 22) are NEVER touched. Requires a valid guild id.
-async function clearGuildCommands({ rest = null, guildId = null } = {}) {
-  if (!isSnowflake(String(guildId || ""))) {
-    logger.error("clear requires a valid guild id (Discord snowflake). Nothing was cleared.");
-    return { ok: false, cleared: 0 };
-  }
-  if (!config.token || config.token.startsWith("replace_with_")) {
-    logger.error("DISCORD_TOKEN is missing or still a placeholder. Clear aborted (no network call made).");
-    return { ok: false, cleared: 0 };
-  }
-  if (!config.clientId) {
-    logger.error("CLIENT_ID is missing. Clear aborted (no network call made).");
-    return { ok: false, cleared: 0 };
-  }
-  const restClient = rest || new REST({ version: "10" }).setToken(config.token);
-  const route = Routes.applicationGuildCommands(config.clientId, guildId);
-
-  let before = 0;
-  try {
-    const data = await restClient.get(route);
-    before = Array.isArray(data) ? data.length : 0;
-    logger.info(`Guild has ${before} guild-scoped command(s) before clearing.`);
-  } catch (error) {
-    const detail = describeError(error);
-    logger.warn(`Could not read guild commands before clearing (HTTP ${detail.status ?? "?"}, code ${detail.code ?? "?"}) — continuing.`);
-  }
-
-  try {
-    await restClient.put(route, { body: [] });
-    logger.success(`Guild-scoped commands cleared on the target guild (${before} removed). Global commands are untouched.`);
-    return { ok: true, cleared: before };
-  } catch (error) {
-    const detail = describeError(error);
-    if (detail.status === null && detail.code === null && detail.networkCode) {
-      logger.error(`Clear failed — network error (${detail.networkCode}). No Discord response received.`);
-    } else {
-      logger.error(`Clear failed — HTTP ${detail.status ?? "?"}, Discord code ${detail.code ?? "?"}.`);
-      logDiscordHint(detail.code, detail.status);
-    }
-    return { ok: false, cleared: 0 };
-  }
+async function clearGuildCommands({ rest = null, guildId = null, apply = false, confirm = null } = {}) {
+  if (!isSnowflake(guildId)) return { ok: false, blocked: "Invalid guild target" };
+  return require("./src/deployment/commandMaintenance").maintainCommands({
+    rest: rest || new REST({ version: "10" }).setToken(config.token),
+    clientId: config.clientId, adminGuildId: config.civratAdminGuildId,
+    action: "clear", targets: { guildIds: [guildId] }, apply, confirm,
+  });
 }
 
 // CLI: node deploy.js [deploy [guildId]] | [clear <guildId>] | [list [guildId]]
@@ -463,13 +259,13 @@ function parseCliArgs(argv) {
   return { mode: "invalid", guildId: null, targetProvided: true, invalidGuildId: true };
 }
 
-async function main() {
+async function main(argv = process.argv.slice(2)) {
   const { maintenanceCli } = require("./src/deployment/maintenanceCli");
   if (!config.token || config.token.startsWith("replace_with_")) throw new Error("DISCORD_TOKEN missing");
   const catalog = prepareDeploymentPlan(commandHandler.loadCommands());
   const issues = [...validateDeploymentPlan(catalog), ...validatePayload(catalog.global), ...validatePayload(catalog.technical)];
   if (issues.length) throw new Error("Invalid deployment catalog");
-  const result = await maintenanceCli(process.argv.slice(2), {
+  const result = await maintenanceCli(argv, {
     rest: new REST({ version: "10" }).setToken(config.token), config, catalog,
   });
   console.log(JSON.stringify(result, null, 2));

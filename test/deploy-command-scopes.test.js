@@ -16,14 +16,26 @@ const {
   EXPECTED_GLOBAL_COMMAND_NAMES,
   prepareDeploymentPlan,
   validateDeploymentPlan,
-  deployCommands,
-  clearGuildCommands,
+  deployCommands: secureDeploy,
+  clearGuildCommands: secureClear,
   listCommands,
   parseCliArgs,
 } = require("../deploy");
 const { config } = require("../src/config");
 const { CommandDeploymentScope } = require("../src/core/interactions");
 
+async function deployCommands(options) {
+  const preview = await secureDeploy(options);
+  if (!preview.ok) return preview;
+  assert.equal(putCalls(options.rest).length, 0, "helper must preview without writes");
+  return secureDeploy({ ...options, apply: true, confirm: preview.confirmation });
+}
+async function clearGuildCommands(options) {
+  const preview = await secureClear(options);
+  if (!preview.ok) return preview;
+  assert.equal(putCalls(options.rest).length, 0);
+  return secureClear({ ...options, apply: true, confirm: preview.confirmation });
+}
 const NORMAL_GUILD_ID = "222222222222222222";
 const TECHNICAL_GUILD_ID = "1320817768962064384";
 const FORBIDDEN_COMMANDS = new Set(["admin", "ownerpanel", "recovery"]);
@@ -94,8 +106,8 @@ test("production deploy without an id performs 22 global + technical /admin", as
   const puts = putCalls(rest);
 
   assert.equal(result.ok, true);
-  assert.equal(result.mode, "production");
-  assert.equal(result.sent, 23);
+  assert.equal(result.scopes[0].role, "global");
+  assert.equal(result.scopes[1].role, "technical");
   assert.equal(puts.length, 2);
   assert.equal(puts[0].route, Routes.applicationCommands(config.clientId));
   assertNormalCatalog(puts[0].body);
@@ -105,7 +117,7 @@ test("production deploy without an id performs 22 global + technical /admin", as
   assertNoObsoleteCommands(puts[1].body);
 });
 
-test("targeted normal guild deploy performs one Guild PUT with only 22 normal commands", async () => {
+test("targeted normal guild deploy removes historical local copies", async () => {
   const rest = createRestDouble();
   const result = await deployCommands({
     commands: validCommands(),
@@ -115,13 +127,12 @@ test("targeted normal guild deploy performs one Guild PUT with only 22 normal co
   const puts = putCalls(rest);
 
   assert.equal(result.ok, true);
-  assert.equal(result.mode, "guild");
-  assert.equal(result.scope, "normal");
-  assert.equal(result.sent, 22);
+  assert.equal(result.scopes[0].role, "ordinary");
+  assert.deepEqual(result.scopes[0].desired, []);
   assert.equal(puts.length, 1);
   assert.equal(puts[0].route, Routes.applicationGuildCommands(config.clientId, NORMAL_GUILD_ID));
   assert.notEqual(puts[0].route, Routes.applicationCommands(config.clientId));
-  assertNormalCatalog(puts[0].body);
+  assert.deepEqual(puts[0].body, []);
   assertNoObsoleteCommands(puts[0].body);
 });
 
@@ -135,9 +146,7 @@ test("targeted technical guild deploy performs one Guild PUT with only /admin", 
   const puts = putCalls(rest);
 
   assert.equal(result.ok, true);
-  assert.equal(result.mode, "guild");
-  assert.equal(result.scope, "technical");
-  assert.equal(result.sent, 1);
+  assert.equal(result.scopes[0].role, "technical");
   assert.equal(puts.length, 1);
   assert.equal(puts[0].route, Routes.applicationGuildCommands(config.clientId, TECHNICAL_GUILD_ID));
   assert.notEqual(puts[0].route, Routes.applicationCommands(config.clientId));
@@ -154,7 +163,7 @@ test("an explicit invalid deployment id is fail-closed with zero REST calls", as
   });
 
   assert.equal(result.ok, false);
-  assert.equal(result.sent, 0);
+  assert.equal(result.blocked, "Invalid guild target");
   assert.deepEqual(rest.calls, []);
   assert.deepEqual(parseCliArgs(["deploy"]), {
     mode: "deploy",
@@ -165,42 +174,14 @@ test("an explicit invalid deployment id is fail-closed with zero REST calls", as
   assert.equal(parseCliArgs(["deploy", NORMAL_GUILD_ID]).invalidGuildId, false);
 });
 
-test("start.js rejects an invalid deploy target but still starts the bot", () => {
-  const startPath = path.resolve(__dirname, "../start.js");
-  const script = `
-    const Module = require("node:module");
-    const startPath = ${JSON.stringify(path.resolve(__dirname, "../start.js"))};
-    const originalLoad = Module._load;
-    let deployCalls = 0;
-    let startCalls = 0;
-    Module._load = function(request, parent, isMain) {
-      if (parent && parent.filename === startPath && request === "./deploy") {
-        return {
-          deployCommands: async () => { deployCalls += 1; return { ok: true, registered: 0 }; },
-          clearGuildCommands: async () => ({ ok: true, cleared: 0 }),
-          listCommands: async () => ({ ok: true, commands: [] }),
-          isSnowflake: (value) => typeof value === "string" && /^\\d{15,21}$/.test(value),
-        };
-      }
-      if (parent && parent.filename === startPath && request === "./index") {
-        return { main: async () => { startCalls += 1; } };
-      }
-      return originalLoad.call(this, request, parent, isMain);
-    };
-    process.argv = [process.execPath, startPath, "deploy", "invalid"];
-    require(startPath);
-    process.on("beforeExit", () => {
-      console.log("START_RESULT=" + JSON.stringify({ deployCalls, startCalls }));
-    });
-  `;
-  const child = spawnSync(process.execPath, ["-e", script], {
-    cwd: path.dirname(startPath),
-    encoding: "utf8",
-  });
-
-  assert.equal(child.status, 0, child.stderr);
-  assert.match(child.stdout, /No Discord request made/);
-  assert.match(child.stdout, /START_RESULT=\{"deployCalls":0,"startCalls":1\}/);
+test("start.js rejects invalid targets without starting the bot", async () => {
+  const { launch } = require("../start");
+  let starts = 0;
+  await assert.rejects(() => launch(["deploy", "invalid"], {
+    start: async () => { starts++; },
+    maintenance: async argv => require("../src/deployment/maintenanceCli").maintenanceCli(argv, { rest: createRestDouble(), config, catalog: prepareDeploymentPlan(validCommands()) }),
+  }));
+  assert.equal(starts, 0);
 });
 
 test("start.js sends fatal errors through the sanitized logger", () => {
@@ -231,7 +212,7 @@ test("start.js sends fatal errors through the sanitized logger", () => {
       return originalLoad.call(this, request, parent, isMain);
     };
     process.argv = [process.execPath, startPath, "start"];
-    require(startPath);
+    require(startPath).run();
   `;
   const child = spawnSync(process.execPath, ["-e", script], {
     cwd: path.dirname(startPath),
@@ -254,7 +235,8 @@ test("clear removes only the requested Guild scope and never the global scope", 
   const puts = putCalls(rest);
 
   assert.equal(result.ok, true);
-  assert.equal(result.cleared, 2);
+  assert.equal(result.scopes[0].before.length, 2);
+  assert.deepEqual(result.scopes[0].after, []);
   assert.equal(puts.length, 1);
   assert.equal(puts[0].route, guildRoute);
   assert.notEqual(puts[0].route, globalRoute);
