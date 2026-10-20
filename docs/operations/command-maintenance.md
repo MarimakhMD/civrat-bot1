@@ -97,7 +97,9 @@ start.sh clear --all-guilds
 start.sh deploy --global --all-guilds --guild <guilde-technique>
 ```
 
-Les arguments explicites remplacent intégralement MODE/GUILD_ID/MAINTENANCE_ARGS.
+Un mode seul (ex. `start.sh clear`) conserve les cibles configurées. Dès que
+des options suivent le mode, elles remplacent les cibles configurées.
+`start.sh start` ignore les options de maintenance persistées.
 La chaîne est `start.sh → start.js → deploy.main(argv) → maintenanceCli`.
 Les anciennes syntaxes positionnelles `deploy ID` et `clear ID` sont refusées.
 
@@ -123,3 +125,42 @@ La validation réelle doit commencer par LIST puis simulation seulement, après
 accord. Le retrait d'anciennes commandes (dont CAPTCHA) reste une application
 séparée, explicitement approuvée et vérifiée. Aucune correction MongoDB/Supabase
 n'est incluse ici.
+
+## Correctif du lancement CLEAR sans cible
+
+`MODE="clear"`, `GUILD_ID=""` et `MAINTENANCE_ARGS=()` ne sélectionnent aucune
+portée. Le refus est volontaire : il ne faut jamais interpréter l'absence de
+cible comme « tout supprimer ». Le lanceur contrôle maintenant ces arguments
+avant de charger le déploiement ou d'appeler REST ; il affiche un diagnostic de
+configuration (code 1), pas une erreur fatale générique du bot.
+
+Pour conserver les cibles sur l'hébergement sans éditer le script versionné,
+copier `start.local.example.sh` vers **`start.local.sh`**, fichier ignoré par Git,
+puis adapter explicitement :
+
+```bash
+MODE="clear"
+GUILD_ID=""
+MAINTENANCE_ARGS=(--all-guilds)
+```
+
+C'est une simulation des guildes uniquement. Ajouter `--global` pour inclure
+les commandes globales. Le champ Pterodactyl reste `start.sh`, ou `start.sh clear`
+si l'egg transmet les arguments. Le script charge sa configuration depuis son
+propre répertoire, indépendamment du dossier courant. Un mode seul ne perd plus
+les cibles enregistrées. Avec des options complètes dans le champ, par exemple
+`start.sh clear --global`, ces options sont prioritaires sans fusion des cibles.
+
+`start.local.sh` est du Bash de confiance : accès en écriture réservé à
+l'opérateur, pas de secret, pas de contenu provenant d'un utilisateur Discord.
+Il persiste entre démarrages sur un stockage conservé et n'est pas remplacé par
+un simple checkout Git. Un egg qui réinstalle/efface tout le répertoire peut
+néanmoins le perdre : sauvegarder sa configuration hors du conteneur et vérifier
+la commande Startup effectivement exécutée. Aucun script ne peut garantir la
+persistance face à un effacement du volume par l'hébergeur.
+
+Pour revenir en ligne : utiliser **`start.sh start`**, ou remettre MODE="start"
+dans la configuration et vider MAINTENANCE_ARGS. Les modes de maintenance restent
+des processus ponctuels qui terminent ; ils ne démarrent pas le bot, même après
+une simulation réussie. Ne pas les laisser en boucle de redémarrage automatique.
+Aucune cible, confirmation ou application n'est ajoutée automatiquement.

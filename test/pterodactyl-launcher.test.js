@@ -66,3 +66,36 @@ test('Bash exec preserves maintenance exit status',()=>{
  try {writeFileSync(path.join(temp,'node'),'#!/usr/bin/env bash\nexit 1\n',{mode:0o755});const r=spawnSync('bash',['start.sh','clear','--global'],{cwd:path.resolve(__dirname,'..'),env:{...process.env,PATH:temp+path.delimiter+process.env.PATH}});assert.equal(r.status,1);}
  finally{rmSync(temp,{recursive:true,force:true});}
 });
+
+// Reproduce host configuration and execute the real shell → launcher → CLI.
+function hostRun(configText, args = []) {
+ const fs=require('node:fs'), temp=mkdtempSync(path.join(tmpdir(),'civrat-host-'));
+ try {
+  writeFileSync(path.join(temp,'start.sh'),fs.readFileSync(path.resolve(__dirname,'../start.sh')));
+  writeFileSync(path.join(temp,'start.local.sh'),configText);
+  const startPath=path.resolve(__dirname,'../start.js'),cliPath=path.resolve(__dirname,'../src/deployment/maintenanceCli.js');
+  writeFileSync(path.join(temp,'node'),`#!${process.execPath}\nlet puts=0,gets=0,starts=0;require(${JSON.stringify(startPath)}).run(process.argv.slice(3),{start:async()=>{starts++},maintenance:argv=>require(${JSON.stringify(cliPath)}).maintenanceCli(argv,{rest:{get:async r=>{gets++;return r.startsWith('/users/')?[{id:'${guild}'}]:[]},put:async()=>{puts++}},config:{clientId:'${clientId}',civratAdminGuildId:'${admin}'},catalog:${JSON.stringify(catalog)}})}).then(r=>console.log(JSON.stringify({ok:r?.ok,gets,puts,starts})));`,{mode:0o755});
+  return spawnSync('bash',[path.join(temp,'start.sh'),...args],{env:{...process.env,PATH:temp+path.delimiter+process.env.PATH},encoding:'utf8'});
+ }finally{rmSync(temp,{recursive:true,force:true});}
+}
+test('exact host regression: clear with empty ID and empty options fails before REST, actionable not fatal',()=>{
+ const r=hostRun('MODE="clear"\nGUILD_ID=""\nMAINTENANCE_ARGS=()\n');
+ assert.equal(r.status,1);assert.match(r.stderr,/Maintenance configuration rejected/);assert.match(r.stderr,/Explicit targets required/);assert.doesNotMatch(r.stderr,/Fatal startup failure/);
+ assert.deepEqual(JSON.parse(r.stdout),{ok:false,gets:0,puts:0,starts:0});
+});
+for(const target of ['--all-guilds','--global',`--guild ${guild}`]) {
+ test(`persistent host target survives restart and mode-only argument: ${target}`,()=>{
+  const config=`MODE="clear"\nGUILD_ID=""\nMAINTENANCE_ARGS=(${target})\n`;
+  for(const args of [[],[],['clear']]){const r=hostRun(config,args);assert.equal(r.status,0,r.stderr);const out=JSON.parse(r.stdout);assert.equal(out.ok,true);assert.ok(out.gets>0);assert.equal(out.puts,0);assert.equal(out.starts,0);}
+ });
+}
+test('start override ignores configured maintenance; explicit targets replace persisted ones',()=>{
+ const config='MODE="clear"\nGUILD_ID=""\nMAINTENANCE_ARGS=(--all-guilds)\n';
+ const start=hostRun(config,['start']);assert.equal(start.status,0,start.stderr);assert.deepEqual(JSON.parse(start.stdout),{gets:0,puts:0,starts:1});
+ const list=hostRun(config,['list','--global']);assert.equal(list.status,0,list.stderr);assert.deepEqual(JSON.parse(list.stdout),{ok:true,gets:1,puts:0,starts:0});
+});
+test('persistent invalid guild and unconfirmed apply never write',()=>{
+ for(const flags of ['--guild invalid','--global --apply','--global --apply --confirm invalid']) {
+  const r=hostRun(`MODE="clear"\nGUILD_ID=""\nMAINTENANCE_ARGS=(${flags})\n`);assert.equal(r.status,1,r.stderr);assert.equal(JSON.parse(r.stdout).puts,0);
+ }
+});

@@ -260,7 +260,8 @@ function parseCliArgs(argv) {
 }
 
 async function main(argv = process.argv.slice(2)) {
-  const { maintenanceCli } = require("./src/deployment/maintenanceCli");
+  const { maintenanceCli, parseMaintenanceArgs } = require("./src/deployment/maintenanceCli");
+  parseMaintenanceArgs(argv);
   if (!config.token || config.token.startsWith("replace_with_")) throw new Error("DISCORD_TOKEN missing");
   const catalog = prepareDeploymentPlan(commandHandler.loadCommands());
   const issues = [...validateDeploymentPlan(catalog), ...validatePayload(catalog.global), ...validatePayload(catalog.technical)];
