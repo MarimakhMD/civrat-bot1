@@ -493,6 +493,42 @@ test("rendu dédié: un champ absent/null est omis (modérateur inconnu → pas 
   assert.deepEqual(embed.fields.map((f) => f.name), ["👤 Membre", "🆔 ID"]);
 });
 
+// The unknown-actor fallback is opt-in for timeout duration changes only.
+const SCOPED_ACTOR_CASES = [
+  { name: "absent", details: {} },
+  { name: "null", details: { who: null } },
+  { name: "undefined", details: { who: undefined } },
+  { name: "known", details: { who: "<@M> `Modo`" } },
+];
+for (const language of ["fr", "en"]) {
+  for (const action of ["member_banned", "member_timeout_extended", "member_timeout_reduced"]) {
+    for (const actor of SCOPED_ACTOR_CASES) {
+      test(`actor fallback scope: ${action}, ${language}, who=${actor.name}`, async () => {
+        const { guild, sent } = makeGuild();
+        const transport = new DiscordLogsTransport({ guild });
+        await transport.deliver({
+          channelId: "CH", language, action,
+          details: { target: "<@U> `Alice`", targetId: "U", reason: null, ...actor.details },
+        });
+        const embed = deliveredEmbed(sent);
+        const expected = [language === "fr" ? "👤 Membre" : "👤 Member", "🆔 ID"];
+        const explicitUnknown = action !== "member_banned" && actor.name !== "absent";
+        if (actor.name === "known" || explicitUnknown) {
+          expected.push(language === "fr" ? "🛡️ Modérateur" : "🛡️ Moderator");
+        }
+        assert.deepEqual(embed.fields.map(field => field.name), expected);
+        if (actor.name === "known") {
+          assert.equal(embed.fields[2].value, actor.details.who);
+        } else if (explicitUnknown) {
+          assert.equal(embed.fields[2].value, language === "fr" ? "inconnu" : "unknown");
+        }
+        // Exact field lists also prove no reason or moderator ID was invented.
+        assert.equal(embed.fields.some(field => /Raison|Reason/.test(field.name)), false);
+      });
+    }
+  }
+}
+
 test("rendu dédié: avatar réel en thumbnail, jamais en field", async () => {
   const embed = await render(null, "invite_used", {
     member: "<@U> `Nouveau`",

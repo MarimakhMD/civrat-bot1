@@ -567,7 +567,9 @@ function buildFields(entry, language) {
   if (!details || typeof details !== "object" || Array.isArray(details)) return [];
 
   const spec = ACTION_FIELDS[entry.action];
-  return spec ? buildSpecFields(details, spec, language) : buildGenericFields(details, language);
+  // Only duration changes explicitly require an unknown actor when audit is unavailable.
+  const showUnknownActor = entry.action === "member_timeout_extended" || entry.action === "member_timeout_reduced";
+  return spec ? buildSpecFields(details, spec, language, showUnknownActor) : buildGenericFields(details, language);
 }
 
 function makePusher(fields) {
@@ -583,12 +585,12 @@ function makePusher(fields) {
   };
 }
 
-function buildSpecFields(details, spec, language) {
+function buildSpecFields(details, spec, language, showUnknownActor = false) {
   const fields = [];
   const push = makePusher(fields);
   for (const [key, labelId] of spec) {
     if (!Object.prototype.hasOwnProperty.call(details, key)) continue;
-    push(labelFor(labelId, language), key === "who" && details[key] == null ? labelFor("unknown", language) : details[key]);
+    push(labelFor(labelId, language), showUnknownActor && key === "who" && details[key] == null ? labelFor("unknown", language) : details[key]);
   }
   return fields;
 }
