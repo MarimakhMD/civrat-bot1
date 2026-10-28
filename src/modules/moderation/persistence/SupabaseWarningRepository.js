@@ -50,6 +50,7 @@ function isUndefinedTable(error) {
 }
 
 class SupabaseWarningRepository extends WarningRepository {
+  get durable() { return true; }
   /**
    * @param {object} options
    * @param {object} options.supabase Client PRIVILÉGIÉ (supabaseAdmin).

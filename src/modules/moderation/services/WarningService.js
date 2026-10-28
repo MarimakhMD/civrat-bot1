@@ -1,4 +1,6 @@
 "use strict";
+const { validReason, failure } = require("./sanctionReliability");
+const { matchesGuild } = require("./moderationAccess");
 
 const { InMemoryWarningRepository, normalizeReason } = require("../persistence/WarningRepository");
 
@@ -34,12 +36,12 @@ class WarningService {
 
   /**
    * @returns {Promise<{warned:boolean, code:string, targetId?:string, reason?:string|null,
-   *   warningId?:number|null, dmSent?:boolean}>}
+   *   warningId?:number|null, dmSent?:boolean, persistence?:"durable"|"memory"|"unknown"}>}
    */
   async warn({ guildId, actor, targetId, reason = null, transport, t } = {}) {
     // ── 1. Contrôles, tous AVANT toute écriture ──
-    if (!guildId || !actor?.id) return { warned: false, code: "WARN_GUILD_MISMATCH" };
-    if (!targetId) return { warned: false, code: "WARN_INVALID_TARGET" };
+    if (!matchesGuild(guildId, actor, transport) || !actor?.id) return { warned: false, code: "WARN_GUILD_MISMATCH" };
+    if (typeof targetId !== "string" || !targetId) return { warned: false, code: "WARN_INVALID_TARGET" };
 
     // B1 — self-warn explicitement interdit. Ni canModerate ni l'ancien service
     // ne le contrôlaient : un modérateur pouvait s'avertir lui-même.
@@ -47,12 +49,16 @@ class WarningService {
 
     // Raison validée avant tout I/O : une raison hors borne est une entrée
     // invalide, pas un avertissement à amputer. Jamais de troncature.
+    if (!validReason(reason)) return { warned: false, code: typeof reason === "string" ? "WARN_REASON_TOO_LONG" : "WARN_INVALID_REASON" };
     const normalized = normalizeReason(reason);
     if (!normalized.ok) return { warned: false, code: normalized.code };
 
-    const target = await transport.getMember(targetId);
-    if (!target || target.bot) return { warned: false, code: "WARN_INVALID_TARGET" };
-    if (!transport.canModerate(target, actor)) return { warned: false, code: "WARN_TARGET_NOT_MODERATABLE" };
+    let target;
+    try {
+      target = await transport.getMember(targetId);
+      if (!target || target.user?.bot || target.bot) return { warned: false, code: "WARN_INVALID_TARGET" };
+      if (!transport.canModerate(target, actor, "warn")) return { warned: false, code: "WARN_TARGET_NOT_MODERATABLE" };
+    } catch (error) { return { warned: false, code: failure("WARN", error).code }; }
 
     // ── 2. Écriture : le warning existe à partir d'ici ──
     let warning;
@@ -84,7 +90,7 @@ class WarningService {
         guildId,
         targetId,
         warningId: warning?.id ?? null,
-        message: error?.message,
+        code: failure("WARN", error).code,
       });
     }
 
@@ -96,6 +102,7 @@ class WarningService {
       reason: normalized.reason,
       warningId: warning?.id ?? null,
       dmSent,
+      persistence: this.repository.durable === true ? "durable" : this.repository.durable === false ? "memory" : "unknown",
     };
   }
 

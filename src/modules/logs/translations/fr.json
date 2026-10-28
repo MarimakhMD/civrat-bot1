@@ -86,6 +86,8 @@
     "suggestion_approved": "✅ Suggestion approuvée",
     "suggestion_rejected": "❌ Suggestion refusée",
     "suggestion_deleted": "🗑️ Suggestion supprimée",
-    "xp_level_up": "⬆️ Niveau supérieur atteint"
+    "xp_level_up": "⬆️ Niveau supérieur atteint",
+    "member_timeout_extended": "⏱️ Timeout prolongé",
+    "member_timeout_reduced": "⏱️ Timeout réduit"
   }
 }

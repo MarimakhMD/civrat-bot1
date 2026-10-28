@@ -465,6 +465,7 @@ test("Service : INSERT avant DM, puis WARN_SUCCESS", async () => {
     reason: "spam",
     warningId: 1,
     dmSent: true,
+    persistence: "memory",
   });
   assert.equal(transport.calls.sendWarning, 1);
 });
@@ -572,17 +573,17 @@ test("Câblage : /warn journalise action, targetId, reason et moderatorId", asyn
     kind: InteractionKind.COMMAND,
     name: "warn",
     discordMember: { id: "m1", guild: { name: "Guilde" }, user: { tag: "mod" } },
-    options: { getUser: () => ({ id: "u1" }), getString: (n) => (n === "reason" ? "spam" : null) },
+    options: { getUser: () => ({ id: "123456789012345678" }), getString: (n) => (n === "reason" ? "spam" : null) },
     transport: { reply: async (p) => { content = p.view.content; }, replyError: async () => {} },
   });
 
   assert.equal(logged.length, 1, "le log doit être émis");
   assert.equal(logged[0].action, "warn");
-  assert.equal(logged[0].targetId, "u1");
+  assert.equal(logged[0].targetId, "123456789012345678");
   assert.equal(logged[0].reason, "spam");
   assert.equal(logged[0].moderatorId, "m1");
   assert.equal(logged[0].guild.name, "Guilde");
-  assert.equal(content, "moderation.WARN_SUCCESS");
-  assert.equal((await repository.listWarnings("g1", "u1")).length, 1);
+  assert.equal(content, "moderation.WARN_SUCCESS\nmoderation.warningMemory");
+  assert.equal((await repository.listWarnings("g1", "123456789012345678")).length, 1);
   assert.equal(toDomainRow(null), null);
 });

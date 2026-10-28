@@ -228,6 +228,7 @@ test("P4-M: guildId absent → NICKNAME_GUILD_MISMATCH, aucun appel setNickname"
 // ── Intégration channelRegister : l'acteur réel est transmis ───────────
 
 async function runPseudo({ actor, target }) {
+  target.guild = { id: "g" };
   const { InteractionRegistry, InteractionRouter, InteractionKind } = require("../../../core/interactions");
   const { PermissionService } = require("../../../core/permissions");
   const { registerChannelModeration } = require("../channelRegister");
@@ -236,7 +237,7 @@ async function runPseudo({ actor, target }) {
   registerChannelModeration({ registry });
   const guild = {
     id: "g",
-    members: { fetch: async () => target },
+    members: { me: { id: "civrat", roles: { highest: { position: 10 } }, permissions: { has: () => true } }, fetch: async () => target },
   };
   const router = new InteractionRouter({
     registry,
@@ -256,7 +257,7 @@ async function runPseudo({ actor, target }) {
   await router.handle({
     kind: InteractionKind.COMMAND,
     name: "pseudo",
-    discordMember: { ...actor, guild, user: {} },
+    discordMember: { ...actor, permissions: { has: () => true }, guild, user: {} },
     discordChannel: {},
     options: {
       getInteger: () => 0,

@@ -60,7 +60,7 @@ for (const state of ["enabled", "disabled", "error"]) {
           create: async (envelope) => ({
             guildId: "g",
             userId: "a",
-            member: { has: () => true },
+            member: { has: () => true, hasInChannel: () => true },
             permissions: new PermissionService(),
             t: (key) => key,
             envelope,

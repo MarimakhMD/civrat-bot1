@@ -394,8 +394,14 @@ function isUntimeoutEntry(entry) {
  * sans filtre sur `changes`, une entrée de renommage était attribuée au
  * timeout. Le filtre `communication_disabled_until` supprime cette confusion.
  */
-async function resolveTimeoutAction({ guild, memberId, action, occurredAt = Date.now(), maxAgeMs = MAX_ENTRY_AGE_MS }) {
-  const changeFilter = action === "member_untimeout" ? isUntimeoutEntry : isTimeoutEntry;
+async function resolveTimeoutAction({ guild, memberId, action, beforeTimeout, afterTimeout, occurredAt = Date.now(), maxAgeMs = MAX_ENTRY_AGE_MS }) {
+  const modified = action === "member_timeout_extended" || action === "member_timeout_reduced";
+  const timestamp = value => typeof value === "number" ? value : Date.parse(value);
+  const changeFilter = modified ? entry => {
+    const change = findChange(entry, TIMEOUT_CHANGE_KEY);
+    return Boolean(change && hasValue(change.old) && hasValue(change.new)
+      && timestamp(change.old) === beforeTimeout && timestamp(change.new) === afterTimeout);
+  } : action === "member_untimeout" ? isUntimeoutEntry : isTimeoutEntry;
   return resolveAuditAction({
     guild,
     type: AuditLogEventType.MEMBER_UPDATE,

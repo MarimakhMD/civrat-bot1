@@ -62,19 +62,26 @@ function toDiscordCommand(definition, execute) {
     .setContexts(resolveContexts(definition))
     .setIntegrationTypes(resolveIntegrationTypes(definition));
 
+  // Opt-in metadata: legacy definitions retain their original payload.
+  if (definition.descriptionLocalizations) builder.setDescriptionLocalizations(definition.descriptionLocalizations);
+  const configureOption = option => o => {
+    o.setName(option.name).setDescription(option.description).setRequired(Boolean(option.required));
+    if (option.descriptionLocalizations) o.setDescriptionLocalizations(option.descriptionLocalizations);
+    return o;
+  };
   for (const option of definition.options || []) {
     if (option.type === "user") {
-      builder.addUserOption((o) => o.setName(option.name).setDescription(option.description).setRequired(Boolean(option.required)));
+      builder.addUserOption(configureOption(option));
     } else if (option.type === "string") {
-      builder.addStringOption((o) => o.setName(option.name).setDescription(option.description).setRequired(Boolean(option.required)));
+      builder.addStringOption(configureOption(option));
     } else if (option.type === "integer") {
-      builder.addIntegerOption((o) => o.setName(option.name).setDescription(option.description).setRequired(Boolean(option.required)));
+      builder.addIntegerOption(configureOption(option));
     } else if (option.type === "boolean") {
-      builder.addBooleanOption((o) => o.setName(option.name).setDescription(option.description).setRequired(Boolean(option.required)));
+      builder.addBooleanOption(configureOption(option));
     } else if (option.type === "attachment") {
       // Correction V1 : l'option Attachment DOIT être mappée pour que Discord
       // expose une vraie sélection de fichier (type Discord = 11).
-      builder.addAttachmentOption((o) => o.setName(option.name).setDescription(option.description).setRequired(Boolean(option.required)));
+      builder.addAttachmentOption(configureOption(option));
     }
   }
 

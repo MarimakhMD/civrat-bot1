@@ -1,1 +1,30 @@
-"use strict";class NicknameService{async set({guildId,actor,targetId,nickname,transport}){if(!guildId)return {ok:false,code:"NICKNAME_GUILD_MISMATCH"};if(!targetId)return {ok:false,code:"NICKNAME_INVALID_TARGET"};if(!actor?.id)return {ok:false,code:"NICKNAME_GUILD_MISMATCH"};const target=await transport.getMember(targetId);if(!target)return {ok:false,code:"NICKNAME_INVALID_TARGET"};/* P4 — deux barrières distinctes, sans réutiliser canModerate (sanctions) : 1) acteur → cible : rôles les plus hauts, comparaison stricte (self autorisé, hiérarchie sautée) ; 2) bot → cible : target.manageable conservé (owner et toute cible hors hiérarchie du bot restent non manageable). */const isSelf=target.id===actor.id;const actorPosition=actor?.roles?.highest?.position;const targetPosition=target?.roles?.highest?.position;if(!isSelf&&(typeof actorPosition!=="number"||typeof targetPosition!=="number"||actorPosition<=targetPosition))return {ok:false,code:"NICKNAME_NOT_MANAGEABLE"};if(!target.manageable)return {ok:false,code:"NICKNAME_NOT_MANAGEABLE"};try{await transport.setNickname(target,nickname);return {ok:true,code:"NICKNAME_SUCCESS"}}catch(_){return {ok:false,code:"NICKNAME_FAILED"}}}}module.exports={NicknameService};
+"use strict";
+const { failure } = require("./sanctionReliability");
+const { above, matchesGuild } = require("./moderationAccess");
+class NicknameService {
+  async set({ guildId, actor, targetId, nickname, transport }) {
+    if (!matchesGuild(guildId, actor, transport)) return { ok: false, code: "NICKNAME_GUILD_MISMATCH" };
+    if (typeof targetId !== "string" || !targetId) return { ok: false, code: "NICKNAME_INVALID_TARGET" };
+    if (!actor?.id) return { ok: false, code: "NICKNAME_GUILD_MISMATCH" };
+    if (nickname !== null && (typeof nickname !== "string" || nickname.length > 32
+        || (nickname.length > 0 && nickname.trim().length === 0))) {
+      return { ok: false, code: "NICKNAME_INVALID_NICKNAME" };
+    }
+    // Discord accepts null to reset. Treat an explicit empty string identically.
+    const value = nickname === "" ? null : nickname;
+    try {
+      const target = await transport.getMember(targetId);
+      if (!target) return { ok: false, code: "NICKNAME_INVALID_TARGET" };
+      const guild = actor.guild || { id: guildId };
+      if (!above(actor, target, guild, { allowSelf: true }) || !target.manageable
+          || (transport.canSetNickname && !transport.canSetNickname(target, actor))) {
+        return { ok: false, code: "NICKNAME_NOT_MANAGEABLE" };
+      }
+      await transport.setNickname(target, value);
+      return { ok: true, code: value === null ? "NICKNAME_RESET_SUCCESS" : "NICKNAME_SUCCESS" };
+    } catch (error) {
+      return failure("NICKNAME", error);
+    }
+  }
+}
+module.exports = { NicknameService };

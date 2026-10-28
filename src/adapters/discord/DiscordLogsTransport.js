@@ -18,6 +18,7 @@
  *     d'arriver dans le salon.
  */
 
+const { resolveLanguage } = require("../../modules/logs/services/logLanguage");
 const { EmbedBuilder } = require("discord.js");
 
 const FIELD_LIMITS = Object.freeze({ NAME: 256, VALUE: 1024, MAX_FIELDS: 25 });
@@ -146,7 +147,7 @@ const LABELS = Object.freeze({
 });
 
 function languageOf(entry) {
-  return entry && entry.language === "en" ? "en" : "fr";
+  return resolveLanguage(entry);
 }
 
 function labelFor(labelId, language) {
@@ -199,6 +200,8 @@ const LOG_COLORS = Object.freeze({
   role_updated: "#E67E22",
   channel_updated: "#E67E22",
   member_timed_out: "#E67E22",
+  member_timeout_extended: "#E67E22",
+  member_timeout_reduced: "#E67E22",
   member_kicked: "#E67E22",
   automod: "#E67E22",
   warn: "#E67E22",
@@ -468,6 +471,8 @@ const ACTION_FIELDS = Object.freeze({
   member_unbanned: MEMBER_UNBANNED_FIELDS,
   member_kicked: MEMBER_KICKED_FIELDS,
   member_timed_out: MEMBER_TIMED_OUT_FIELDS,
+  member_timeout_extended: [...MEMBER_TIMED_OUT_FIELDS, ["before", "before"], ["after", "after"]],
+  member_timeout_reduced: [...MEMBER_TIMED_OUT_FIELDS, ["before", "before"], ["after", "after"]],
   member_untimeout: MEMBER_UNTIMEOUT_FIELDS,
   warn: WARN_FIELDS,
   role_created: ROLE_CREATED_FIELDS,
@@ -583,7 +588,7 @@ function buildSpecFields(details, spec, language) {
   const push = makePusher(fields);
   for (const [key, labelId] of spec) {
     if (!Object.prototype.hasOwnProperty.call(details, key)) continue;
-    push(labelFor(labelId, language), details[key]);
+    push(labelFor(labelId, language), key === "who" && details[key] == null ? labelFor("unknown", language) : details[key]);
   }
   return fields;
 }

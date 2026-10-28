@@ -92,6 +92,7 @@ class WarningRepository {
  * comportement nominal.
  */
 class InMemoryWarningRepository extends WarningRepository {
+  get durable() { return false; }
   constructor({ clock } = {}) {
     super();
     this.store = [];

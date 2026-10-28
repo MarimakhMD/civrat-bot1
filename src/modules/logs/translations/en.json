@@ -86,6 +86,8 @@
     "suggestion_approved": "✅ Suggestion approved",
     "suggestion_rejected": "❌ Suggestion rejected",
     "suggestion_deleted": "🗑️ Suggestion deleted",
-    "xp_level_up": "⬆️ Level up reached"
+    "xp_level_up": "⬆️ Level up reached",
+    "member_timeout_extended": "⏱️ Timeout extended",
+    "member_timeout_reduced": "⏱️ Timeout reduced"
   }
 }

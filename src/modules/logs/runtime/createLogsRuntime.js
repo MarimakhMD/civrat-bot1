@@ -65,8 +65,8 @@ function createLogsRuntime({ guildConfigResolver }) {
     // PHASE 1 — `rule` et `rules` étaient perdus ici : la déstructuration ne les
     // listait pas, donc AutoMod et Security voyaient leur règle silencieusement
     // disparaître du log.
-    handleModerationEvent: async ({ guild, config, action, targetId, reason, rule, rules, moderatorId, target, moderator, duration, avatarUrl }) =>
-      handleModerationEvent({ guild, config: config || await guildConfigResolver.get(guild.id), action, targetId, reason, rule, rules, moderatorId, target, moderator, duration, avatarUrl, ...deps(guild) }),
+    handleModerationEvent: async ({ guild, config, action, targetId, reason, rule, rules, moderatorId, target, moderator, duration, before, after, avatarUrl }) =>
+      handleModerationEvent({ guild, config: config || await guildConfigResolver.get(guild.id), action, targetId, reason, rule, rules, moderatorId, target, moderator, duration, before, after, avatarUrl, ...deps(guild) }),
 
     handleRoleEvent: async ({ guild, config, action, roleId, memberId, target, member, who, before, after, permissions, avatarUrl }) =>
       handleRoleEvent({ guild, config: config || await guildConfigResolver.get(guild.id), action, roleId, memberId, target, member, who, before, after, permissions, avatarUrl, ...deps(guild) }),

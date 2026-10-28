@@ -275,7 +275,9 @@ async function handleTimeout(event, guild, config, occurredAt) {
     ? "member_timed_out"
     : event.beforeTimeout !== null && event.afterTimeout === null
       ? "member_untimeout"
-      : null;
+      : event.beforeTimeout !== null && event.afterTimeout !== null && event.beforeTimeout !== event.afterTimeout
+        ? event.afterTimeout > event.beforeTimeout ? "member_timeout_extended" : "member_timeout_reduced"
+        : null;
 
   // PHASE 1 (correctif 5) — AUCUN CHEMIN SILENCIEUX.
   //
@@ -287,8 +289,7 @@ async function handleTimeout(event, guild, config, occurredAt) {
   // attendu et déjà couvert ailleurs.
 
   if (!action) {
-    // `communication_disabled_until` a changé sans pose ni levée nette : une
-    // durée prolongée ou raccourcie. Rien n'est inventé, mais on ne se tait pas.
+    // Defensive guard: no reliable transition can be determined.
     logger.warn("Member timeout event ignored: no explicit timeout transition", {
       event: "LOG_TIMEOUT_TRANSITION_UNKNOWN",
       guildId: guild.id,
@@ -320,6 +321,8 @@ async function handleTimeout(event, guild, config, occurredAt) {
     guild,
     memberId: event.memberId,
     action,
+    beforeTimeout: event.beforeTimeout,
+    afterTimeout: event.afterTimeout,
     occurredAt,
   });
 
@@ -338,16 +341,28 @@ async function handleTimeout(event, guild, config, occurredAt) {
     });
   }
 
+  const modified = action === "member_timeout_extended" || action === "member_timeout_reduced";
+  if (modified && !actor.matched) {
+    // Preserve the legacy diagnostic for an uncorrelated duration update,
+    // but no longer discard the gateway-confirmed business event.
+    logger.warn("Timeout duration changed without a matching audit entry", {
+      event: "LOG_TIMEOUT_TRANSITION_UNKNOWN", reason: "AUDIT_UNRESOLVED",
+      guildId: guild.id, memberId: event.memberId,
+      beforeTimeout: event.beforeTimeout, afterTimeout: event.afterTimeout,
+    });
+  }
+
   // Durée : différence entre l'échéance du timeout (celle de CET événement) et
-  // l'instant présent, uniquement lorsque le membre vient d'être timeouté.
-  // Jamais inventée, et localisée selon la langue de la guilde.
-  const duration = action === "member_timed_out" && event.afterTimeout
-    ? formatDuration(event.afterTimeout - Date.now(), resolveLanguage(config))
+  // l’instant capturé de l’événement, pour une pose ou modification.
+  // La levée ne porte pas de durée ; la langue est celle du log.
+  const duration = action !== "member_untimeout" && event.afterTimeout
+    ? formatDuration(event.afterTimeout - occurredAt, resolveLanguage(config))
     : null;
 
-  await require("../modules/logs/runtime/getLogsRuntime")
-    .getLogsRuntime()
-    .handleModerationEvent({
+  try {
+    await require("../modules/logs/runtime/getLogsRuntime")
+      .getLogsRuntime()
+      .handleModerationEvent({
       guild,
       config,
       action,
@@ -357,6 +372,16 @@ async function handleTimeout(event, guild, config, occurredAt) {
       moderator: actor.executor,
       moderatorId: actor.executorId,
       duration,
+      ...(modified ? {
+        before: `<t:${Math.floor(event.beforeTimeout / 1000)}:F>`,
+        after: `<t:${Math.floor(event.afterTimeout / 1000)}:F>`,
+      } : {}),
       avatarUrl: event.memberAvatarUrl,
     });
+  } catch (error) {
+    logger.warn("Timeout log delivery failed", {
+      event: "LOG_TIMEOUT_DELIVERY_FAILED", guildId: guild.id,
+      memberId: event.memberId, action, code: error?.code || null,
+    });
+  }
 }

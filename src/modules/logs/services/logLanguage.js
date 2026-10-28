@@ -14,7 +14,7 @@ const DEFAULT_LANGUAGE = "fr";
 
 /** Résout la langue d'une entrée de log depuis la configuration de guilde. */
 function resolveLanguage(config) {
-  const value = config && typeof config.language === "string" ? config.language.toLowerCase() : null;
+  const value = config && typeof config.language === "string" ? config.language.trim().toLowerCase() : null;
   return SUPPORTED_LANGUAGES.includes(value) ? value : DEFAULT_LANGUAGE;
 }
 

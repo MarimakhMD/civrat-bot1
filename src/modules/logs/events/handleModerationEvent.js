@@ -15,12 +15,14 @@ async function handleModerationEvent({
   target = undefined,
   moderator = undefined,
   duration = null,
+  before = null,
+  after = null,
   avatarUrl = null,
   mapper,
   service,
   delivery,
 }) {
-  if (!config.logs_enabled) return null;
+  if (!config?.logs_enabled) return null;
 
   const details = {};
   if (targetId !== null && targetId !== undefined) details.targetId = targetId;
@@ -28,6 +30,8 @@ async function handleModerationEvent({
   if (reason) details.reason = reason;
   if (moderatorId) details.moderatorId = moderatorId;
   if (duration) details.duration = duration;
+  if (before !== null) details.before = before;
+  if (after !== null) details.after = after;
   if (avatarUrl) details.avatarUrl = avatarUrl;
   if (rule) details.rule = rule;
   if (Array.isArray(rules) && rules.length) details.rules = [...rules];
