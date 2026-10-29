@@ -23,7 +23,7 @@ The frozen product reference is
 
 ## Requirements
 
-- Node.js `>= 18.17.0`
+- Node.js `>= 22.0.0` (minimum required by the locked Supabase SDK)
 - A Discord application and bot token
 - A Supabase project with the current runtime tables
 - MongoDB only when using features that require dynamic persistence
@@ -189,3 +189,11 @@ SMTP passwords to Git.
   identity, or Premium data.
 - Use centralized translations for all bot-facing text.
 - Run `npm run check` and the relevant offline test suites before delivery.
+
+## Préparation de l’intégration complète
+
+Le runtime minimum effectif est **Node 22.0.0** (SDK Supabase verrouillé).
+Voir [les prérequis Supabase, Storage, RLS et Pterodactyl](docs/operations/full-integration-readiness.md).
+La [DDL proposée](docs/operations/review-full-integration-schema.sql) est destinée
+à la revue et n’est jamais exécutée automatiquement. Fusionner le code
+n’autorise ni son déploiement, ni l’application de migrations.

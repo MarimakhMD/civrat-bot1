@@ -39,8 +39,10 @@
 ### Colonnes réellement consommées
 
 Union des clés lues/écrites dans `src/services/guildConfig.js`, les
-`*Constants.js` des modules et les événements legacy. Toutes sont optionnelles
-côté code (le code applique des défauts applicatifs quand la clé est absente).
+`*Constants.js` des modules et les événements legacy. Les lectures peuvent appliquer des défauts applicatifs quand une clé est absente ;
+les colonnes doivent néanmoins exister avant les écritures correspondantes.
+Voir [les prérequis d’intégration](../operations/full-integration-readiness.md)
+et la DDL de revue additive (non exécutée) pour les nouveaux champs.
 
 | Colonne | Type déduit | Consommateur principal |
 |---|---|---|
@@ -64,6 +66,8 @@ côté code (le code applique des défauts applicatifs quand la clé est absente
 | `welcome_dm_enabled` | `boolean` | welcome-goodbye |
 | `welcome_dm_message` | `text` | welcome-goodbye |
 | `welcome_template_id` | `text` (`à confirmer` : consommé comme identifiant de template) | welcome-image |
+| `welcome_image_enabled` | `boolean`, défaut applicatif false | welcome-image (préexistant) |
+| `welcome_image_key` | `text NULL`, défaut NULL | image personnalisée privée par guilde |
 | `goodbye_enabled` | `boolean` | welcome-goodbye |
 | `goodbye_channel_id` | `text` | welcome-goodbye |
 | `goodbye_message` | `text` | welcome-goodbye |
@@ -115,6 +119,8 @@ côté code (le code applique des défauts applicatifs quand la clé est absente
 | `automod_delete_message` | `boolean` | automod |
 | `automod_punishment` | `text` (ex. `"timeout"`, `"warn"`, `"none"`) | automod |
 | `automod_timeout_minutes` | `integer` | automod |
+| `automod_exempt_roles` | `text[] NOT NULL DEFAULT '{}'::text[]` | exemptions AutoMod |
+| `automod_exempt_channels` | `text[] NOT NULL DEFAULT '{}'::text[]` | exemptions AutoMod |
 | `security_enabled` | `boolean` | security |
 | `security_anti_raid` | `boolean` | security |
 | `security_anti_nuke` | `boolean` | security |
@@ -155,6 +161,8 @@ create table if not exists public.guild_configs (
   welcome_dm_enabled boolean,
   welcome_dm_message text,
   welcome_template_id text,
+  welcome_image_enabled boolean default false,
+  welcome_image_key text,
   goodbye_enabled boolean,
   goodbye_channel_id text,
   goodbye_message text,
@@ -209,6 +217,8 @@ create table if not exists public.guild_configs (
   automod_delete_message boolean,
   automod_punishment text,
   automod_timeout_minutes integer,
+  automod_exempt_roles text[] not null default '{}'::text[],
+  automod_exempt_channels text[] not null default '{}'::text[],
   security_enabled boolean,
   security_anti_raid boolean,
   security_anti_nuke boolean,

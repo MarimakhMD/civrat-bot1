@@ -169,8 +169,34 @@ test("P6 guard : record au-delà de la limite reste cohérent", () => {
 test("P6 guard : l'instance partagée existe et est fonctionnelle", () => {
   assert.ok(sharedRateLimitGuard instanceof ActionRateLimitGuard);
   const probe = { guildId: "shared-probe-guild", userId: "shared-probe-user", group: "shared-probe", limit: 1, windowMs: 1 };
-  assert.equal(sharedRateLimitGuard.check(probe).allowed, true);
-  sharedRateLimitGuard.record(probe);
-  assert.equal(sharedRateLimitGuard.check(probe).allowed, false);
-  sharedRateLimitGuard.reset(probe);
+  const originalClock = sharedRateLimitGuard.clock;
+  let now = 1000;
+  // The singleton exposes the same injected clock as constructor-created guards.
+  // Freeze time for the refusal, then advance to the exact expiry boundary.
+  sharedRateLimitGuard.clock = () => now;
+  try {
+    assert.equal(sharedRateLimitGuard.check(probe).allowed, true);
+    sharedRateLimitGuard.record(probe);
+    assert.equal(sharedRateLimitGuard.check(probe).allowed, false);
+    assert.equal(sharedRateLimitGuard.check(probe).retryAfterMs, 1);
+    now += 1;
+    assert.equal(sharedRateLimitGuard.check(probe).allowed, true);
+    assert.equal(sharedRateLimitGuard.check(probe).count, 0);
+  } finally {
+    sharedRateLimitGuard.reset(probe);
+    sharedRateLimitGuard.clock = originalClock;
+  }
+});
+
+test("P6 régression : fenêtre de 1 ms refusée avant la borne et réarmée exactement à la borne", () => {
+  const { guard, tick } = harness();
+  const probe = { guildId: "g1", userId: "u1", group: "one-ms", limit: 1, windowMs: 1 };
+  assert.equal(guard.check(probe).allowed, true);
+  guard.record(probe);
+  tick(0);
+  assert.deepEqual(guard.check(probe), { allowed: false, count: 1, remaining: 0, retryAfterMs: 1 });
+  tick(1);
+  assert.deepEqual(guard.check(probe), { allowed: true, count: 0, remaining: 1, retryAfterMs: 0 });
+  guard.record(probe);
+  assert.equal(guard.check(probe).allowed, false, "un nouveau crédit est compté après expiration");
 });
