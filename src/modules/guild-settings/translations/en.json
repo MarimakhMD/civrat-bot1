@@ -23,7 +23,7 @@
     },
     "categoryDescriptions": {
       "general": "Language, automatic roles, and temporary voice channels.",
-      "protection": "AutoMod, abuse protection, and CAPTCHA verification.",
+      "protection": "AutoMod and abuse protection.",
       "welcome": "Welcome and goodbye messages, with visible Premium options.",
       "tickets": "Ticket system and visible Premium customizations.",
       "community": "Giveaways and community suggestions.",

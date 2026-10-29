@@ -6,6 +6,9 @@
     "invalidName": "Le nom du sticker doit contenir 2-30 caractères.",
     "limitReached": "Limite Free atteinte ({{count}}/{{limit}}).",
     "uploadFailed": "Échec de l'upload du sticker.",
-    "fetchFailed": "Impossible de récupérer les stickers."
+    "fetchFailed": "Impossible de récupérer les stickers.",
+    "unsupportedFormat": "Format de fichier non supporté pour un sticker (PNG, APNG, GIF ou Lottie JSON uniquement).",
+    "invalidSize": "Taille de fichier invalide.",
+    "tooLarge": "Fichier trop volumineux : 512 Ko maximum."
   }
 }

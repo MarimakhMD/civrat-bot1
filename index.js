@@ -107,14 +107,11 @@ async function main() {
   const commands = commandHandler.loadCommands();
   logger.info(`${commands.size} slash commands available.`);
 
-  // Optional one-shot deploy at startup, controlled by DEPLOY_COMMANDS.
-  // DEPLOY_COMMANDS=1  -> load (already done) + deploy + verify + log, then
-  //                       continue with the normal bot startup.
-  // any other value   -> normal startup, no deploy (no PUT on every restart).
+  // Deployment requires explicit operator targets, preview and confirmation.
   if (config.deployCommands) {
-    logger.info("DEPLOY_COMMANDS=1 — deploying slash commands before login.");
+    logger.info("DEPLOY_COMMANDS=1 — automatic deployment is disabled.");
     try {
-      await deployCommands({ commands });
+      logger.warn("Automatic deployment disabled: use deploy.js with explicit targets, preview and confirmation.");
     } catch (error) {
       // A failing deploy must never prevent the bot from coming online.
       logger.error("Startup deployment failed — bot startup continues.", {

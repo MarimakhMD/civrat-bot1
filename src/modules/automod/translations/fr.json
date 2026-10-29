@@ -37,6 +37,12 @@
     "log": {
       "title": "AutoMod",
       "description": "L'utilisateur {{user}} a déclenché {{rule}} ({{reason}})"
-    }
+    },
+    "exemptOpen": "Exemptions",
+    "exemptHelp": "Les membres avec un rôle exempté ou les messages publiés dans un salon exempté ne sont pas modérés (rôle OU salon, maximum 10 chacun).",
+    "exemptRoles": "Rôles exemptés",
+    "exemptChannels": "Salons exemptés",
+    "exemptResetRoles": "Réinitialiser les rôles",
+    "exemptResetChannels": "Réinitialiser les salons"
   }
 }

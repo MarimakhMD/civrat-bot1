@@ -88,9 +88,9 @@ test("le plan de déploiement reste valide après l'ajout du champ", () => {
     "le champ atteint bien la charge utile réellement envoyée à Discord");
 });
 
-// Photographie exacte mesurée : 18 des 22 commandes globales portent déjà une
+// Photographie exacte mesurée : les commandes globales portent une
 // permission par défaut (repli historique permissions.allOf[0] dans
-// resolveDefaultMemberPermissions) ; les 4 commandes publiques n'en portent
+// resolveDefaultMemberPermissions) ; quelques commandes publiques n'en portent
 // aucune. Ce test verrouille ces valeurs pour prouver que le correctif /admin
 // n'a rien modifié d'autre — toute dérive future est détectée.
 const GLOBAL_DEFAULT_MEMBER_PERMISSIONS = Object.freeze({
@@ -99,7 +99,6 @@ const GLOBAL_DEFAULT_MEMBER_PERMISSIONS = Object.freeze({
   analytics_xp: undefined,
   automod: "32",
   bannir: "4",
-  captcha: "32",
   debannir: "4",
   deverrouiller: "16",
   expulser: "2",
@@ -115,6 +114,7 @@ const GLOBAL_DEFAULT_MEMBER_PERMISSIONS = Object.freeze({
   unmute: "1099511627776",
   uploadsticker: "32",
   verrouiller: "16",
+  welcomeimage: "32",
   warn: "1099511627776",
 });
 

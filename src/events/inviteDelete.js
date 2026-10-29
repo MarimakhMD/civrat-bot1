@@ -9,9 +9,15 @@ module.exports = {
   name: "inviteDelete",
   once: false,
   async execute(invite) {
+    // Le cache d'invitations est utile au suivi d'invitations indépendamment
+    // des logs : il est rafraîchi en premier, sans condition.
     const invites = await invite.guild.invites.fetch().catch(() => null);
     if (invites) inviteService.cacheGuildInvites(invite.guild.id, invites);
+
     const config = await guildConfigService.getGuildConfig(invite.guild.id);
+    // PHASE 1 — aucune requête Audit Log si les logs sont coupés.
+    if (!config?.logs_enabled) return;
+
     // P1b — l'inviteur n'est pas présent dans l'événement inviteDelete :
     // résolution Audit Log avec correspondance stricte sur le code.
     const actor = await resolveAuditActor({ guild: invite.guild, type: AuditLogEvent.InviteDelete, targetCode: invite.code });

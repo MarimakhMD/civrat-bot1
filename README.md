@@ -23,7 +23,7 @@ The frozen product reference is
 
 ## Requirements
 
-- Node.js `>= 18.17.0`
+- Node.js `>= 22.0.0` (minimum required by the locked Supabase SDK)
 - A Discord application and bot token
 - A Supabase project with the current runtime tables
 - MongoDB only when using features that require dynamic persistence
@@ -34,23 +34,23 @@ The frozen product reference is
 cp .env.example .env
 # Fill in the required values in .env
 npm ci
-npm run deploy
+npm run deploy -- list --global --all-guilds # inventory only; see maintenance procedure
 npm start
 ```
 
 Normal startup and command deployment are separate operations. `npm start` does
-not need to deploy commands. Run `npm run deploy` explicitly when the command
-catalog or its configured technical guild changes.
+not deploy commands. Command maintenance requires explicit targets, a preview,
+and confirmation before writes. See [the Pterodactyl procedure](docs/operations/command-maintenance.md).
 
 ## Slash-command scopes
 
 Deployment validates a closed catalog before making any Discord request:
 
 - **22 global Guild commands:** `/analytics`, `/analytics_invites`,
-  `/analytics_xp`, `/automod`, `/bannir`, `/captcha`, `/debannir`,
-  `/deverrouiller`, `/expulser`, `/giveaway`, `/invites`, `/mute`, `/pseudo`,
-  `/settings`, `/slowmode`, `/suggest`, `/supprimer`, `/ticketpanel`, `/unmute`,
-  `/uploadsticker`, `/verrouiller`, `/warn`;
+  `/analytics_xp`, `/automod`, `/bannir`, `/debannir`, `/deverrouiller`,
+  `/expulser`, `/giveaway`, `/invites`, `/mute`, `/pseudo`, `/settings`,
+  `/slowmode`, `/suggest`, `/supprimer`, `/ticketpanel`, `/unmute`,
+  `/uploadsticker`, `/verrouiller`, `/warn`, `/welcomeimage`;
 - **one technical Guild command:** `/admin`, deployed only through the guild
   endpoint for `CIVRAT_ADMIN_GUILD_ID`.
 
@@ -58,32 +58,23 @@ A global deployment replaces the previous global catalog, which removes the old
 `/ownerpanel` and `/recovery` command definitions. Their useful services and
 security controls are reused inside `/admin`.
 
-### Targeted preview and stale Guild commands
+### Explicit command maintenance
 
-`npm run deploy` (or `node deploy.js deploy`) is the production operation: it
-updates the 22-command global catalog and then the technical `/admin` catalog.
-A valid explicit guild argument instead performs exactly one Guild PUT and no
-global PUT:
+Both `node deploy.js` and `start.sh → start.js` use the secure CLI:
 
 ```bash
-node deploy.js deploy <guildId>
+node deploy.js list --global --all-guilds
+node deploy.js deploy --global --all-guilds
+node deploy.js clear --guild <guildId>
 ```
 
-- a normal guild receives only the 22 normal commands for an instant,
-  reversible preview;
-- `CIVRAT_ADMIN_GUILD_ID` receives only `/admin`;
-- `/admin` is never included for another guild.
-
-Inspect a Guild scope before and after a preview, then remove its temporary
-commands when testing is complete:
-
-```bash
-node deploy.js list <guildId>
-node deploy.js clear <guildId>
-```
-
-`clear` never touches global commands. An explicitly supplied invalid ID aborts
-the requested REST operation and never falls back to a production deploy.
+These are read-only inventories/simulations. Writes additionally require
+`--apply --confirm <preview fingerprint>` after approval. Global scope is
+separate from `--all-guilds`. Deploy reconciles ordinary guilds to **empty**
+local catalogs to remove historical copies; `/admin` is only placed in the
+technical guild. No implicit global target, no positional guild ID syntax.
+Maintenance exits without starting the bot, with status 1 for a failure.
+See [the procedure](docs/operations/command-maintenance.md) before any real use.
 
 ## Technical `/admin` panel
 
@@ -150,28 +141,33 @@ the user to open a ticket. A backend outage is reported separately and remains
 fail-closed. Free Ticket behavior still falls back safely when Premium data is
 not available.
 
-## CAPTCHA
-
-The CAPTCHA command, module, runtime transport, and existing behavior are
-preserved. This architecture change does not alter CAPTCHA source files.
-
 ## Scripts and verification
 
 | Script | Purpose |
 | --- | --- |
 | `npm start` | Starts the bot runtime without requiring a command deploy. |
 | `npm run dev` | Starts the runtime in Node watch mode. |
-| `npm run deploy` | Production deploy: 22 global commands plus technical guild-scoped `/admin`. |
-| `node start.js deploy <guildId>` | One target-safe Guild deploy, then starts the bot even if deployment fails. |
-| `node deploy.js list <guildId>` | Reads one Guild command catalog without modifying it. |
-| `node deploy.js clear <guildId>` | Clears one Guild command catalog without touching global commands. |
+| `npm run deploy -- deploy --global --all-guilds` | Preview reconciliation; explicit confirmation required to apply. |
+| `node start.js deploy --guild <guildId>` | Preview one Guild reconciliation; does not start the bot. |
+| `node deploy.js list --guild <guildId>` | Reads one Guild command catalog without modifying it. |
+| `node deploy.js clear --guild <guildId>` | Previews one Guild clear without touching global commands. |
 | `npm run check:syntax` | Performs JavaScript syntax checks. |
-| `npm run check:commands` | Performs static slash-command source checks. |
+| `npm run check:commands` | Verifies the real 23-command catalog (22 global + technical `/admin`) against `deploy.js`, plus static `src/commands` source checks. |
 | `npm run check:repository` | Verifies repository safety baselines. |
 | `npm run check` | Runs all static checks. |
-| `npm run test:core` | Runs offline core tests. |
+| `npm test` | Discovers and runs **every** `*.test.js` in the repository, deterministically. No filter, no glob to maintain. |
+| `npm run test:list` | Lists the discovered test files and their count without executing them. |
+| `npm run test:core` | Runs offline core tests (`test/core`). |
+| `npm run test:adapters` | Runs adapter tests (`test/adapters`). |
+| `npm run test:guild-settings` | Runs Guild Settings and runtime composition tests. |
+| `npm run test:modules` | Runs all `src/modules/**/tests` module tests. |
+| `npm run test:welcome-goodbye` | Runs Welcome/Goodbye offline tests. |
 | `npm run test:phase-2` | Runs offline core, adapter, and Guild Settings tests. |
 | `npm run test:phase-3` | Also runs Welcome/Goodbye offline tests. |
+
+`npm test` discovers test files from disk, so adding a `*.test.js` anywhere in
+the repository automatically includes it. A scoped script whose filter matches
+no file fails loudly instead of reporting a green run.
 
 The repository's automated tests are offline: they do not constitute a real
 Discord deployment or interaction test. Real acceptance must still be performed
@@ -193,3 +189,11 @@ SMTP passwords to Git.
   identity, or Premium data.
 - Use centralized translations for all bot-facing text.
 - Run `npm run check` and the relevant offline test suites before delivery.
+
+## Préparation de l’intégration complète
+
+Le runtime minimum effectif est **Node 22.0.0** (SDK Supabase verrouillé).
+Voir [les prérequis Supabase, Storage, RLS et Pterodactyl](docs/operations/full-integration-readiness.md).
+La [DDL proposée](docs/operations/review-full-integration-schema.sql) est destinée
+à la revue et n’est jamais exécutée automatiquement. Fusionner le code
+n’autorise ni son déploiement, ni l’application de migrations.

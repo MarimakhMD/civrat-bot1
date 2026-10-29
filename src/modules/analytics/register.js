@@ -3,6 +3,7 @@
 const { PermissionName } = require("../../core/permissions");
 const { AnalyticsConfigKey } = require("./configuration/analyticsConstants");
 const { analyticsSettingsView } = require("./interactions/analyticsViews");
+const { enforceConfigWrite } = require("../../core/rateLimit/ActionRateLimitGuard");
 
 function registerAnalytics({ registry, configService, analyticsService, settingsHome = null }) {
   const permissionsManage = { allOf: [PermissionName.MANAGE_GUILD] };
@@ -18,6 +19,10 @@ function registerAnalytics({ registry, configService, analyticsService, settings
     customId: "civrat:v1:analytics:toggle",
     permissions: permissionsManage,
     execute: async (context) => {
+      // P6 §5 — écriture de configuration : garde AVANT read/upsert ; au
+      // dépassement, réponse éphémère déjà envoyée, vue non rafraîchie.
+      // (Le chemin d'écriture analytics par message n'est PAS touché.)
+      if (!(await enforceConfigWrite(context))) return;
       const config = await configService.read(context.guildId);
       await configService.update(context.guildId, { [AnalyticsConfigKey.ENABLED]: !config[AnalyticsConfigKey.ENABLED] });
       return renderSettings(context);

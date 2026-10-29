@@ -14,12 +14,13 @@ function registerTempVoice({ registry, service, settingsHome = null }) {
     customId: Id.TOGGLE,
     permissions,
     execute: async (context) => {
-      await toggleTempVoice({ ...context, service });
+      const saved = await toggleTempVoice({ ...context, service });
+      if (saved === null) return; // refus rate-limit déjà répondu (P6)
       return render(context);
     },
   });
-  registry.registerSelectMenu({ customId: Id.LOBBY_CHANNEL, permissions, execute: async (context) => { await selectTempVoiceChannel({ ...context, service, customId: Id.LOBBY_CHANNEL, values: context.envelope.values }); return render(context); } });
-  registry.registerSelectMenu({ customId: Id.CATEGORY_CHANNEL, permissions, execute: async (context) => { await selectTempVoiceChannel({ ...context, service, customId: Id.CATEGORY_CHANNEL, values: context.envelope.values }); return render(context); } });
+  registry.registerSelectMenu({ customId: Id.LOBBY_CHANNEL, permissions, execute: async (context) => { const saved = await selectTempVoiceChannel({ ...context, service, customId: Id.LOBBY_CHANNEL, values: context.envelope.values }); if (saved === null) return; return render(context); } });
+  registry.registerSelectMenu({ customId: Id.CATEGORY_CHANNEL, permissions, execute: async (context) => { const saved = await selectTempVoiceChannel({ ...context, service, customId: Id.CATEGORY_CHANNEL, values: context.envelope.values }); if (saved === null) return; return render(context); } });
   registry.registerButton({ customId: Id.BACK, permissions, execute: settingsHome });
 
   return { id: Id.SECTION, permissions };

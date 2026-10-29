@@ -12,7 +12,7 @@ test("security wiring: events use modern Security runtime and not legacy securit
   assert.doesNotMatch(memberAdd, /securityService\.handleBotJoin/);
   assert.doesNotMatch(memberAdd, /require\("..\/services\/securityService"\)/);
 
-  for (const file of ["src/events/channelCreate.js", "src/events/channelDelete.js"]) {
+  for (const file of ["src/events/channelCreate.js", "src/events/channelDelete.js", "src/events/channelUpdate.js"]) {
     const source = fs.readFileSync(file, "utf8");
     assert.match(source, /getSecurityRuntime/);
     assert.match(source, /handleChannel/);
@@ -20,7 +20,7 @@ test("security wiring: events use modern Security runtime and not legacy securit
     assert.doesNotMatch(source, /require\("..\/services\/securityService"\)/);
   }
 
-  for (const file of ["src/events/roleCreate.js", "src/events/roleDelete.js"]) {
+  for (const file of ["src/events/roleCreate.js", "src/events/roleDelete.js", "src/events/roleUpdate.js"]) {
     const source = fs.readFileSync(file, "utf8");
     assert.match(source, /getSecurityRuntime/);
     assert.match(source, /handleRole/);
@@ -60,6 +60,11 @@ test("security wiring: channel/role events are non-blocking on Security failure"
     await runtime.handleChannelDelete({ guild: { id: "g" } });
     await runtime.handleRoleCreate({ guild: { id: "g" }, id: "r1" });
     await runtime.handleRoleDelete({ guild: { id: "g" }, id: "r1" });
+    // P2-B — les nouveaux handlers permissions restent non-bloquants même
+    // quand la journalisation d'alerte lève une erreur.
+    const permChanges = [{ key: "permissions", before: ["ViewChannel"], after: ["ViewChannel", "Administrator"] }];
+    await runtime.handleChannelPermsUpdate({ guild: { id: "g" }, id: "c1" }, permChanges, null);
+    await runtime.handleRolePermsUpdate({ guild: { id: "g" }, id: "r1" }, permChanges, null);
   } catch {
     threw = true;
   }
@@ -67,7 +72,7 @@ test("security wiring: channel/role events are non-blocking on Security failure"
 });
 
 test("security wiring: no double execution legacy/moderne", () => {
-  const files = ["src/events/guildMemberAdd.js", "src/events/channelCreate.js", "src/events/channelDelete.js", "src/events/roleCreate.js", "src/events/roleDelete.js"];
+  const files = ["src/events/guildMemberAdd.js", "src/events/channelCreate.js", "src/events/channelDelete.js", "src/events/channelUpdate.js", "src/events/roleCreate.js", "src/events/roleDelete.js", "src/events/roleUpdate.js"];
   for (const file of files) {
     const source = fs.readFileSync(file, "utf8");
     // Only count actual code, not comments mentioning legacy (the comment "no legacy securityService" would otherwise trigger)

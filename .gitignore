@@ -55,3 +55,6 @@ Thumbs.db
 # Source module named logs (not runtime log output)
 !src/modules/logs/
 !src/modules/logs/**
+
+# Persistent operator-owned Pterodactyl launch configuration
+/start.local.sh

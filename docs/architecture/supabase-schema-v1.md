@@ -39,8 +39,10 @@
 ### Colonnes réellement consommées
 
 Union des clés lues/écrites dans `src/services/guildConfig.js`, les
-`*Constants.js` des modules et les événements legacy. Toutes sont optionnelles
-côté code (le code applique des défauts applicatifs quand la clé est absente).
+`*Constants.js` des modules et les événements legacy. Les lectures peuvent appliquer des défauts applicatifs quand une clé est absente ;
+les colonnes doivent néanmoins exister avant les écritures correspondantes.
+Voir [les prérequis d’intégration](../operations/full-integration-readiness.md)
+et la DDL de revue additive (non exécutée) pour les nouveaux champs.
 
 | Colonne | Type déduit | Consommateur principal |
 |---|---|---|
@@ -64,6 +66,8 @@ côté code (le code applique des défauts applicatifs quand la clé est absente
 | `welcome_dm_enabled` | `boolean` | welcome-goodbye |
 | `welcome_dm_message` | `text` | welcome-goodbye |
 | `welcome_template_id` | `text` (`à confirmer` : consommé comme identifiant de template) | welcome-image |
+| `welcome_image_enabled` | `boolean`, défaut applicatif false | welcome-image (préexistant) |
+| `welcome_image_key` | `text NULL`, défaut NULL | image personnalisée privée par guilde |
 | `goodbye_enabled` | `boolean` | welcome-goodbye |
 | `goodbye_channel_id` | `text` | welcome-goodbye |
 | `goodbye_message` | `text` | welcome-goodbye |
@@ -92,9 +96,9 @@ côté code (le code applique des défauts applicatifs quand la clé est absente
 | `xp_channel_id` | `text` | xp |
 | `xp_rate` | `numeric`/`integer` (`à confirmer` : multiplicateur JS) | xp |
 | `analytics_enabled` | `boolean` | analytics |
-| `captcha_enabled` | `boolean` | captcha |
-| `captcha_channel_id` | `text` | captcha |
-| `captcha_role_id` | `text` | captcha |
+| `captcha_enabled` | `boolean` | captcha — **héritée V1** (module retiré, colonnes conservées) |
+| `captcha_channel_id` | `text` | captcha — **héritée V1** |
+| `captcha_role_id` | `text` | captcha — **héritée V1** |
 | `autorole_enabled` | `boolean` | autorole |
 | `autorole_member_role_id` | `text` | autorole |
 | `autorole_bot_role_id` | `text` | autorole |
@@ -115,12 +119,22 @@ côté code (le code applique des défauts applicatifs quand la clé est absente
 | `automod_delete_message` | `boolean` | automod |
 | `automod_punishment` | `text` (ex. `"timeout"`, `"warn"`, `"none"`) | automod |
 | `automod_timeout_minutes` | `integer` | automod |
+| `automod_exempt_roles` | `text[] NOT NULL DEFAULT '{}'::text[]` | exemptions AutoMod |
+| `automod_exempt_channels` | `text[] NOT NULL DEFAULT '{}'::text[]` | exemptions AutoMod |
 | `security_enabled` | `boolean` | security |
 | `security_anti_raid` | `boolean` | security |
 | `security_anti_nuke` | `boolean` | security |
 | `security_anti_bot` | `boolean` | security |
 | `security_whitelist` | `text[]`/`jsonb` (`à confirmer` : liste en code) | security |
-| `security_log_channel_id` | `text` | security |
+| `security_log_channel_id` | `text` — **héritée / historique : colonne conservée en base, plus consommée par le code actuel (P10)** | security |
+
+> **P10 — note sur `security_log_channel_id`** : ancienne destination des
+> alertes Security, remplacée par le Logs central (catégorie moderation,
+> `log_moderation_channel_id` via `handleModerationEvent`). La clé a été
+> retirée du code applicatif (constantes, defaults, whitelist de
+> validation, i18n) mais **la colonne et les éventuelles valeurs stockées
+> sont volontairement conservées en base** : aucun `DROP`, aucune migration,
+> aucune donnée modifiée.
 
 ### DDL documentaire (non exécutée)
 
@@ -147,6 +161,8 @@ create table if not exists public.guild_configs (
   welcome_dm_enabled boolean,
   welcome_dm_message text,
   welcome_template_id text,
+  welcome_image_enabled boolean default false,
+  welcome_image_key text,
   goodbye_enabled boolean,
   goodbye_channel_id text,
   goodbye_message text,
@@ -175,6 +191,9 @@ create table if not exists public.guild_configs (
   xp_channel_id text,
   xp_rate integer,
   analytics_enabled boolean,
+  -- Colonnes héritées : le module CAPTCHA a été retiré de la V1. Elles sont
+  -- CONSERVÉES en base (aucune migration de suppression) et simplement ignorées
+  -- par le code : aucune clé captcha_* n'est plus déclarée dans la whitelist.
   captcha_enabled boolean,
   captcha_channel_id text,
   captcha_role_id text,
@@ -198,12 +217,14 @@ create table if not exists public.guild_configs (
   automod_delete_message boolean,
   automod_punishment text,
   automod_timeout_minutes integer,
+  automod_exempt_roles text[] not null default '{}'::text[],
+  automod_exempt_channels text[] not null default '{}'::text[],
   security_enabled boolean,
   security_anti_raid boolean,
   security_anti_nuke boolean,
   security_anti_bot boolean,
   security_whitelist jsonb,           -- type à confirmer (text[] possible)
-  security_log_channel_id text
+  security_log_channel_id text        -- héritée/historique : plus consommée (P10)
 );
 ```
 

@@ -1,5 +1,11 @@
 "use strict";
 const { goodbyeView } = require("./welcomeGoodbyeViews");
 const { goodbyeUpdatedMessage } = require("./welcomeAdminMessages");
-async function updateGoodbyeSettings(context, updates, messageKey = null) { const config=await context.settings.update(context.guildId,updates); const view=goodbyeView({t:context.t,config}); view.content=`${messageKey?context.t(messageKey):goodbyeUpdatedMessage(context.t,config)}\n${view.content}`; await context.envelope.transport.update({view}); return config; }
+const { enforceConfigWrite } = require("../../../core/rateLimit/ActionRateLimitGuard");
+// P6 §5 — idem updateWelcomeSettings : garde avant upsert, config courante
+// retournée au dépassement (aucune écriture, aucun crash des appelants).
+async function updateGoodbyeSettings(context, updates, messageKey = null) {
+  if (!(await enforceConfigWrite(context))) return context.settings.get(context.guildId);
+  const config=await context.settings.update(context.guildId,updates); const view=goodbyeView({t:context.t,config}); view.content=`${messageKey?context.t(messageKey):goodbyeUpdatedMessage(context.t,config)}\n${view.content}`; await context.envelope.transport.update({view}); return config;
+}
 module.exports={updateGoodbyeSettings};

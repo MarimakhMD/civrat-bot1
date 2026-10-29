@@ -26,7 +26,13 @@ class InteractionRouter {
       await this.acknowledge(route, envelope);
       context = await this.contextFactory.create(envelope);
 
-      if (route.permissions) await context.permissions.require(context, route.permissions);
+      if (route.permissions) {
+        // Opt-in only: legacy/guild routes retain their existing contract.
+        const permissionContext = route.permissionScope === "channel"
+          ? { ...context, member: { ...context.member, has: permission => context.member?.hasInChannel?.(permission, envelope.discordChannel) === true } }
+          : context;
+        await context.permissions.require(permissionContext, route.permissions);
+      }
 
       const result = await route.execute(context);
       this.assertAcknowledged(envelope);

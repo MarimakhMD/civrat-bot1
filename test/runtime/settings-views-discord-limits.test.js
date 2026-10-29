@@ -27,7 +27,6 @@ const SECTION_IDS = [
   "civrat:v1:giveaway:section",
   "civrat:v1:suggestion:section",
   "civrat:v1:tickets:panel",
-  "civrat:v1:captcha:section",
   "civrat:v1:logs:section",
   "civrat:v1:analytics:section",
   "civrat:v1:xp:section",

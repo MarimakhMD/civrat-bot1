@@ -308,3 +308,28 @@ test("A2 — real XP columns are written through unchanged", async () => {
   assert.equal(calls[0].payload.xp_cooldown, 120);
   assert.equal(result.xp_per_message, 25);
 });
+
+test("A2 — security_log_channel_id is retired from the whitelist (P10)", async () => {
+  // P10 — ancienne clé devenue totalement inactive côté applicatif : aucune UI,
+  // aucun consommateur ; les alertes Security passent par le Logs central
+  // (log_moderation_channel_id + handleModerationEvent). La colonne SQL reste
+  // en base pour compatibilité historique — aucune donnée n'est touchée.
+  assert.equal(
+    isGuildConfigKey("security_log_channel_id"),
+    false,
+    "security_log_channel_id ne doit plus être une clé de guild_configs",
+  );
+  assert.ok(!GUILD_CONFIG_KEYS.includes("security_log_channel_id"));
+
+  const { client, calls } = fakeClient();
+  useDatabase(client);
+
+  let thrown = null;
+  await assert.rejects(
+    () => service.updateGuildConfig("guild-p10", { security_log_channel_id: "111111111111111111" }),
+    (error) => { thrown = error; return true; },
+  );
+  assert.ok(thrown instanceof ValidationError, "l'erreur doit être une ValidationError");
+  assert.deepEqual(thrown.metadata.unknownKeys, ["security_log_channel_id"]);
+  assert.equal(calls.length, 0, "aucun accès à la base pour une clé retirée");
+});

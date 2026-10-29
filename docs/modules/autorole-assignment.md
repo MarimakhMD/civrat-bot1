@@ -12,4 +12,4 @@ register routes, assign roles on member join, or use Discord.js directly.
 l’attribution et les logs restent dans les services AutoRole. La validation
 Discord réelle doit couvrir humains, bots, rôles absents/gérés/trop hauts,
 ManageRoles, membres non gérables, rôles déjà présents, logs guild et continuité
-Welcome, Captcha, Invites et Security.
+Welcome, Invites et Security.

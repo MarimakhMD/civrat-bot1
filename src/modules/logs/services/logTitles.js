@@ -1,5 +1,6 @@
 "use strict";
 
+const { resolveLanguage } = require("./logLanguage");
 const fr = require("../translations/fr.json");
 const en = require("../translations/en.json");
 
@@ -12,7 +13,7 @@ const LOGS_EN = (en && en.logs) || {};
 // le transport retombe alors sur son titre générique — jamais de clé technique
 // affichée à l'utilisateur.
 function localizeTitle(config, key) {
-  const language = config && config.language === "en" ? "en" : "fr";
+  const language = resolveLanguage(config);
   const dictionary = language === "en" ? LOGS_EN : LOGS_FR;
   const shortKey = typeof key === "string" ? key.replace(/^logs\./, "") : key;
   const value = dictionary[shortKey];

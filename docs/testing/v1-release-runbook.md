@@ -55,9 +55,9 @@ pas comme absence de données.
 ```bash
 npm ci --ignore-scripts
 npm run check
-# Campagne exhaustive : tous les fichiers *.test.js sous src/ et test/
-mapfile -t files < <(find src test -type f -name '*.test.js' | sort)
-node --test "${files[@]}"
+# Campagne exhaustive : tous les fichiers *.test.js du dépôt, découverts sur disque.
+# `npm run test:list` affiche la liste et le compte sans rien exécuter.
+npm test
 git diff --check
 ```
 
@@ -67,7 +67,8 @@ Valider également :
 - parité stricte FR/EN du core et des modules ;
 - scan des secrets et fichiers sensibles ;
 - catalogue exact de 22 commandes globales + `/admin` technique ;
-- aucun fichier CAPTCHA modifié pour cette évolution.
+- aucune surface CAPTCHA : le module est retiré de la V1 (commande, routes,
+  journaux, traductions et configuration associés).
 
 ## 4. Déploiement explicite des commandes
 
@@ -127,7 +128,8 @@ Renseigner les IDs/noms réels dans le compte rendu d’exécution, pas dans Git
       lien `https://discord.gg/BA3aDFqtXr`, demande d’ouverture de ticket ;
 - [ ] panne entitlement simulée/contrôlée : message « indisponible », distinct
       de « Premium requis » ;
-- [ ] CAPTCHA vérifié selon son protocole dédié, sans régression.
+- [ ] absence de surface CAPTCHA : aucune commande `/captcha`, aucun bouton
+      `civrat:v1:captcha:*`, aucune section de réglages, aucun journal CAPTCHA ;
 
 ### 5.2 Guilde technique
 
@@ -164,13 +166,17 @@ Renseigner les IDs/noms réels dans le compte rendu d’exécution, pas dans Git
 - [ ] personnalisation Ticket Premium active puis retour Free après révocation ;
 - [ ] Welcome/Goodbye, image Premium, AutoRole, AutoMod, sécurité, TempVoice,
       giveaways, suggestions, logs, Analytics, XP et invitations ;
+- [ ] AutoMod et Sécurité (anti-raid, anti-bot, anti-nuke, permissions,
+      mises à jour) validés selon
+      `security-automod-real-environment-protocol.md` ;
 - [ ] persistance après redémarrage pour les stockages configurés ;
 - [ ] démarrage normal sans PUT de commandes inattendu.
 
 Références spécialisées :
 `tickets-production-validation.md`, `welcome-image-production-validation.md`,
-`captcha-production-validation.md`, `autorole-production-validation.md`,
-`logs-production-validation.md`, `phase-3-real-environment-protocol.md`.
+`autorole-production-validation.md`,
+`logs-production-validation.md`, `phase-3-real-environment-protocol.md`,
+`security-automod-real-environment-protocol.md`.
 
 ## 7. GO / NO-GO
 
@@ -180,8 +186,8 @@ aucun secret détecté et aucun crash au redémarrage.
 
 **NO-GO** si : `/admin` fuit hors guilde technique, une garde salon/rôle manque,
 un backend indisponible est présenté comme zéro/Free, une fonction Settings ou
-Premium disparaît, un secret apparaît, CAPTCHA régresse, ou une case réelle n’a
-pas été exécutée.
+Premium disparaît, un secret apparaît, une surface CAPTCHA réapparaît, ou une case
+réelle n’a pas été exécutée.
 
 Le compte rendu de release doit séparer explicitement résultats automatisés et
 résultats Discord réels.

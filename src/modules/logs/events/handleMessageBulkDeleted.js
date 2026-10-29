@@ -2,6 +2,7 @@
 
 const { userLabel, channelLabel } = require("../services/logLabels");
 const { localizeTitle } = require("../services/logTitles");
+const { resolveLanguage } = require("../services/logLanguage");
 
 const MAX_SUMMARY_MESSAGES = 10;
 const MAX_EXCERPT_LENGTH = 120;
@@ -13,6 +14,7 @@ async function handleMessageBulkDeleted({ messages, config, mapper, service, del
     guildId: first.guild.id,
     channelKey: "log_message_delete_channel_id",
     category: "messages",
+    language: resolveLanguage(config),
     action: "messages_bulk_deleted",
     title: localizeTitle(config, "logs.messagesBulkDeleted"),
     details: {

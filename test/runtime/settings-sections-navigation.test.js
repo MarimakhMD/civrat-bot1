@@ -1,6 +1,6 @@
 "use strict";
 
-// Navigation /settings hors ligne : catalogue catégorisé, 13 fonctions
+// Navigation /settings hors ligne : catalogue catégorisé, 12 fonctions
 // accessibles, et retours vers un accueil unique. Aucun accès Discord réel.
 
 const test = require("node:test");
@@ -21,7 +21,6 @@ const EXPECTED_SECTIONS = [
   "civrat:v1:giveaway:section",
   "civrat:v1:suggestion:section",
   "civrat:v1:tickets:panel",
-  "civrat:v1:captcha:section",
   "civrat:v1:logs:section",
   "civrat:v1:analytics:section",
   "civrat:v1:xp:section",
@@ -84,12 +83,12 @@ function payloadContains(payload, customId) {
   return payload && JSON.stringify(payload.components || []).includes(`"custom_id":"${customId}"`);
 }
 
-test("settings catalog contains seven non-empty categories and exactly 13 unique real sections", () => {
+test("settings catalog contains seven non-empty categories and exactly 12 unique real sections", () => {
   assert.equal(SETTINGS_CATALOG.length, 7);
   assert.ok(SETTINGS_CATALOG.every((category) => category.features.length > 0));
   const sectionIds = SETTINGS_CATALOG.flatMap((category) => category.features.map((feature) => feature.customId));
-  assert.equal(sectionIds.length, 13);
-  assert.equal(new Set(sectionIds).size, 13);
+  assert.equal(sectionIds.length, 12);
+  assert.equal(new Set(sectionIds).size, 12);
   assert.deepEqual([...sectionIds].sort(), [...EXPECTED_SECTIONS].sort());
 });
 
@@ -130,7 +129,7 @@ test("every category exposes all and only its catalogued feature controls", asyn
   }
 });
 
-test("all 13 feature controls still route to their existing section", async () => {
+test("all 12 feature controls still route to their existing section", async () => {
   const runtime = createGuildSettingsRuntime({ legacyConfigService: legacyConfig() });
   for (const sectionId of EXPECTED_SECTIONS) {
     const captured = {};
@@ -145,7 +144,6 @@ test("category and existing section back controls return to the category home", 
   const backControls = [
     SettingsComponentId.HOME,
     "civrat:v1:tickets:back",
-    "civrat:v1:captcha:back",
     "civrat:v1:analytics:back",
     "civrat:v1:logs:home",
     "civrat:v1:welcome-goodbye:back",

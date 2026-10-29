@@ -23,7 +23,7 @@
     },
     "categoryDescriptions": {
       "general": "Langue, rôles automatiques et salons vocaux temporaires.",
-      "protection": "AutoMod, sécurité anti-abus et vérification CAPTCHA.",
+      "protection": "AutoMod et sécurité anti-abus.",
       "welcome": "Messages d'accueil et de départ, avec options Premium visibles.",
       "tickets": "Système de tickets et personnalisations Premium visibles.",
       "community": "Giveaways et suggestions de la communauté.",

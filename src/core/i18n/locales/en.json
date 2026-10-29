@@ -1,4 +1,7 @@
 {
+  "ratelimit": {
+    "retry": "This action is temporarily limited. Please try again in a few moments."
+  },
   "errors": {
     "internal": "An unexpected error occurred. Please try again later.",
     "authorizationDenied": "You do not have permission to perform this action.",

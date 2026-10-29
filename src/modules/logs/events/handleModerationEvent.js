@@ -1,6 +1,7 @@
 "use strict";
 
 const { localizeTitle } = require("../services/logTitles");
+const { resolveLanguage } = require("../services/logLanguage");
 
 async function handleModerationEvent({
   guild,
@@ -14,12 +15,14 @@ async function handleModerationEvent({
   target = undefined,
   moderator = undefined,
   duration = null,
+  before = null,
+  after = null,
   avatarUrl = null,
   mapper,
   service,
   delivery,
 }) {
-  if (!config.logs_enabled) return null;
+  if (!config?.logs_enabled) return null;
 
   const details = {};
   if (targetId !== null && targetId !== undefined) details.targetId = targetId;
@@ -27,6 +30,8 @@ async function handleModerationEvent({
   if (reason) details.reason = reason;
   if (moderatorId) details.moderatorId = moderatorId;
   if (duration) details.duration = duration;
+  if (before !== null) details.before = before;
+  if (after !== null) details.after = after;
   if (avatarUrl) details.avatarUrl = avatarUrl;
   if (rule) details.rule = rule;
   if (Array.isArray(rules) && rules.length) details.rules = [...rules];
@@ -39,6 +44,7 @@ async function handleModerationEvent({
     guildId: guild.id,
     channelKey: "log_moderation_channel_id",
     category: "moderation",
+    language: resolveLanguage(config),
     action,
     title: localizeTitle(config, `logs.${action}`),
     details,

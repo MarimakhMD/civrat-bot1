@@ -1,6 +1,8 @@
 "use strict";
 
 const { AutoModDecisionService } = require("./AutoModDecisionService");
+const { markSelfAction } = require("../../../utils/selfActionRegistry");
+const { memberDisplayLabel } = require("../../logs/services/logLabels");
 
 /**
  * Applies the configured punishment when a message violates an AutoMod rule.
@@ -56,6 +58,10 @@ class AutoModEnforcementService {
     if (decision.type !== "none" && message.author && message.author.id && enforcer) {
       try {
         if (decision.type === "timeout") {
+          // PHASE 1 — ce timeout va déclencher `guildMemberUpdate`. La marque
+          // évite que l'événement secondaire ne rejoue la même sanction sous
+          // forme d'un second log `member_timed_out`.
+          markSelfAction("timeout", guildId, targetId);
           actions.punishment = await enforcer.timeoutUser({
             guildId: message.guild && message.guild.id,
             targetId: message.author.id,
@@ -92,9 +98,15 @@ class AutoModEnforcementService {
             guild: message.guild,
             action: "automod",
             targetId: message.author && message.author.id,
+            // PHASE 1 — cible et durée réelles : sans elles le log AutoMod ne
+            // nommait personne et ne disait pas combien de temps.
+            target: memberDisplayLabel(message.author),
             reason: decision.reason,
             rule: decision.rule,
             rules: decision.rules,
+            duration: decision.type === "timeout" && decision.durationMinutes
+              ? `${decision.durationMinutes} min`
+              : null,
           });
         }
       } catch (error) {
