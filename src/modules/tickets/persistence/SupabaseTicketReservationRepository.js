@@ -39,30 +39,6 @@ class SupabaseTicketReservationRepository {
     }
     return data;
   }
-  async listForUser(guildId, userId) {
-    const { data, error } = await this.supabase.from("civrat_ticket_reservations").select("*").eq("guild_id", guildId).eq("user_id", userId).in("state", ["reserved","external_pending","channel_known"]);
-    if (error) throw toPersistenceError(error, { operation: "listForUser", resource: "civrat_ticket_reservations" });
-    return data || [];
-  }
-  async listForCategory(guildId, userId, categoryId) {
-    const { data, error } = await this.supabase.from("civrat_ticket_reservations").select("*").eq("guild_id", guildId).eq("user_id", userId).eq("category_id", categoryId).in("state", ["reserved","external_pending","channel_known"]);
-    if (error) throw toPersistenceError(error, { operation: "listForCategory", resource: "civrat_ticket_reservations" });
-    return data || [];
-  }
-  async listPending({ guildId = null, threshold = null, limit = 50 } = {}) {
-    let q = this.supabase.from("civrat_ticket_reservations").select("*").in("state", ["reserved","external_pending","channel_known","cleanup_pending"]).order("created_at", { ascending: true }).limit(limit);
-    if (guildId) q = q.eq("guild_id", guildId);
-    if (threshold) q = q.lt("created_at", threshold);
-    const { data, error } = await q;
-    if (error) throw toPersistenceError(error, { operation: "listPending", resource: "civrat_ticket_reservations" });
-    return data || [];
-  }
-  async tryLock(requestId) {
-    // Supabase : on s'appuie sur FOR UPDATE SKIP LOCKED côté SQL (listPending) ; le lock est transactionnel
-    return true;
-  }
-  async unlock(requestId) { return true; }
-
   // Lecture pour limites : compte tickets + réservations (utilisé en fallback si RPC non dispo, pour tests)
   async countOpenForUser(guildId, userId) {
     const { data, error } = await this.supabase.from("tickets").select("channel_id", { count: "exact", head: true }).eq("guild_id", guildId).eq("user_id", userId).in("status", ["open","claimed"]);

@@ -1,12 +1,7 @@
 "use strict";
 
 class InMemoryTicketFreeSettingsRepository {
-  constructor() {
-    if (process.env.NODE_ENV === "production") {
-      throw new Error("InMemoryTicketFreeSettingsRepository forbidden in production");
-    }
-    this.settings = new Map();
-  }
+  constructor() { this.settings = new Map(); }
   async get(guildId) {
     const s = this.settings.get(guildId);
     if (!s) return { guildId, openLimit: 1, transcriptMode: "required" };

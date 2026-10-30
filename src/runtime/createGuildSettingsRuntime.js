@@ -16,9 +16,16 @@ const { TicketChannelNamingService } = require("../modules/tickets/services/Tick
 // M8 — panels persistants : chaîne Supabase (supabaseAdmin) > InMemory.
 const { getTicketPanelRepository } = require("../modules/tickets/runtime/getTicketPanelRepository");
 const { DiscordTicketTransport } = require("../adapters/discord/DiscordTicketTransport");
+const { TicketTranscriptAudiencePolicy } = require("../modules/tickets/services/TicketTranscriptAudiencePolicy");
 const { getLogsRuntime } = require("../modules/logs/runtime/getLogsRuntime");
 const { config } = require("../config");
-const { supabase } = require("../config/database");
+const { supabase, supabaseAdmin } = require("../config/database");
+const { SupabaseTicketHistoricalAttestationRepository } = require("../modules/tickets/persistence/SupabaseTicketHistoricalAttestationRepository");
+const { TicketHistoricalAttestationService } = require("../modules/tickets/services/TicketHistoricalAttestationService");
+const { SupabaseTicketOperationRepository } = require("../modules/tickets/persistence/SupabaseTicketOperationRepository");
+const { SupabaseTicketFreeCategoryRepository } = require("../modules/tickets/persistence/SupabaseTicketFreeCategoryRepository");
+const { SupabaseTicketFreeSettingsRepository } = require("../modules/tickets/persistence/SupabaseTicketFreeSettingsRepository");
+const { SupabaseTicketReservationRepository } = require("../modules/tickets/persistence/SupabaseTicketReservationRepository");
 const ticketEn = require("../modules/tickets/translations/en.json");
 const ticketFr = require("../modules/tickets/translations/fr.json");
 const moderationEn = require("../modules/moderation/translations/en.json");
@@ -61,9 +68,6 @@ const giveawayFr = require("../modules/giveaways/translations/fr.json");
 const { SuggestionConfigService, registerSuggestions } = require("../modules/suggestions");
 const suggestionEn = require("../modules/suggestions/translations/en.json");
 const suggestionFr = require("../modules/suggestions/translations/fr.json");
-const { TempVoiceConfigService, registerTempVoice } = require("../modules/tempvoice");
-const tempVoiceEn = require("../modules/tempvoice/translations/en.json");
-const tempVoiceFr = require("../modules/tempvoice/translations/fr.json");
 const { registerAnalytics } = require("../modules/analytics/register");
 const analyticsEn = require("../modules/analytics/translations/en.json");
 const analyticsFr = require("../modules/analytics/translations/fr.json");
@@ -92,8 +96,8 @@ const adminPanelFr = require("../modules/admin-panel/translations/fr.json");
 const legacyInviteService = require("../services/inviteService");
 function createGuildSettingsRuntime({ legacyConfigService, logger = null }) {
   const dictionaries = {
-    en: { ...coreDictionaries.en, ...en, ...welcomeEn, ...autoRoleEn, ...logsEn, ...ticketEn, ...moderationEn, ...autoModEn, ...securityEn, ...stickerEn, ...tempVoiceEn, ...giveawayEn, ...suggestionEn, ...analyticsEn, ...xpEn, ...invitesEn, ...recoveryEn, ...ownerPanelEn, ...adminPanelEn },
-    fr: { ...coreDictionaries.fr, ...fr, ...welcomeFr, ...autoRoleFr, ...logsFr, ...ticketFr, ...moderationFr, ...autoModFr, ...securityFr, ...stickerFr, ...tempVoiceFr, ...giveawayFr, ...suggestionFr, ...analyticsFr, ...xpFr, ...invitesFr, ...recoveryFr, ...ownerPanelFr, ...adminPanelFr },
+    en: { ...coreDictionaries.en, ...en, ...welcomeEn, ...autoRoleEn, ...logsEn, ...ticketEn, ...moderationEn, ...autoModEn, ...securityEn, ...stickerEn, ...giveawayEn, ...suggestionEn, ...analyticsEn, ...xpEn, ...invitesEn, ...recoveryEn, ...ownerPanelEn, ...adminPanelEn },
+    fr: { ...coreDictionaries.fr, ...fr, ...welcomeFr, ...autoRoleFr, ...logsFr, ...ticketFr, ...moderationFr, ...autoModFr, ...securityFr, ...stickerFr, ...giveawayFr, ...suggestionFr, ...analyticsFr, ...xpFr, ...invitesFr, ...recoveryFr, ...ownerPanelFr, ...adminPanelFr },
   }; validateTranslationParity(dictionaries);
   const i18n = new I18nService({ dictionaries, logger });
   const repository = new LegacyGuildConfigRepository({ getConfig: legacyConfigService.getGuildConfig, updateConfig: legacyConfigService.updateGuildConfig, invalidateConfig: legacyConfigService.invalidateCache });
@@ -212,14 +216,33 @@ function createGuildSettingsRuntime({ legacyConfigService, logger = null }) {
   // nom exporté par config/database et partagé avec giveaways et suggestions.
   // ─────────────────────────────────────────────────────────────────────────
   const ticketPanelRepository = getTicketPanelRepository();
+  const ticketCategoryRepository = supabaseAdmin ? new SupabaseTicketFreeCategoryRepository({ supabase: supabaseAdmin }) : null;
+  const ticketFreeSettingsRepository = supabaseAdmin ? new SupabaseTicketFreeSettingsRepository({ supabase: supabaseAdmin }) : null;
+  const ticketReservationRepository = supabaseAdmin ? new SupabaseTicketReservationRepository({ supabase: supabaseAdmin }) : null;
+  const historicalAttestationRepository = supabaseAdmin ? new SupabaseTicketHistoricalAttestationRepository({ supabase: supabaseAdmin }) : null;
+  const makeTranscriptAudiencePolicy = (guild) => {
+    const policy = new TicketTranscriptAudiencePolicy({ configService: ticketConfigService, guild });
+    return policy.check.bind(policy);
+  };
   registerTickets({
     registry,
     service: ticketConfigService,
     premiumConfigResolver: ticketPremiumConfigResolver,
     panelRepository: ticketPanelRepository,
+    categoryRepository: ticketCategoryRepository,
+    freeSettingsRepository: ticketFreeSettingsRepository,
+    reservationRepository: ticketReservationRepository,
+    historicalServiceFactory: (context) => new TicketHistoricalAttestationService({ guildId: context.guildId, repository: historicalAttestationRepository, ticketRepository: new SupabaseTicketRepository({ supabase, snapshotColumns: "auto" }), transport: new DiscordTicketTransport({ guild: context.envelope.discordMember?.guild }), ticketLog: (event) => getLogsRuntime().handleTicketEvent({ guild: context.envelope.discordMember.guild, ...event }) }),
     creationServiceFactory: (context) => new TicketService({
       configService: ticketConfigService,
-      repository: new SupabaseTicketRepository({ supabase }),
+      repository: new SupabaseTicketRepository({ supabase, snapshotColumns: "auto" }),
+      categoryRepository: ticketCategoryRepository,
+      freeSettingsRepository: ticketFreeSettingsRepository,
+      reservationRepository: ticketReservationRepository,
+      historicalAttestationRepository,
+      operationJournalRequired: true,
+      operationRepository: supabaseAdmin ? new SupabaseTicketOperationRepository({ supabase: supabaseAdmin }) : null,
+      operationInteractionId: context.envelope.interactionId,
       welcomeService: new TicketWelcomeService(),
       transcriptService: new TicketTranscriptService(),
       premiumConfigResolver: ticketPremiumConfigResolver,
@@ -231,7 +254,7 @@ function createGuildSettingsRuntime({ legacyConfigService, logger = null }) {
       // source de vérité, aucun second dépôt parallèle.
       panelRepository: ticketPanelRepository,
       ticketLog: (event) => getLogsRuntime().handleTicketEvent({ guild: context.envelope.discordMember.guild, ...event }),
-      transport: new DiscordTicketTransport({ guild: context.envelope.discordMember?.guild }),
+      transport: new DiscordTicketTransport({ guild: context.envelope.discordMember?.guild, transcriptAudiencePolicy: makeTranscriptAudiencePolicy(context.envelope.discordMember?.guild) }),
     }),
     settingsHome,
   });
@@ -266,8 +289,6 @@ function createGuildSettingsRuntime({ legacyConfigService, logger = null }) {
   const giveawayRegistration = registerGiveaways({ registry, configService: giveawayConfigService, supabase, logsRuntimeFactory: () => getLogsRuntime(), settingsHome });
   const suggestionConfigService = new SuggestionConfigService({ guildConfigResolver });
   const suggestionRegistration = registerSuggestions({ registry, configService: suggestionConfigService, supabase, logsRuntimeFactory: () => getLogsRuntime(), settingsHome });
-  const tempVoiceConfigService = new TempVoiceConfigService({ guildConfigResolver });
-  registerTempVoice({ registry, service: tempVoiceConfigService, settingsHome });
   // Phase 11 — fin des instances Analytics disjointes : la composition lit et
   // écrit via le runtime Analytics partagé (mêmes repositories que les
   // événements messageCreate/guildMemberAdd). Plus aucune instance privée.

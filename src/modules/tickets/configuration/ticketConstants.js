@@ -8,6 +8,8 @@ const TicketConfigKey = Object.freeze({
   // legacy, qui lit déjà cette même clé). Le fallback closeTicket la lisait
   // déjà ; sans clé ni UI elle restait toujours nulle (zombie).
   LOG_CHANNEL_ID: "ticket_log_channel_id",
+  TRANSCRIPT_ALLOWED_ROLE_IDS: "ticket_transcript_allowed_role_ids",
+  TRANSCRIPT_ALLOWED_USER_IDS: "ticket_transcript_allowed_user_ids",
 });
 const TicketComponentId = Object.freeze({
   PANEL: "civrat:v1:tickets:panel",
@@ -16,6 +18,11 @@ const TicketComponentId = Object.freeze({
   SUPPORT_ROLE: "civrat:v1:tickets:support-role",
   // P13 (B3) : sélecteur du salon Free de logs/transcripts.
   LOG_CHANNEL: "civrat:v1:tickets:log-channel",
+  TRANSCRIPT_AUDIENCE: "civrat:v1:tickets:transcript-audience",
+  TRANSCRIPT_AUDIENCE_ROLES: "civrat:v1:tickets:transcript-audience-roles",
+  TRANSCRIPT_AUDIENCE_USERS: "civrat:v1:tickets:transcript-audience-users",
+  LIMITS_SECTION: "civrat:v1:tickets:limits",
+  GLOBAL_LIMIT: "civrat:v1:tickets:global-limit",
   PREVIEW: "civrat:v1:tickets:preview",
   BACK: "civrat:v1:tickets:back",
   CREATE: "civrat:v1:tickets:create",
@@ -24,6 +31,7 @@ const TicketComponentId = Object.freeze({
   DELETE: "civrat:v1:tickets:delete",
   RENAME: "civrat:v1:tickets:rename",
   RENAME_SUBMIT: "civrat:v1:tickets:rename:submit",
+  LIST_MEMBERS: "civrat:v1:tickets:list-members",
   ADD_MEMBER: "civrat:v1:tickets:add-member",
   ADD_MEMBER_SUBMIT: "civrat:v1:tickets:add-member:submit",
   REMOVE_MEMBER: "civrat:v1:tickets:remove-member",
@@ -46,9 +54,22 @@ const TicketComponentId = Object.freeze({
   //    le préfixe contient déjà quatre « : », donc split(":")[1] vaudrait "v1".
   // ─────────────────────────────────────────────────────────────────────────
   CREATE_PREFIX: "civrat:v1:tickets:create:",
+  HISTORICAL_START: "civrat:v1:tickets:history",
+  HISTORICAL_LOOKUP: "civrat:v1:tickets:history:lookup",
+  HISTORICAL_CONFIRM: "civrat:v1:tickets:hc:",
+  HISTORICAL_SUBMIT: "civrat:v1:tickets:hs:",
+  FREE_CATEGORIES: "civrat:v1:tickets:free-categories",
+  FREE_CATEGORY_NEW: "civrat:v1:tickets:free-category:new",
+  FREE_CATEGORY_DETAIL: "civrat:v1:tickets:free-category:detail:",
+  FREE_CATEGORY_EDIT: "civrat:v1:tickets:free-category:edit:",
+  FREE_CATEGORY_SUBMIT: "civrat:v1:tickets:free-category:submit:",
+  FREE_CATEGORY_ARCHIVE: "civrat:v1:tickets:free-category:archive:",
+  FREE_CATEGORY_TOGGLE: "civrat:v1:tickets:free-category:toggle:",
   PANELS_SECTION: "civrat:v1:tickets:panels",
   PANELS_CREATE: "civrat:v1:tickets:panels:create",
   PANELS_DETAIL_PREFIX: "civrat:v1:tickets:panels:detail:",
+  PANELS_STRUCTURED_EDIT: "civrat:v1:tickets:panels:structured:",
+  PANELS_STRUCTURED_SUBMIT: "civrat:v1:tickets:panels:structured-submit:",
   PANELS_EDIT_PREFIX: "civrat:v1:tickets:panels:edit:",
   PANELS_EDIT_SUBMIT_PREFIX: "civrat:v1:tickets:panels:edit:submit:",
   PANELS_DELETE_PREFIX: "civrat:v1:tickets:panels:delete:",
