@@ -2,9 +2,12 @@
 
 const { PermissionName } = require("../../core/permissions");
 const { prefix } = require("../../core/interactions/routeMatchers");
-const { TicketComponentId: Id } = require("./configuration/ticketConstants");
+const { TicketConfigKey: Key, TicketComponentId: Id } = require("./configuration/ticketConstants");
 const { ticketView } = require("./interactions/ticketViews");
+const freeCategories = require("./interactions/ticketFreeCategoryRoutes");
+const historical = require("./interactions/ticketHistoricalRoutes");
 const { toggleTickets, selectTicket, previewTickets } = require("./interactions/configureTickets");
+const { handleTranscriptAudienceRoles, handleTranscriptAudienceUsers, openTranscriptAudience } = require("./interactions/ticketTranscriptAudienceRoutes");
 const { handleTicketCreate, handleLegacyTicketCreate } = require("./interactions/ticketCreateRoute");
 const {
   openTicketPanels,
@@ -12,24 +15,48 @@ const {
   openPanelDetail,
   openPanelEditModal,
   submitPanelEdit,
+  openStructuredPanelEdit,
+  submitStructuredPanelEdit,
   deleteTicketPanel,
 } = require("./interactions/ticketPanelRoutes");
 const { handleTicketClose } = require("./interactions/ticketCloseRoute");
 const { handleTicketReopen } = require("./interactions/ticketReopenRoute");
 const { handleTicketDelete } = require("./interactions/ticketDeleteRoute");
 const { openTicketRename, handleTicketRename } = require("./interactions/ticketRenameRoute");
-const { openMemberModal, handleMemberAccess } = require("./interactions/ticketMemberAccessRoute");
+const { openMemberModal, handleMemberAccess, listMembers } = require("./interactions/ticketMemberAccessRoute");
 const { handleTicketClaim } = require("./interactions/ticketClaimRoute");
 const { openPremiumPanel, openPremiumPanelModal, submitPremiumPanel, resetPremiumPanel, previewPremiumPanel, openPremiumWelcomeModal, submitPremiumWelcome, previewPremiumWelcome, selectPremiumTranscript, openPremiumFormatModal, submitPremiumFormat } = require("./interactions/premiumPanel");
 
-function registerTickets({ registry, service, creationServiceFactory = null, settingsHome = null, premiumConfigResolver = null, panelRepository = null }) {
+function registerTickets({ registry, service, creationServiceFactory = null, settingsHome = null, premiumConfigResolver = null, panelRepository = null, categoryRepository = null, freeSettingsRepository = null, reservationRepository = null, historicalServiceFactory = null }) {
   const permissions = { allOf: [PermissionName.MANAGE_GUILD] };
   registry.registerButton({ customId: Id.PANEL, permissions, execute: async (c) => c.envelope.transport.update({ view: ticketView({ t: c.t, config: await service.read(c.guildId) }) }) });
   registry.registerButton({ customId: Id.TOGGLE, permissions, execute: async (c) => toggleTickets({ ...c, service }) });
   registry.registerSelectMenu({ customId: Id.CATEGORY, permissions, execute: async (c) => selectTicket({ ...c, service }) });
   registry.registerSelectMenu({ customId: Id.SUPPORT_ROLE, permissions, execute: async (c) => selectTicket({ ...c, service }) });
   // P13 (B3) : sélecteur du salon de logs/transcripts Free.
-  registry.registerSelectMenu({ customId: Id.LOG_CHANNEL, permissions, execute: async (c) => selectTicket({ ...c, service }) });
+    registry.registerSelectMenu({ customId: Id.LOG_CHANNEL, permissions, execute: async (c) => selectTicket({ ...c, service }) });
+  registry.registerButton({ customId: Id.LIMITS_SECTION, permissions, execute: async (c) => {
+    const { openLimits } = require("./interactions/ticketLimitsRoutes");
+    return openLimits({ ...c, service, freeSettingsRepository });
+  }});
+  registry.registerSelectMenu({ customId: Id.GLOBAL_LIMIT, permissions, execute: async (c) => {
+    const { handleGlobalLimit } = require("./interactions/ticketLimitsRoutes");
+    return handleGlobalLimit({ ...c, service, freeSettingsRepository });
+  }});
+  registry.registerButton({ customId: Id.TRANSCRIPT_AUDIENCE, permissions, execute: async (c) => openTranscriptAudience({ ...c, service }) });
+  registry.registerSelectMenu({ customId: Id.TRANSCRIPT_AUDIENCE_ROLES, permissions, execute: async (c) => handleTranscriptAudienceRoles({ ...c, service }) });
+  registry.registerSelectMenu({ customId: Id.TRANSCRIPT_AUDIENCE_USERS, permissions, execute: async (c) => handleTranscriptAudienceUsers({ ...c, service }) });
+  registry.registerButton({ customId: Id.HISTORICAL_START, permissions, execute: historical.start });
+  registry.registerModal({ customId: Id.HISTORICAL_LOOKUP, permissions, execute: async (c) => historical.lookup(c, historicalServiceFactory) });
+  registry.registerButton({ matcher: prefix(Id.HISTORICAL_CONFIRM), permissions, execute: async (c) => historical.confirm(c, historicalServiceFactory) });
+  registry.registerModal({ matcher: prefix(Id.HISTORICAL_SUBMIT), permissions, execute: async (c) => historical.submit(c, historicalServiceFactory) });
+  registry.registerButton({ customId: Id.FREE_CATEGORIES, permissions, execute: async (c) => freeCategories.list({ ...c, categoryRepository }) });
+  registry.registerButton({ customId: Id.FREE_CATEGORY_NEW, permissions, execute: async (c) => freeCategories.modal({ ...c, categoryRepository }, false) });
+  registry.registerButton({ matcher: prefix(Id.FREE_CATEGORY_DETAIL), permissions, execute: async (c) => freeCategories.detail({ ...c, categoryRepository }) });
+  registry.registerButton({ matcher: prefix(Id.FREE_CATEGORY_EDIT), permissions, execute: async (c) => freeCategories.modal({ ...c, categoryRepository }, true) });
+  registry.registerButton({ matcher: prefix(Id.FREE_CATEGORY_ARCHIVE), permissions, execute: async (c) => freeCategories.archive({ ...c, categoryRepository }) });
+  registry.registerButton({ matcher: prefix(Id.FREE_CATEGORY_TOGGLE), permissions, execute: async (c) => freeCategories.toggle({ ...c, categoryRepository }) });
+  registry.registerModal({ matcher: prefix(Id.FREE_CATEGORY_SUBMIT), permissions, execute: async (c) => freeCategories.submit({ ...c, categoryRepository }) });
   registry.registerButton({ customId: Id.PREVIEW, permissions, execute: async (c) => previewTickets({ ...c, service }) });
   // ─────────────────────────────────────────────────────────────────────────
   // M8 — deux routes de création, qui coexistent.
@@ -52,6 +79,7 @@ function registerTickets({ registry, service, creationServiceFactory = null, set
   registry.registerButton({ customId: Id.RENAME, permissions: { allOf: [] }, execute: openTicketRename });
   registry.registerButton({ customId: Id.CLAIM, permissions: { allOf: [] }, execute: async (c) => handleTicketClaim(c, creationServiceFactory) });
   registry.registerModal({ customId: Id.RENAME_SUBMIT, permissions: { allOf: [] }, execute: async (c) => handleTicketRename(c, creationServiceFactory) });
+  registry.registerButton({ customId: Id.LIST_MEMBERS, permissions: { allOf: [] }, execute: async (c) => listMembers(c, creationServiceFactory) });
   registry.registerButton({ customId: Id.ADD_MEMBER, permissions: { allOf: [] }, execute: openMemberModal("add") });
   registry.registerButton({ customId: Id.REMOVE_MEMBER, permissions: { allOf: [] }, execute: openMemberModal("remove") });
   registry.registerModal({ customId: Id.ADD_MEMBER_SUBMIT, permissions: { allOf: [] }, execute: async (c) => handleMemberAccess(c, creationServiceFactory, "add") });
@@ -89,6 +117,8 @@ function registerTickets({ registry, service, creationServiceFactory = null, set
   registry.registerButton({ matcher: prefix(Id.PANELS_DETAIL_PREFIX), permissions, execute: async (c) => openPanelDetail({ ...c, service, premiumConfigResolver, panelRepository }) });
   registry.registerButton({ matcher: prefix(Id.PANELS_EDIT_PREFIX), permissions, execute: async (c) => openPanelEditModal({ ...c, service, premiumConfigResolver, panelRepository }) });
   registry.registerModal({ matcher: prefix(Id.PANELS_EDIT_SUBMIT_PREFIX), permissions, execute: async (c) => submitPanelEdit({ ...c, service, premiumConfigResolver, panelRepository }) });
+  registry.registerButton({ matcher: prefix(Id.PANELS_STRUCTURED_EDIT), permissions, execute: async (c) => openStructuredPanelEdit({ ...c, service, premiumConfigResolver, panelRepository, categoryRepository }) });
+  registry.registerModal({ matcher: prefix(Id.PANELS_STRUCTURED_SUBMIT), permissions, execute: async (c) => submitStructuredPanelEdit({ ...c, service, premiumConfigResolver, panelRepository, categoryRepository }) });
   registry.registerButton({ matcher: prefix(Id.PANELS_DELETE_PREFIX), permissions, execute: async (c) => deleteTicketPanel({ ...c, service, premiumConfigResolver, panelRepository }) });
   registry.registerButton({ customId: Id.BACK, permissions, execute: settingsHome });
   // premiumConfigResolver : injection Phase 10.1 (fondations Ticket Premium).

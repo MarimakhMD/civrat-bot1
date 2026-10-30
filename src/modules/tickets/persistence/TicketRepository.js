@@ -9,6 +9,8 @@ class TicketRepository {
   // 4G C2 — la guilde fait partie de la clé d'ÉCRITURE comme de la clé de
   // lecture : un salon ne peut être mis à jour QUE dans sa propre guilde.
   async updateByChannel(_guildId, _channelId, _updates) { throw new Error("TicketRepository.updateByChannel must be implemented."); }
+  async listOpenForUser(_guildId, _userId) { throw new Error("TicketRepository.listOpenForUser must be implemented."); }
+  async listOpenForUserByCategory(_guildId, _userId, _categoryId) { throw new Error("TicketRepository.listOpenForUserByCategory must be implemented."); }
 }
 
 module.exports = { TicketRepository };
