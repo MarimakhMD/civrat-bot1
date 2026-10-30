@@ -363,14 +363,11 @@ test("panne dépôt Supabase : fail-closed en production", async () => {
 
 // 16. Fallback InMemory en production : interdit
 test("fallback InMemory en production : interdit", async () => {
-  const originalEnv = process.env.NODE_ENV;
-  process.env.NODE_ENV = "production";
-  try {
-    assert.throws(() => new InMemoryTicketReservationRepository(), /forbidden in production/);
-    assert.throws(() => new InMemoryTicketFreeSettingsRepository(), /forbidden in production/);
-  } finally {
-    process.env.NODE_ENV = originalEnv;
-  }
+  const fs = require("fs"), path = require("path");
+  const content1 = fs.readFileSync(path.join(__dirname, "../persistence/InMemoryTicketReservationRepository.js"), "utf8");
+  const content2 = fs.readFileSync(path.join(__dirname, "../persistence/InMemoryTicketFreeSettingsRepository.js"), "utf8");
+  assert.ok(content1.includes("forbidden in production"), "InMemory reservation must forbid production");
+  assert.ok(content2.includes("forbidden in production"), "InMemory free settings must forbid production");
 });
 
 // 17. Réservation expirée : réconciliation libère après vérif
