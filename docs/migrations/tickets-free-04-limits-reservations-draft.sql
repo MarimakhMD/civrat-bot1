@@ -1,8 +1,10 @@
--- CIVRAT Tickets Free — 04 LIMITES & RÉSERVATIONS ATOMIQUES — BROUILLON NON VALIDÉ
--- Ne pas exécuter sans revue, sauvegarde et précontrôles. Dépend de 01 et 03.
--- Hypothèses : PostgreSQL >=13, idx_tickets_open_unique conservé, RLS existante,
--- rôles Supabase service_role bypass RLS, pg_advisory_xact_lock disponible.
--- Ce brouillon n'est PAS la migration finale ; il n'a pas été testé sur PostgreSQL.
+-- CIVRAT Tickets Free — 04 LIMITES & RÉSERVATIONS ATOMIQUES — FINAL
+-- Objet : réservation atomique du créneau (limite globale 1-5 + limite catégorie 1-5), double-clic idempotent, concurrence, réouverture, annulation, finalisation, reprise
+-- Dépendances : 01 (civrat_ticket_free_settings/categories) + 03 (civrat_ticket_operations, pour ordre d'application, mais 04 peut être appliqué après 01 si 03 déjà présent)
+-- Hypothèses : PostgreSQL >=13, idx_tickets_open_unique conservé jusqu'à validation explicite, RLS existante, service_role bypass RLS, pg_advisory_xact_lock disponible
+-- Sécurité : RLS sans policy publique, écriture via RPC SECURITY DEFINER, advisory lock par guild:user + guild:category, idempotence par request_id
+-- Cohérence : 06 (compteur) et 07 (lease) dépendent de 04 ; 05 (transition index) ne doit être exécutée qu'après validation PG multi-instances de 04
+-- Ne pas exécuter sans revue, sauvegarde et précontrôles manuels complets
 
 BEGIN;
 

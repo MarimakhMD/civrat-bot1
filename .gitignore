@@ -58,3 +58,12 @@ Thumbs.db
 
 # Persistent operator-owned Pterodactyl launch configuration
 /start.local.sh
+
+# Reviewed, hand-applied schema proposals (not database exports)
+!docs/migrations/tickets-free-01-additive.sql
+!docs/migrations/tickets-free-02-historical-attestation-draft.sql
+!docs/migrations/tickets-free-03-operation-journal-draft.sql
+!docs/migrations/tickets-free-04-limits-reservations-draft.sql
+!docs/migrations/tickets-free-05-index-transition-proposal.sql
+!docs/migrations/tickets-free-06-counter.sql
+!docs/migrations/tickets-free-07-reservation-lease.sql
